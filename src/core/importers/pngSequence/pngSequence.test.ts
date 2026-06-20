@@ -72,16 +72,44 @@ describe("createPngSequenceProject", () => {
     );
   });
 
-  it("rejects empty sequences and invalid durations", () => {
+  it("uses the default frame duration when metadata is omitted", () => {
+    const project = createPngSequenceProject([
+      createImageData(1, 1, 10),
+      createImageData(1, 1, 20),
+    ]);
+
+    expect(project.frames.map(({ durationMs }) => durationMs)).toEqual([
+      100,
+      100,
+    ]);
+  });
+
+  it.each([
+    [0, 1],
+    [1, 0],
+    [1.5, 1],
+  ])("rejects invalid frame dimensions %sx%s", (width, height) => {
+    expect(() =>
+      createPngSequenceProject([createImageData(width, height, 10)]),
+    ).toThrow("Frame 1 contains invalid RGBA image data.");
+  });
+
+  it("rejects empty sequences", () => {
     expect(() => createPngSequenceProject([])).toThrow(
       "PNG sequence must contain at least one frame.",
     );
-    expect(() =>
-      createPngSequenceProject([createImageData(1, 1, 10)], {
-        frameDurationMs: 0,
-      }),
-    ).toThrow("Frame duration must be a positive integer in milliseconds.");
   });
+
+  it.each([0, -1, 1.5, Number.NaN])(
+    "rejects invalid frame duration %s",
+    (frameDurationMs) => {
+      expect(() =>
+        createPngSequenceProject([createImageData(1, 1, 10)], {
+          frameDurationMs,
+        }),
+      ).toThrow("Frame duration must be a positive integer in milliseconds.");
+    },
+  );
 });
 
 describe("importPngSequence", () => {
