@@ -242,8 +242,8 @@ function main() {
   const branchName = `codex/task-${taskId}`;
 
   console.log(`Selected task: ${taskFile}`);
-
-  moveTaskFile("backlog", "active", taskFile);
+  // Keep the backlog task file in place until Codex finishes.
+  // Moving it before Codex runs makes the Git working tree dirty.
 
   try {
     runVisible("git", ["checkout", "-b", branchName], { skipInDryRun: true });
@@ -280,11 +280,11 @@ function main() {
     commitAndPush(taskId, branchName);
     createPr(taskId, branchName);
 
-    moveTaskFile("active", "done", taskFile);
+    moveTaskFile("backlog", "done", taskFile);
     console.log("Automation cycle completed.");
   } catch (error) {
     console.error(error);
-    moveTaskFile("active", "failed", taskFile);
+    moveTaskFile("backlog", "failed", taskFile);
     process.exit(1);
   }
 }
