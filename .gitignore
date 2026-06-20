@@ -1,0 +1,19 @@
+node_modules/
+dist/
+build/
+.cache/
+.vite/
+coverage/
+.env
+.env.local
+.env.*.local
+
+# automation generated files
+prompts/generated/*.md
+prompts/generated/*.log
+!prompts/generated/.gitkeep
+
+# temporary outputs
+tmp/
+test-output/
+*.log

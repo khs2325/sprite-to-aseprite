@@ -1,0 +1,52 @@
+id: "001"
+title: "Automation smoke test"
+priority: 100
+risk: "low"
+
+goal: >
+  Verify that the Codex automation pipeline can generate prompts and make a small harmless repository change.
+
+context: >
+  This is the first task for testing the automation system.
+  It should not implement the sprite converter.
+  It should only prove that Codex can read AGENTS.md, follow scope, and make a tiny change.
+
+scope:
+  - Create docs/automation-status.md
+  - Add a short note explaining that the automation framework is installed
+  - Include the date placeholder "YYYY-MM-DD" rather than guessing the date
+
+non_goals:
+  - Do not implement the sprite converter
+  - Do not implement importers
+  - Do not implement the Aseprite writer
+  - Do not change package.json
+  - Do not change GitHub workflows
+
+requirements:
+  - Follow AGENTS.md
+  - Keep the diff small
+  - Do not touch unrelated files
+
+acceptance_criteria:
+  - docs/automation-status.md exists
+  - The file says the automation framework is installed
+  - No converter source code is added
+  - npm run typecheck passes if the project has TypeScript configured
+  - npm run test passes if tests are configured
+  - npm run build passes if build is configured
+
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+
+auto_merge:
+  allowed: false
+  max_changed_files: 3
+  forbidden_paths:
+    - package.json
+    - package-lock.json
+    - pnpm-lock.yaml
+    - yarn.lock
+    - .github/workflows

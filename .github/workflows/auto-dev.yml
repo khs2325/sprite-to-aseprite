@@ -1,0 +1,44 @@
+name: Automated Codex Development
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-dev:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure Git
+        run: |
+          git config user.name "codex-auto-dev"
+          git config user.email "codex-auto-dev@example.com"
+
+      # This workflow assumes the Codex CLI is available in your environment.
+      # If it is not, install/configure Codex CLI according to your current OpenAI Codex setup.
+      - name: Check Codex CLI
+        run: codex --version
+
+      - name: Check GitHub CLI
+        run: gh --version
+
+      - name: Run automated development cycle
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: npm run auto-dev
