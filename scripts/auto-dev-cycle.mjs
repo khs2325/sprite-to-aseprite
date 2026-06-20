@@ -100,33 +100,27 @@ function runChecks() {
   runVisible("npm", ["run", "build"]);
 }
 
-function generatePrompt(taskId) {
-  runVisible("node", ["scripts/make-prompt.mjs", taskId]);
-}
-
 function runCodexWithPrompt(prompt) {
-  console.log("\n> codex exec --sandbox workspace-write --ask-for-approval never -");
+  console.log("\n> codex exec --sandbox workspace-write -");
 
   if (dryRun) {
     console.log("[dry-run] skipped");
     return;
   }
 
-  const result = spawnSync(
-    "codex",
-    ["exec", "--sandbox", "workspace-write", "--ask-for-approval", "never", "-"],
-    {
-      input: prompt,
-      stdio: ["pipe", "inherit", "inherit"],
-      encoding: "utf8",
-      shell: false
-    }
-  );
+  const result = spawnSync("codex", ["exec", "--sandbox", "workspace-write", "-"], {
+    input: prompt,
+    stdio: ["pipe", "inherit", "pipe"],
+    encoding: "utf8",
+    shell: false
+  });
+
+  if (result.stderr) {
+    process.stderr.write(result.stderr);
+  }
 
   if (result.status !== 0) {
-    throw new Error(
-      "Command failed: codex exec --sandbox workspace-write --ask-for-approval never -"
-    );
+    throw new Error("Command failed: codex exec --sandbox workspace-write -");
   }
 }
 
