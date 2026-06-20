@@ -40,6 +40,12 @@ function createImageData(
   };
 }
 
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
+}
+
 type ParsedChunk = {
   bytes: Uint8Array;
   type: number;
@@ -96,6 +102,55 @@ describe("BinaryWriter", () => {
 });
 
 describe("exportAseprite", () => {
+  it("writes deterministic bytes matching a known supported fixture", () => {
+    const project: SpriteProject = {
+      width: 1,
+      height: 1,
+      colorMode: "rgba",
+      frames: [{ index: 0, durationMs: 0x1234 }],
+      layers: [
+        {
+          id: "main",
+          name: "Å",
+          visible: false,
+          opacity: 0x7f,
+          cels: [
+            {
+              frameIndex: 0,
+              x: -1,
+              y: 2,
+              imageData: createImageData(1, 1, [1, 2, 3, 4]),
+            },
+          ],
+        },
+      ],
+    };
+    const expectedHex = [
+      // File header.
+      "d3000000e0a50100010001002000010000000000",
+      "00".repeat(8),
+      "00",
+      "00".repeat(3),
+      "0000",
+      "0101",
+      "00".repeat(8),
+      "00".repeat(84),
+      // Frame header.
+      "53000000faf102003412000000000000",
+      // Invisible normal layer named Å with opacity 127.
+      "1a00000004200200000000000000000000007f0000000200c385",
+      // Compressed 1x1 RGBA cel at (-1, 2).
+      "2900000005200000ffff0200ff02000000000000000001000100",
+      "7801010400fbff010203040018000b",
+    ].join("");
+
+    const first = exportAseprite(project);
+    const second = exportAseprite(project);
+
+    expect(first).toEqual(second);
+    expect(bytesToHex(first)).toBe(expectedHex);
+  });
+
   it("writes the documented RGBA file header fields at their byte offsets", () => {
     const project = createMinimalProject();
     project.width = 0x1234;
@@ -303,23 +358,29 @@ describe("exportAseprite", () => {
     expect(() => exportAseprite(project)).toThrow(RangeError);
   });
 
-  it("rejects unsupported color modes with a typed error", () => {
-    const project = {
-      ...createMinimalProject(),
-      colorMode: "indexed",
-    } as unknown as SpriteProject;
+  it.each(["indexed", "grayscale"])(
+    "rejects the unsupported %s color mode with a typed error",
+    (colorMode) => {
+      const project = {
+        ...createMinimalProject(),
+        colorMode,
+      } as unknown as SpriteProject;
 
-    expect(() => exportAseprite(project)).toThrow(
-      UnsupportedAsepriteFeatureError,
-    );
+      expect(() => exportAseprite(project)).toThrow(
+        UnsupportedAsepriteFeatureError,
+      );
+      expect(() => exportAseprite(project)).toThrow(
+        `Aseprite export does not support the ${colorMode} color mode.`,
+      );
 
-    try {
-      exportAseprite(project);
-    } catch (error) {
-      expect(error).toMatchObject({
-        feature: "the indexed color mode",
-        name: "UnsupportedAsepriteFeatureError",
-      });
-    }
-  });
+      try {
+        exportAseprite(project);
+      } catch (error) {
+        expect(error).toMatchObject({
+          feature: `the ${colorMode} color mode`,
+          name: "UnsupportedAsepriteFeatureError",
+        });
+      }
+    },
+  );
 });
