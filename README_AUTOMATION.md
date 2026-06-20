@@ -116,6 +116,8 @@ Each real task cycle:
 
 If Codex implements the task but its managed Windows sandbox cannot start Vite/Vitest because of a known access-denied/config-resolution error, the outer automation treats that Codex exit as recoverable only when task-relevant source, test, or documentation changes exist. It then runs the full local verification sequence normally. A real local verification failure still stops the task.
 
+The loop also resumes existing task work instead of recreating it: merged PRs with backlog cards are finalized on `main`; open PRs are checked out, locally verified, checked, validated, and merged; existing branches without PRs are verified and used to create one. Closed/stale PRs stop with recovery guidance.
+
 `--all` is bounded by the backlog length found after its first refresh of `main`. `--until-stop` defaults to 10 tasks or 120 minutes, whichever comes first. Both stop on hard failures.
 
 ## Loop safety configuration
@@ -127,6 +129,7 @@ If Codex implements the task but its managed Windows sandbox cannot start Vite/V
 | `AUTO_DEV_STOP_ON_FAILURE` | `true` | Return a failing exit code for task failures |
 | `AUTO_DEV_ALLOW_WORKFLOW_CHANGES` | `false` | Permit `.github/workflows/*` during PR safety validation |
 | `AUTO_DEV_ALLOW_LOCKFILE_CHANGES` | `false` | Permit lockfile-only changes |
+| `AUTO_DEV_ALLOW_NO_PR_CHECKS` | `false` | Continue past GitHub's `no checks reported` response after mandatory local verification |
 | `AUTO_DEV_GENERATE_TASKS_WHEN_EMPTY` | `false` | Generate deterministic tasks when `--until-stop` finds an empty backlog |
 | `AUTO_DEV_GENERATED_TASK_COUNT` | `5` | Number of tasks in each generated batch |
 | `AUTO_DEV_MAX_GENERATION_ROUNDS` | `1` | Maximum generated batches in one `--until-stop` process |
@@ -183,6 +186,8 @@ npm run auto-dev
 - Exits if the working tree is dirty.
 - Keeps generated prompts under `prompts/generated`.
 - Rejects workflow changes by default, unsafe lockfile changes, generated artifacts, secrets, huge additions, and files outside explicit task scope.
+- Treats `no checks reported` as a failure unless `AUTO_DEV_ALLOW_NO_PR_CHECKS=true`; safety validation remains mandatory either way.
+- Generated prompts do not require `rg` and tell Codex to use PowerShell or Node filesystem fallbacks when it is unavailable.
 
 ## Recommended first command
 

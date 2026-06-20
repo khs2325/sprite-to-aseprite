@@ -100,6 +100,8 @@ const prompt = template
 ## Managed Windows sandbox verification
 
 If Vite/Vitest/build commands fail inside Codex with Windows sandbox access-denied errors before tests actually run, report it as a managed sandbox verification limitation. Do not keep retrying unrelated fixes. The outer automation will run local verification after Codex exits.
+
+If \`rg\` is unavailable, use PowerShell \`Get-ChildItem\`, \`Select-String\`, or Node \`fs\` APIs instead.
 `);
 
 const outDir = path.join(root, "prompts", "generated");

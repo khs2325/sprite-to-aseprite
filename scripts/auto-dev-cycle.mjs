@@ -261,6 +261,7 @@ const maxRepairAttempts = readNonNegativeInteger("AUTO_DEV_MAX_REPAIR_ATTEMPTS",
 const stopOnFailure = readBoolean("AUTO_DEV_STOP_ON_FAILURE", true);
 const allowWorkflowChanges = readBoolean("AUTO_DEV_ALLOW_WORKFLOW_CHANGES", false);
 const allowLockfileChanges = readBoolean("AUTO_DEV_ALLOW_LOCKFILE_CHANGES", false);
+const allowNoPrChecks = readBoolean("AUTO_DEV_ALLOW_NO_PR_CHECKS", false);
 const generateTasksWhenEmpty = readBoolean("AUTO_DEV_GENERATE_TASKS_WHEN_EMPTY", false);
 const generatedTaskCount = readNonNegativeInteger("AUTO_DEV_GENERATED_TASK_COUNT", 5);
 const maxGenerationRounds = readNonNegativeInteger("AUTO_DEV_MAX_GENERATION_ROUNDS", 1);
@@ -695,24 +696,23 @@ function readFailureGitState() {
   }
 }
 
-function writeFailureLog(error, context = {}) {
-  const outDir = path.resolve("prompts", "generated");
-  fs.mkdirSync(outDir, { recursive: true });
-  const logPath = path.join(outDir, "last-failure.log");
-  const gitState = readFailureGitState();
+function buildFailureLogContent(error, context = {}, gitState = readFailureGitState()) {
   const recoveryCommands = (context.suggestedRecovery
     ?? error.suggestedRecovery
     ?? taskStateRecoveryCommands(gitState.status).join("\n"))
     || "Inspect `git status --short` and preserve task implementation changes before cleanup.";
-  const content = [
+  return [
     `TIMESTAMP: ${new Date().toISOString()}`,
     `MODE: ${mode}`,
     `TASK: ${context.taskId ?? "Unknown"}`,
+    `TASK FILE: ${context.taskFile ?? "Unknown"}`,
     `BRANCH: ${context.branch ?? gitState.branch}`,
     `PHASE: ${context.phase ?? "Unknown"}`,
     `COMMAND: ${error.command ?? "Unknown"}`,
     `EXIT STATUS: ${error.status ?? "Unknown"}`,
     `ENVIRONMENT ONLY: ${context.environmentOnly ?? error.environmentOnly ?? false}`,
+    `CHANGES PRODUCED: ${context.changesProduced ?? "Unknown"}`,
+    `PR URL: ${context.prUrl ?? "None"}`,
     "",
     "STDOUT:",
     error.stdout ?? "",
@@ -729,6 +729,13 @@ function writeFailureLog(error, context = {}) {
     "SUGGESTED RECOVERY:",
     recoveryCommands
   ].join("\n");
+}
+
+function writeFailureLog(error, context = {}) {
+  const outDir = path.resolve("prompts", "generated");
+  fs.mkdirSync(outDir, { recursive: true });
+  const logPath = path.join(outDir, "last-failure.log");
+  const content = buildFailureLogContent(error, context);
   fs.writeFileSync(logPath, content, "utf8");
   return logPath;
 }
@@ -739,27 +746,29 @@ function runCodexWithPrompt(prompt, taskId, phase = "implementation", task = nul
     return run("codex", codexArgs, { input: prompt });
   } catch (error) {
     const output = `${error.stdout ?? ""}\n${error.stderr ?? ""}\n${error.message ?? ""}`;
+    const paths = changedPaths();
+    const changesProduced = hasTaskRelevantChanges(paths, task);
     if (error.timedOut) {
-      writeFailureLog(error, { taskId, phase });
+      writeFailureLog(error, { taskId, phase, changesProduced });
       throw new AutomationStop("Maximum automation runtime reached while Codex was running.", "max_runtime", { cause: error });
     }
     if (isQuotaOrTokenFailure(output)) {
-      writeFailureLog(error, { taskId, phase });
+      writeFailureLog(error, { taskId, phase, changesProduced });
       throw new AutomationStop("Codex stopped because of a likely quota, token, context, rate-limit, or authentication error.", "codex_limit_or_auth", { cause: error });
     }
-    const paths = changedPaths();
     if (shouldContinueAfterCodexFailure(output, paths, task)) {
       error.environmentOnly = true;
       writeFailureLog(error, {
         taskId,
         phase,
         environmentOnly: true,
+        changesProduced,
         suggestedRecovery: "No recovery is needed yet. The outer automation is continuing with local typecheck, test, and build."
       });
       console.warn("Codex hit a managed Windows sandbox verification limitation after producing task-relevant changes. Continuing to outer local verification.");
       return { status: error.status, stdout: error.stdout, stderr: error.stderr, recoverableEnvironmentFailure: true };
     }
-    writeFailureLog(error, { taskId, phase, environmentOnly: false });
+    writeFailureLog(error, { taskId, phase, environmentOnly: false, changesProduced });
     throw new AutomationStop("Codex execution failed. See prompts/generated/last-failure.log.", "codex_failure", { cause: error });
   }
 }
@@ -842,10 +851,35 @@ function createPr(taskId, taskFile, branchName, repairsUsed) {
   }
 }
 
-function waitForPrChecks(prNumber) {
+function isNoPrChecksReported(output) {
+  return /no checks reported/iu.test(output);
+}
+
+function prChecksFailurePolicy(output, allowNoChecks = allowNoPrChecks) {
+  if (!isNoPrChecksReported(output)) return "fail";
+  return allowNoChecks ? "continue" : "fail-no-checks";
+}
+
+function canContinueWithoutPrChecks(output, allowNoChecks, localVerificationPassed) {
+  return localVerificationPassed && prChecksFailurePolicy(output, allowNoChecks) === "continue";
+}
+
+function waitForPrChecks(prNumber, localVerificationPassed = true) {
   try {
     run("gh", ["pr", "checks", String(prNumber), "--watch", "--interval", "10"]);
   } catch (error) {
+    const output = `${error.stdout ?? ""}\n${error.stderr ?? ""}\n${error.message ?? ""}`;
+    const policy = prChecksFailurePolicy(output);
+    if (policy === "continue") {
+      if (!canContinueWithoutPrChecks(output, allowNoPrChecks, localVerificationPassed)) {
+        throw new AutomationStop("Cannot bypass missing PR checks because mandatory local verification has not passed.", "verification_required", { cause: error });
+      }
+      console.warn("Warning: GitHub reported no PR checks. AUTO_DEV_ALLOW_NO_PR_CHECKS=true, so automation will continue to mandatory safety validation.");
+      return { noChecks: true };
+    }
+    if (policy === "fail-no-checks") {
+      throw new AutomationStop("No GitHub PR checks were reported. Configure CI or set AUTO_DEV_ALLOW_NO_PR_CHECKS=true explicitly.", "no_pr_checks", { cause: error });
+    }
     if (error.timedOut) {
       throw new AutomationStop("Maximum automation runtime reached while waiting for GitHub checks.", "max_runtime", { cause: error });
     }
@@ -988,10 +1022,12 @@ function cleanupAfterTask(taskId, branchName, taskFile, merged) {
   run("git", ["checkout", "main"]);
   pullMain();
   moveTaskToDoneAfterMerge(taskId, taskFile, merged);
-  try {
-    run("git", ["branch", "-D", branchName]);
-  } catch (error) {
-    console.warn(`Warning: could not delete local branch ${branchName}: ${error.message}`);
+  if (localBranchExists(branchName)) {
+    try {
+      run("git", ["branch", "-D", branchName]);
+    } catch (error) {
+      console.warn(`Warning: could not delete local branch ${branchName}: ${error.message}`);
+    }
   }
   ensureCleanGit();
 }
@@ -1001,6 +1037,111 @@ function failureTaskStatePolicy(branchPushed, prCreated) {
     return "Implementation was already pushed or a PR may exist. Task state was left unchanged. Recover the PR/branch first; do not move the task locally on the task branch.";
   }
   return "Task state was left unchanged in backlog. Preserve or inspect implementation changes on the task branch before cleanup.";
+}
+
+function localBranchExists(branchName) {
+  try {
+    runQuiet("git", ["show-ref", "--verify", `refs/heads/${branchName}`]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function remoteBranchExists(branchName) {
+  try {
+    runQuiet("git", ["ls-remote", "--exit-code", "--heads", "origin", branchName]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function findExistingPr(branchName) {
+  try {
+    const result = runQuiet("gh", ["pr", "list", "--head", branchName, "--state", "all", "--limit", "1", "--json", "baseRefName,headRefName,mergedAt,number,state,url"]);
+    return JSON.parse(result.stdout)[0] ?? null;
+  } catch (error) {
+    throw new AutomationStop(`Could not inspect existing PRs for ${branchName}.`, "pr_recovery_failure", { cause: error });
+  }
+}
+
+function existingTaskRecoveryAction(pr, hasLocalBranch, hasRemoteBranch) {
+  if (pr?.mergedAt || pr?.state === "MERGED") return "complete-merged";
+  if (pr?.state === "OPEN") return hasLocalBranch || hasRemoteBranch ? "resume-pr" : "stale-pr";
+  if (pr) return "stale-pr";
+  if (hasLocalBranch || hasRemoteBranch) return "resume-branch";
+  return "start";
+}
+
+function checkoutExistingTaskBranch(branchName, hasLocalBranch, hasRemoteBranch) {
+  ensureCleanGit();
+  if (currentBranch() === branchName) return;
+  if (hasLocalBranch) {
+    run("git", ["checkout", branchName]);
+    return;
+  }
+  if (hasRemoteBranch) {
+    run("git", ["fetch", "origin", branchName]);
+    run("git", ["checkout", "-b", branchName, "--track", `origin/${branchName}`]);
+    return;
+  }
+  throw new AutomationStop(`PR exists but branch ${branchName} is missing locally and remotely.`, "stale_pr", {
+    command: `gh pr view --web ${branchName}`
+  });
+}
+
+function verifyRecoveredBranch(taskId, checkRunner = runChecks, failureLogger = writeFailureLog) {
+  try {
+    checkRunner();
+  } catch (error) {
+    failureLogger(error, { taskId, phase: "existing-branch-verification", environmentOnly: false });
+    throw new AutomationStop("Existing task branch failed mandatory local verification; it was not merged.", "verification_failure", { cause: error });
+  }
+}
+
+function recoverExistingTask(taskId, taskFile, task, branchName) {
+  const pr = findExistingPr(branchName);
+  const hasLocalBranch = localBranchExists(branchName);
+  const hasRemoteBranch = remoteBranchExists(branchName);
+  const action = existingTaskRecoveryAction(pr, hasLocalBranch, hasRemoteBranch);
+  if (action === "start") return null;
+  let recoveredMerged = action === "complete-merged";
+
+  try {
+    console.log(`Existing task recovery: ${action} for ${branchName}${pr?.url ? ` (${pr.url})` : ""}`);
+    if (action === "complete-merged") {
+      cleanupAfterTask(taskId, branchName, taskFile, true);
+      return { taskId, prUrl: pr.url, merged: true, repairsUsed: 0, recovered: true };
+    }
+    if (action === "stale-pr") {
+      throw new AutomationStop(
+        `Existing PR ${pr?.url ?? ""} is closed/stale or its branch is missing. Inspect it before retrying.`,
+        "stale_pr",
+        { command: pr?.url ? `gh pr view ${pr.number} --web` : `git branch -a --list "*${branchName}"` }
+      );
+    }
+
+    checkoutExistingTaskBranch(branchName, hasLocalBranch, hasRemoteBranch);
+    verifyRecoveredBranch(taskId);
+    let recoveredPr = pr;
+    if (action === "resume-branch") {
+      const ahead = Number(runQuiet("git", ["rev-list", "--count", `main..${branchName}`]).stdout.trim());
+      if (!ahead) throw new AutomationStop(`Existing branch ${branchName} has no commits ahead of main.`, "stale_branch");
+      if (!hasRemoteBranch) run("git", ["push", "-u", "origin", branchName]);
+      recoveredPr = createPr(taskId, taskFile, branchName, 0);
+    }
+    waitForPrChecks(recoveredPr.number);
+    validatePrBeforeMerge(recoveredPr.number, branchName, taskFile, task);
+    mergePr(recoveredPr.number);
+    recoveredMerged = true;
+    cleanupAfterTask(taskId, branchName, taskFile, true);
+    return { taskId, prUrl: recoveredPr.url, merged: true, repairsUsed: 0, recovered: true };
+  } catch (error) {
+    error.prUrl = error.prUrl ?? pr?.url;
+    error.prMerged = error.prMerged ?? recoveredMerged;
+    throw error;
+  }
 }
 
 function runOneTask(taskFile) {
@@ -1014,6 +1155,8 @@ function runOneTask(taskFile) {
   try {
     ensureCleanGit();
     ensureOnMain();
+    const recovered = recoverExistingTask(taskId, taskFile, task, `codex/task-${taskId}`);
+    if (recovered) return recovered;
     branchName = createTaskBranch(taskId);
     const prompt = generatePrompt(taskId);
     runCodexWithPrompt(prompt, taskId, "implementation", task);
@@ -1031,14 +1174,22 @@ function runOneTask(taskFile) {
     const stop = error instanceof AutomationStop
       ? error
       : new AutomationStop(error.message ?? String(error), "unexpected_failure", { cause: error, hardStop: stopOnFailure });
-    const recoveryMessage = stop.suggestedRecovery ?? failureTaskStatePolicy(branchPushed, Boolean(pr));
+    stop.prUrl = stop.prUrl ?? error.prUrl ?? pr?.url;
+    const recoveryMessage = stop.suggestedRecovery ?? failureTaskStatePolicy(branchPushed, Boolean(pr || stop.prUrl));
     stop.message += `\n${recoveryMessage}`;
     stop.suggestedRecovery = recoveryMessage;
-    writeFailureLog(stop, { taskId, phase: stop.code, suggestedRecovery: recoveryMessage });
+    writeFailureLog(stop, {
+      taskId,
+      taskFile,
+      phase: stop.code,
+      environmentOnly: stop.environmentOnly ?? false,
+      changesProduced: hasTaskRelevantChanges(changedPaths(), task),
+      prUrl: stop.prUrl,
+      suggestedRecovery: recoveryMessage
+    });
     stop.taskId = taskId;
     stop.branchName = branchName;
-    stop.prUrl = pr?.url;
-    stop.prMerged = merged;
+    stop.prMerged = stop.prMerged ?? error.prMerged ?? merged;
     throw stop;
   }
 }
@@ -1218,19 +1369,25 @@ if (isMainModule) {
 }
 
 export {
+  buildFailureLogContent,
   buildTaskYaml,
+  canContinueWithoutPrChecks,
   canMoveTaskToDone,
   collectProjectPlanningContext,
+  existingTaskRecoveryAction,
   failureTaskStatePolicy,
   generateBacklogTasks,
   getNextTaskId,
   guardDirtyTaskStateOnTaskBranch,
   hasTaskRelevantChanges,
   isRecoverableCodexSandboxVerificationFailure,
+  isNoPrChecksReported,
   listExistingTaskIds,
   npmCommand,
   normalizeTitle,
+  prChecksFailurePolicy,
   selectRoadmapTasks,
   shouldContinueAfterCodexFailure,
+  verifyRecoveredBranch,
   writeGeneratedTaskFiles
 };

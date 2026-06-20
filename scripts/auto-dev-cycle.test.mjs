@@ -6,15 +6,20 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import YAML from "yaml";
 import {
+  buildFailureLogContent,
   buildTaskYaml,
+  canContinueWithoutPrChecks,
   canMoveTaskToDone,
+  existingTaskRecoveryAction,
   failureTaskStatePolicy,
   getNextTaskId,
   guardDirtyTaskStateOnTaskBranch,
   isRecoverableCodexSandboxVerificationFailure,
   npmCommand,
+  prChecksFailurePolicy,
   selectRoadmapTasks,
-  shouldContinueAfterCodexFailure
+  shouldContinueAfterCodexFailure,
+  verifyRecoveredBranch
 } from "./auto-dev-cycle.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -111,6 +116,17 @@ describe("Windows sandbox recovery and task-state safety", () => {
     expect(npmCommand("linux")).toBe("npm");
   });
 
+  it("does not require rg for dry-run planning", () => {
+    const workspace = createPlanningWorkspace();
+    try {
+      const result = runPlanner(workspace, ["--dry-run", "--generate-tasks"], { PATH: "" });
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("would generate tasks");
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("continues to outer verification only when recoverable output has task-relevant changes", () => {
     const output = "failed to load config from C:\\repo\\vite.config.ts";
     expect(shouldContinueAfterCodexFailure(output, ["src/core/SpriteProject.ts"])).toBe(true);
@@ -128,6 +144,55 @@ describe("Windows sandbox recovery and task-state safety", () => {
     expect(canMoveTaskToDone(false, "main")).toBe(false);
     expect(canMoveTaskToDone(true, "codex/task-002")).toBe(false);
     expect(canMoveTaskToDone(true, "main")).toBe(true);
+  });
+
+  it("fails on missing PR checks by default and allows them only by opt-in", () => {
+    const output = "no checks reported on the 'codex/task-003' branch";
+    expect(prChecksFailurePolicy(output, false)).toBe("fail-no-checks");
+    expect(prChecksFailurePolicy(output, true)).toBe("continue");
+    expect(prChecksFailurePolicy("CI failed", true)).toBe("fail");
+  });
+
+  it("never bypasses missing PR checks before local verification passes", () => {
+    const output = "no checks reported on the branch";
+    expect(canContinueWithoutPrChecks(output, true, false)).toBe(false);
+    expect(canContinueWithoutPrChecks(output, true, true)).toBe(true);
+  });
+
+  it("still fails the task when outer local verification fails", () => {
+    const failingCheck = () => {
+      throw Object.assign(new Error("test failed"), { command: "npm.cmd run test", status: 1 });
+    };
+    expect(() => verifyRecoveredBranch("004", failingCheck, () => {})).toThrowError(/failed mandatory local verification/u);
+  });
+
+  it("recovers existing PRs without creating duplicates", () => {
+    const openPr = { state: "OPEN", mergedAt: null };
+    const mergedPr = { state: "MERGED", mergedAt: "2026-06-21T00:00:00Z" };
+    expect(existingTaskRecoveryAction(openPr, false, true)).toBe("resume-pr");
+    expect(existingTaskRecoveryAction(mergedPr, false, false)).toBe("complete-merged");
+    expect(existingTaskRecoveryAction(null, false, false)).toBe("start");
+  });
+
+  it("includes recovery commands and workflow context in failure logs", () => {
+    const error = Object.assign(new Error("checks failed"), {
+      command: "gh pr checks 4 --watch",
+      status: 1,
+      stdout: "no checks reported",
+      stderr: ""
+    });
+    const log = buildFailureLogContent(error, {
+      taskId: "004",
+      taskFile: "004-importer.yaml",
+      phase: "no_pr_checks",
+      environmentOnly: false,
+      changesProduced: true,
+      prUrl: "https://github.com/example/repo/pull/4",
+      suggestedRecovery: "gh pr view 4 --web"
+    }, { branch: "codex/task-004", status: " M src/file.ts" });
+    expect(log).toContain("TASK FILE: 004-importer.yaml");
+    expect(log).toContain("PR URL: https://github.com/example/repo/pull/4");
+    expect(log).toContain("SUGGESTED RECOVERY:\ngh pr view 4 --web");
   });
 
   it("guards dirty task state on a task branch with concrete recovery commands", () => {
@@ -193,6 +258,8 @@ describe("backlog task generation", () => {
       expect(prompt).not.toContain("[object Object]");
       expect(prompt).toContain("managed sandbox verification limitation");
       expect(prompt).toContain("outer automation will run local verification");
+      expect(prompt).toContain("If `rg` is unavailable");
+      expect(prompt).toContain("Get-ChildItem");
     } finally {
       fs.rmSync(workspace, { recursive: true, force: true });
     }
