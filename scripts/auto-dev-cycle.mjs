@@ -6,23 +6,45 @@ const args = new Set(process.argv.slice(2));
 const dryRun = args.has("--dry-run");
 const maxRepairAttempts = Number(process.env.AUTO_DEV_MAX_REPAIR_ATTEMPTS ?? 3);
 
-function run(command, args = [], options = {}) {
-  console.log(`\n> ${command} ${args.join(" ")}`);
+function quoteArg(arg) {
+  return /[\s"]/u.test(arg) ? `"${arg.replaceAll('"', '\\"')}"` : arg;
+}
 
-  if (dryRun && options.skipInDryRun) {
+function formatCommand(command, commandArgs) {
+  return [command, ...commandArgs].map(quoteArg).join(" ");
+}
+
+function spawnCommand(command, commandArgs, options) {
+  if (process.platform === "win32" && ["codex", "npm"].includes(command)) {
+    return spawnSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", formatCommand(command, commandArgs)], options);
+  }
+
+  return spawnSync(command, commandArgs, options);
+}
+
+function run(command, args = [], options = {}) {
+  const { skipInDryRun = false, ...spawnOptions } = options;
+  const commandText = formatCommand(command, args);
+  console.log(`\n> ${commandText}`);
+
+  if (dryRun && skipInDryRun) {
     console.log("[dry-run] skipped");
     return { stdout: "", stderr: "", status: 0 };
   }
 
-  const result = spawnSync(command, args, {
+  const result = spawnCommand(command, args, {
     encoding: "utf8",
+    maxBuffer: 10 * 1024 * 1024,
     shell: false,
-    ...options
+    ...spawnOptions
   });
 
-  if (options.stdio === "inherit") {
-    if (result.status !== 0) {
-      throw new Error(`Command failed: ${command} ${args.join(" ")}`);
+  if (spawnOptions.stdio === "inherit") {
+    if (result.error || result.status !== 0) {
+      const error = new Error(`Command failed: ${commandText}`);
+      error.cause = result.error;
+      error.status = result.status;
+      throw error;
     }
     return result;
   }
@@ -30,8 +52,10 @@ function run(command, args = [], options = {}) {
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
 
-  if (result.status !== 0) {
-    const error = new Error(`Command failed: ${command} ${args.join(" ")}`);
+  if (result.error || result.status !== 0) {
+    const error = new Error(`Command failed: ${commandText}`);
+    error.cause = result.error;
+    error.command = commandText;
     error.stdout = result.stdout ?? "";
     error.stderr = result.stderr ?? "";
     error.status = result.status;
@@ -90,41 +114,48 @@ function getTaskId(fileName) {
 }
 
 function runChecks() {
-  if (dryRun) {
-    console.log("[dry-run] skipped verification checks");
-    return;
-  }
-
-  runVisible("npm", ["run", "typecheck"]);
-  runVisible("npm", ["run", "test"]);
-  runVisible("npm", ["run", "build"]);
+  run("npm", ["run", "typecheck"]);
+  run("npm", ["run", "test"]);
+  run("npm", ["run", "build"]);
 }
 
 function generatePrompt(taskId) {
-  runVisible("node", ["scripts/make-prompt.mjs", taskId]);
+  run("node", ["scripts/make-prompt.mjs", taskId]);
+}
+
+function getCodexArgs() {
+  const extraArgs = process.env.CODEX_EXEC_ARGS === undefined
+    ? ["--sandbox", "workspace-write"]
+    : process.env.CODEX_EXEC_ARGS.trim().split(/\s+/u).filter(Boolean);
+
+  return ["exec", ...extraArgs, "-"];
 }
 
 function runCodexWithPrompt(prompt) {
-  console.log("\n> codex exec --sandbox workspace-write -");
+  const codexArgs = getCodexArgs();
+  const commandText = formatCommand("codex", codexArgs);
+  console.log(`\n> ${commandText}`);
 
-  if (dryRun) {
-    console.log("[dry-run] skipped");
-    return;
-  }
-
-  const result = spawnSync("codex", ["exec", "--sandbox", "workspace-write", "-"], {
+  const result = spawnCommand("codex", codexArgs, {
     input: prompt,
-    stdio: ["pipe", "inherit", "pipe"],
+    stdio: ["pipe", "pipe", "pipe"],
     encoding: "utf8",
+    maxBuffer: 10 * 1024 * 1024,
     shell: false
   });
 
-  if (result.stderr) {
-    process.stderr.write(result.stderr);
-  }
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
 
-  if (result.status !== 0) {
-    throw new Error("Command failed: codex exec --sandbox workspace-write -");
+  if (result.error || result.status !== 0) {
+    const error = new Error(`Command failed: ${commandText}`);
+    error.cause = result.error;
+    error.command = commandText;
+    error.stdout = result.stdout ?? "";
+    error.stderr = result.stderr ?? result.error?.message ?? "";
+    error.status = result.status;
+    writeFailureLog(error);
+    throw error;
   }
 }
 
@@ -139,6 +170,12 @@ function writeFailureLog(error) {
 
   const logPath = path.join(outDir, "last-failure.log");
   const content = [
+    "COMMAND:",
+    error.command ?? "Unknown",
+    "",
+    "EXIT STATUS:",
+    String(error.status ?? "Unknown"),
+    "",
     "STDOUT:",
     error.stdout ?? "",
     "",
@@ -181,31 +218,27 @@ Rules:
 }
 
 function hasCommand(command) {
-  const result = spawnSync(command, ["--version"], {
+  const result = spawnCommand(command, ["--version"], {
     stdio: "ignore",
     shell: false
   });
 
-  return result.status === 0;
+  return !result.error && result.status === 0;
 }
 
 function commitAndPush(taskId, branchName) {
-  if (dryRun) {
-    console.log("[dry-run] skipped commit and push");
-    return;
-  }
-
   runVisible("git", ["add", "."]);
   runVisible("git", ["commit", "-m", `Task ${taskId}: automated Codex implementation`]);
   runVisible("git", ["push", "-u", "origin", branchName]);
 }
 
-function createPr(taskId, branchName) {
-  if (dryRun) {
-    console.log("[dry-run] skipped PR creation");
-    return;
-  }
+function commitTaskCompletion(taskId, taskFile) {
+  runVisible("git", ["add", "--", path.join("tasks", "backlog", taskFile), path.join("tasks", "done", taskFile)]);
+  runVisible("git", ["commit", "-m", `Task ${taskId}: mark automation task done`]);
+  runVisible("git", ["push"]);
+}
 
+function createPr(taskId, branchName) {
   if (!hasCommand("gh")) {
     console.log("GitHub CLI not found. Skipping PR creation.");
     return;
@@ -222,18 +255,37 @@ function createPr(taskId, branchName) {
       "Automated Codex task. Local verification attempted: typecheck, test, build.",
       "--head",
       branchName
-    ],
-    { skipInDryRun: true }
+    ]
   );
 }
 
+function printDryRun(taskId, taskFile, branchName) {
+  console.log(`[dry-run] would create branch ${branchName}`);
+  console.log(`[dry-run] would generate prompts/generated/${taskId}.md from ${taskFile}`);
+  console.log(`[dry-run] would run ${formatCommand("codex", getCodexArgs())} with the prompt on stdin`);
+  console.log("[dry-run] would run npm run typecheck, npm run test, and npm run build");
+  console.log(`[dry-run] would commit and push ${branchName} only after checks pass`);
+  console.log(`[dry-run] would create a PR if gh is available`);
+  console.log(`[dry-run] would then move ${taskFile} from tasks/backlog to tasks/done`);
+  console.log("[dry-run] no repository changes were made");
+}
+
+function failTask(taskFile) {
+  for (const fromDir of ["backlog", "done"]) {
+    if (fs.existsSync(path.resolve("tasks", fromDir, taskFile))) {
+      moveTaskFile(fromDir, "failed", taskFile);
+      return;
+    }
+  }
+}
+
 function main() {
-  ensureCleanGit();
+  if (!dryRun) ensureCleanGit();
 
   const backlog = listBacklogTasks();
 
   if (backlog.length === 0) {
-    console.log("No backlog tasks found.");
+    console.log(dryRun ? "[dry-run] no backlog tasks found; no repository changes were made" : "No backlog tasks found.");
     return;
   }
 
@@ -242,11 +294,14 @@ function main() {
   const branchName = `codex/task-${taskId}`;
 
   console.log(`Selected task: ${taskFile}`);
-  // Keep the backlog task file in place until Codex finishes.
-  // Moving it before Codex runs makes the Git working tree dirty.
+
+  if (dryRun) {
+    printDryRun(taskId, taskFile, branchName);
+    return;
+  }
 
   try {
-    runVisible("git", ["checkout", "-b", branchName], { skipInDryRun: true });
+    runVisible("git", ["checkout", "-b", branchName]);
 
     generatePrompt(taskId);
     const prompt = readPrompt(taskId);
@@ -281,10 +336,11 @@ function main() {
     createPr(taskId, branchName);
 
     moveTaskFile("backlog", "done", taskFile);
+    commitTaskCompletion(taskId, taskFile);
     console.log("Automation cycle completed.");
   } catch (error) {
     console.error(error);
-    moveTaskFile("backlog", "failed", taskFile);
+    failTask(taskFile);
     process.exit(1);
   }
 }

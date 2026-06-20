@@ -73,16 +73,27 @@ npm run auto-dev
 The real cycle:
 
 1. Picks the next YAML file from `tasks/backlog`
-2. Moves it to `tasks/active`
-3. Creates a branch
-4. Generates a Codex prompt
-5. Runs `codex exec`
-6. Runs typecheck/test/build
-7. Tries a limited repair loop if checks fail
-8. Commits changes
-9. Pushes the branch
-10. Creates a PR if `gh` is available
-11. Moves the task to `tasks/done`
+2. Creates a branch while keeping the task in `tasks/backlog`
+3. Generates a Codex prompt
+4. Runs `codex exec` with the prompt on stdin
+5. Runs typecheck/test/build
+6. Tries a limited repair loop if checks fail
+7. Commits and pushes the verified changes
+8. Creates a PR if `gh` is available
+9. Moves the task to `tasks/done` and pushes that state change
+
+Override the default Codex arguments with `CODEX_EXEC_ARGS` when needed:
+
+```bash
+CODEX_EXEC_ARGS="--sandbox workspace-write" npm run auto-dev
+```
+
+PowerShell equivalent:
+
+```powershell
+$env:CODEX_EXEC_ARGS = "--sandbox workspace-write"
+npm run auto-dev
+```
 
 ## Safety defaults
 
