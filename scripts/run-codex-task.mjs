@@ -33,4 +33,19 @@ if (!fs.existsSync(promptPath)) {
 
 const prompt = fs.readFileSync(promptPath, "utf8");
 
-run("codex", ["exec", "--sandbox", "workspace-write", prompt]);
+console.log("\n> codex exec -");
+
+const result = spawnSync("codex", ["exec", "-"], {
+  input: prompt,
+  stdio: ["pipe", "inherit", "pipe"],
+  encoding: "utf8",
+  shell: false
+});
+
+if (result.stderr) {
+  process.stderr.write(result.stderr);
+}
+
+if (result.status !== 0) {
+  process.exit(result.status ?? 1);
+}
