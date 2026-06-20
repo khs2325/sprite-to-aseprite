@@ -7,8 +7,14 @@ import { describe, expect, it } from "vitest";
 import YAML from "yaml";
 import {
   buildTaskYaml,
+  canMoveTaskToDone,
+  failureTaskStatePolicy,
   getNextTaskId,
-  selectRoadmapTasks
+  guardDirtyTaskStateOnTaskBranch,
+  isRecoverableCodexSandboxVerificationFailure,
+  npmCommand,
+  selectRoadmapTasks,
+  shouldContinueAfterCodexFailure
 } from "./auto-dev-cycle.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -88,6 +94,54 @@ describe("auto-dev dry run", () => {
   });
 });
 
+describe("Windows sandbox recovery and task-state safety", () => {
+  it.each([
+    'Cannot read directory "../..": Access is denied',
+    "Could not resolve C:\\repo\\vite.config.ts",
+    "failed to load config from vite.config.ts",
+    "UnauthorizedAccessException",
+    "npm.ps1 cannot be loaded",
+    "Test-Path : Access is denied"
+  ])("recognizes recoverable Codex sandbox verification output: %s", (output) => {
+    expect(isRecoverableCodexSandboxVerificationFailure(output)).toBe(true);
+  });
+
+  it("selects the platform-safe npm executable", () => {
+    expect(npmCommand("win32")).toBe("npm.cmd");
+    expect(npmCommand("linux")).toBe("npm");
+  });
+
+  it("continues to outer verification only when recoverable output has task-relevant changes", () => {
+    const output = "failed to load config from C:\\repo\\vite.config.ts";
+    expect(shouldContinueAfterCodexFailure(output, ["src/core/SpriteProject.ts"])).toBe(true);
+    expect(shouldContinueAfterCodexFailure(output, ["prompts/generated/002.md"])).toBe(false);
+    expect(shouldContinueAfterCodexFailure("TypeScript syntax error", ["src/core/SpriteProject.ts"])).toBe(false);
+  });
+
+  it("leaves task state unchanged after the implementation branch was pushed", () => {
+    const policy = failureTaskStatePolicy(true, false);
+    expect(policy).toContain("Task state was left unchanged");
+    expect(policy).toContain("already pushed");
+  });
+
+  it("does not allow a task to move to done before merge on main", () => {
+    expect(canMoveTaskToDone(false, "main")).toBe(false);
+    expect(canMoveTaskToDone(true, "codex/task-002")).toBe(false);
+    expect(canMoveTaskToDone(true, "main")).toBe(true);
+  });
+
+  it("guards dirty task state on a task branch with concrete recovery commands", () => {
+    const status = [
+      " D tasks/done/002-define-spriteproject-core-model.yaml",
+      "?? tasks/failed/002-define-spriteproject-core-model.yaml"
+    ].join("\n");
+    expect(() => guardDirtyTaskStateOnTaskBranch("codex/task-002", status)).toThrowError(/Task state is dirty on a task branch/u);
+    expect(() => guardDirtyTaskStateOnTaskBranch("codex/task-002", status)).toThrowError(/git restore tasks\/done\/002/u);
+    expect(() => guardDirtyTaskStateOnTaskBranch("codex/task-002", status)).toThrowError(/Remove-Item tasks\/failed\/002/u);
+    expect(() => guardDirtyTaskStateOnTaskBranch("main", status)).not.toThrow();
+  });
+});
+
 describe("backlog task generation", () => {
   it("calculates the next padded numeric task ID", () => {
     expect(getNextTaskId(["001", "007", "not-numeric"])).toBe("008");
@@ -137,6 +191,8 @@ describe("backlog task generation", () => {
       expect(prompt).toContain("Allowed paths:");
       expect(prompt).toContain("src/core/**");
       expect(prompt).not.toContain("[object Object]");
+      expect(prompt).toContain("managed sandbox verification limitation");
+      expect(prompt).toContain("outer automation will run local verification");
     } finally {
       fs.rmSync(workspace, { recursive: true, force: true });
     }

@@ -94,7 +94,13 @@ const prompt = template
   .replaceAll("{{non_goals}}", asList(task.non_goals))
   .replaceAll("{{requirements}}", asList(task.requirements))
   .replaceAll("{{acceptance_criteria}}", asList(task.acceptance_criteria))
-  .replaceAll("{{verification}}", asList(task.verification));
+  .replaceAll("{{verification}}", asList(task.verification))
+  .concat(`
+
+## Managed Windows sandbox verification
+
+If Vite/Vitest/build commands fail inside Codex with Windows sandbox access-denied errors before tests actually run, report it as a managed sandbox verification limitation. Do not keep retrying unrelated fixes. The outer automation will run local verification after Codex exits.
+`);
 
 const outDir = path.join(root, "prompts", "generated");
 fs.mkdirSync(outDir, { recursive: true });

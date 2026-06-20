@@ -107,12 +107,14 @@ Each real task cycle:
 1. Requires a clean tree, checks out `main`, and pulls `origin/main` with `--ff-only`.
 2. Picks the first YAML file from `tasks/backlog` and creates `codex/task-<id>`.
 3. Generates the prompt and runs Codex with the prompt on stdin.
-4. Runs typecheck/test/build and bounded repair attempts.
-5. Moves the task to `tasks/done` in the task branch.
+4. Runs typecheck, test, and build sequentially outside the Codex sandbox, with bounded repair attempts.
+5. Leaves the backlog task unchanged while the implementation branch and PR are open.
 6. Commits, pushes, and creates a PR into `main`.
 7. Waits for GitHub checks and validates the PR head, base, task policy, scope, and changed files.
 8. Squash-merges safe PRs and requests remote branch deletion.
-9. Checks out `main`, pulls the merged result, removes the local task branch, and continues in loop modes.
+9. Checks out `main`, pulls the merged result, moves the task from `backlog` to `done` on `main`, pushes that state-only commit, removes the local task branch, and continues.
+
+If Codex implements the task but its managed Windows sandbox cannot start Vite/Vitest because of a known access-denied/config-resolution error, the outer automation treats that Codex exit as recoverable only when task-relevant source, test, or documentation changes exist. It then runs the full local verification sequence normally. A real local verification failure still stops the task.
 
 `--all` is bounded by the backlog length found after its first refresh of `main`. `--until-stop` defaults to 10 tasks or 120 minutes, whichever comes first. Both stop on hard failures.
 
@@ -172,10 +174,12 @@ npm run auto-dev
 ## Safety defaults
 
 - Auto-merges only after local checks, GitHub checks, and changed-file safety validation pass.
-- Never pushes task results or queue movement directly to `main`; the task movement is included in the reviewed PR.
+- Never moves task state on `codex/task-*` branches. A task moves to `done` on refreshed `main` only after its implementation PR is confirmed merged.
+- Leaves task state unchanged after pushed-branch, PR, CI, safety, or merge failures and prints recovery guidance.
+- Refuses to run when task-state files are dirty on a `codex/task-*` branch.
 - Limits repair attempts to 3.
 - Stops on Codex limit/auth errors, verification failure, CI failure, unsafe diffs, merge failure, runtime limits, and unclean Git state.
-- Moves real failed tasks to `tasks/failed` when it can do so without masking the original failure.
+- Leaves failed tasks in their existing state so recovery never creates an uncommitted `done`/`failed` rename on a task branch.
 - Exits if the working tree is dirty.
 - Keeps generated prompts under `prompts/generated`.
 - Rejects workflow changes by default, unsafe lockfile changes, generated artifacts, secrets, huge additions, and files outside explicit task scope.

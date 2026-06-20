@@ -339,10 +339,14 @@ function formatCommand(command, commandArgs) {
 }
 
 function spawnCommand(command, commandArgs, options) {
-  if (process.platform === "win32" && ["codex", "npm"].includes(command)) {
+  if (process.platform === "win32" && (command === "codex" || command.endsWith(".cmd"))) {
     return spawnSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", formatCommand(command, commandArgs)], options);
   }
   return spawnSync(command, commandArgs, options);
+}
+
+function npmCommand(platform = process.platform) {
+  return platform === "win32" ? "npm.cmd" : "npm";
 }
 
 function remainingRuntimeMs() {
@@ -401,8 +405,34 @@ function currentBranch() {
   return runQuiet("git", ["branch", "--show-current"]).stdout.trim() || "unknown";
 }
 
+function taskStateRecoveryCommands(status) {
+  const commands = [];
+  for (const line of status.split(/\r?\n/u).filter(Boolean)) {
+    const state = line.slice(0, 2);
+    const rawPath = line.slice(3).split(" -> ").at(-1);
+    if (!rawPath || !/^tasks\/(?:backlog|done|failed)\//u.test(rawPath)) continue;
+    if (state === "??") commands.push(`Remove-Item ${quoteArg(rawPath)} -Force`);
+    else commands.push(`git restore ${quoteArg(rawPath)}`);
+  }
+  return [...new Set(commands)];
+}
+
+function guardDirtyTaskStateOnTaskBranch(branch = currentBranch(), status = readStatus()) {
+  if (!branch.startsWith("codex/task-") || !/^.. tasks\/(?:backlog|done|failed)\//mu.test(status)) return;
+  const recovery = taskStateRecoveryCommands(status);
+  throw new AutomationStop(
+    [
+      "Task state is dirty on a task branch. Clean it before continuing:",
+      ...(recovery.length > 0 ? recovery : ["git status --short"])
+    ].join("\n"),
+    "dirty_task_state"
+  );
+}
+
 function ensureCleanGit() {
-  if (readStatus()) {
+  const status = readStatus();
+  guardDirtyTaskStateOnTaskBranch(currentBranch(), status);
+  if (status) {
     throw new AutomationStop("Git working tree is not clean; refusing unsafe cleanup.", "unclean_worktree");
   }
 }
@@ -635,17 +665,54 @@ function isQuotaOrTokenFailure(output) {
   return /(?:insufficient[_ ]quota|quota[_ ](?:exceeded|reached)|rate[_ -]?limit|too many requests|context[_ ](?:length|window)|maximum[_ ]context|tokens?[_ ](?:exhausted|limit)|out[_ ]of[_ ]tokens|usage[_ ]limit|credit[_ ]balance|billing[_ ]limit|authentication[_ ]failed|unauthorized|invalid[_ ]api[_ ]key|expired[_ ]api[_ ]key|login[_ ]required)/iu.test(output);
 }
 
+function isRecoverableCodexSandboxVerificationFailure(output) {
+  return /(?:Cannot read directory ["']\.\.\/\.\.["']: Access is denied|Could not resolve|vite\.config\.ts|failed to load config|UnauthorizedAccessException|npm\.ps1|Test-Path\s*:\s*Access is denied)/iu.test(output);
+}
+
+function changedPaths() {
+  return readStatus().split(/\r?\n/u).filter(Boolean).map((line) => line.slice(3).split(" -> ").at(-1)).filter(Boolean);
+}
+
+function hasTaskRelevantChanges(paths, task = null) {
+  const allowedPaths = extractScopePaths(task ?? {});
+  return paths.some((file) => {
+    const normalized = file.replaceAll("\\", "/");
+    if (/^(?:tasks|prompts\/generated|dist|build|coverage|node_modules)\//u.test(normalized)) return false;
+    if (/^(?:src|test|tests|docs)\//u.test(normalized) || /(?:^|\/)README(?:\.[^/]+)?$/iu.test(normalized) || /\.(?:test|spec)\.[^/]+$/u.test(normalized)) return true;
+    return allowedPaths.length > 0 && isWithinScope(normalized, allowedPaths);
+  });
+}
+
+function shouldContinueAfterCodexFailure(output, paths, task = null) {
+  return isRecoverableCodexSandboxVerificationFailure(output) && hasTaskRelevantChanges(paths, task);
+}
+
+function readFailureGitState() {
+  try {
+    return { branch: currentBranch(), status: readStatus() };
+  } catch {
+    return { branch: "unknown", status: "Unable to read git status" };
+  }
+}
+
 function writeFailureLog(error, context = {}) {
   const outDir = path.resolve("prompts", "generated");
   fs.mkdirSync(outDir, { recursive: true });
   const logPath = path.join(outDir, "last-failure.log");
+  const gitState = readFailureGitState();
+  const recoveryCommands = (context.suggestedRecovery
+    ?? error.suggestedRecovery
+    ?? taskStateRecoveryCommands(gitState.status).join("\n"))
+    || "Inspect `git status --short` and preserve task implementation changes before cleanup.";
   const content = [
     `TIMESTAMP: ${new Date().toISOString()}`,
     `MODE: ${mode}`,
     `TASK: ${context.taskId ?? "Unknown"}`,
+    `BRANCH: ${context.branch ?? gitState.branch}`,
     `PHASE: ${context.phase ?? "Unknown"}`,
     `COMMAND: ${error.command ?? "Unknown"}`,
     `EXIT STATUS: ${error.status ?? "Unknown"}`,
+    `ENVIRONMENT ONLY: ${context.environmentOnly ?? error.environmentOnly ?? false}`,
     "",
     "STDOUT:",
     error.stdout ?? "",
@@ -654,34 +721,54 @@ function writeFailureLog(error, context = {}) {
     error.stderr ?? "",
     "",
     "MESSAGE:",
-    error.message ?? String(error)
+    error.message ?? String(error),
+    "",
+    "GIT STATUS:",
+    gitState.status || "Clean",
+    "",
+    "SUGGESTED RECOVERY:",
+    recoveryCommands
   ].join("\n");
   fs.writeFileSync(logPath, content, "utf8");
   return logPath;
 }
 
-function runCodexWithPrompt(prompt, taskId, phase = "implementation") {
+function runCodexWithPrompt(prompt, taskId, phase = "implementation", task = null) {
   const codexArgs = getCodexArgs();
   try {
     return run("codex", codexArgs, { input: prompt });
   } catch (error) {
-    writeFailureLog(error, { taskId, phase });
     const output = `${error.stdout ?? ""}\n${error.stderr ?? ""}\n${error.message ?? ""}`;
     if (error.timedOut) {
+      writeFailureLog(error, { taskId, phase });
       throw new AutomationStop("Maximum automation runtime reached while Codex was running.", "max_runtime", { cause: error });
     }
     if (isQuotaOrTokenFailure(output)) {
+      writeFailureLog(error, { taskId, phase });
       throw new AutomationStop("Codex stopped because of a likely quota, token, context, rate-limit, or authentication error.", "codex_limit_or_auth", { cause: error });
     }
+    const paths = changedPaths();
+    if (shouldContinueAfterCodexFailure(output, paths, task)) {
+      error.environmentOnly = true;
+      writeFailureLog(error, {
+        taskId,
+        phase,
+        environmentOnly: true,
+        suggestedRecovery: "No recovery is needed yet. The outer automation is continuing with local typecheck, test, and build."
+      });
+      console.warn("Codex hit a managed Windows sandbox verification limitation after producing task-relevant changes. Continuing to outer local verification.");
+      return { status: error.status, stdout: error.stdout, stderr: error.stderr, recoverableEnvironmentFailure: true };
+    }
+    writeFailureLog(error, { taskId, phase, environmentOnly: false });
     throw new AutomationStop("Codex execution failed. See prompts/generated/last-failure.log.", "codex_failure", { cause: error });
   }
 }
 
 function runChecks() {
-  for (const [command, commandArgs] of CHECK_COMMANDS) run(command, commandArgs);
+  for (const [, commandArgs] of CHECK_COMMANDS) run(npmCommand(), commandArgs);
 }
 
-function repair(taskId, error) {
+function repair(taskId, task, error) {
   const logPath = writeFailureLog(error, { taskId, phase: "verification" });
   const failureLog = fs.readFileSync(logPath, "utf8");
   const prompt = `Read AGENTS.md first.
@@ -702,10 +789,10 @@ Rules:
 - Keep the diff small.
 - Stop after making the fix.
 `;
-  runCodexWithPrompt(prompt, taskId, "repair");
+  runCodexWithPrompt(prompt, taskId, "repair", task);
 }
 
-function verifyWithRepairs(taskId) {
+function verifyWithRepairs(taskId, task) {
   let lastError = null;
   for (let repairsUsed = 0; repairsUsed <= maxRepairAttempts; repairsUsed += 1) {
     try {
@@ -718,7 +805,7 @@ function verifyWithRepairs(taskId) {
       }
       if (repairsUsed >= maxRepairAttempts) break;
       console.log(`Verification failed. Repair attempt ${repairsUsed + 1}/${maxRepairAttempts}.`);
-      repair(taskId, error);
+      repair(taskId, task, error);
     }
   }
   writeFailureLog(lastError, { taskId, phase: "verification" });
@@ -815,7 +902,6 @@ function validatePrBeforeMerge(prNumber, branchName, taskFile, task) {
   const changedPaths = files.map((file) => file.path.replaceAll("\\", "/"));
   const taskPolicy = task.auto_merge ?? {};
   const forbiddenPaths = [...(taskPolicy.forbidden_paths ?? []), ...(task.scope?.forbidden_paths ?? [])];
-  const automationTaskPaths = new Set([`tasks/backlog/${taskFile}`, `tasks/done/${taskFile}`]);
   const scopePaths = extractScopePaths(task);
   const packageChanged = changedPaths.includes("package.json");
   const totalAdditions = files.reduce((sum, file) => sum + (file.additions ?? 0), 0);
@@ -838,7 +924,7 @@ function validatePrBeforeMerge(prNumber, branchName, taskFile, task) {
     if (GENERATED_PREFIXES.some((prefix) => filePath.startsWith(prefix)) || filePath.endsWith(".log")) reasons.push(`generated artifact detected: ${filePath}`);
     if ((file.additions ?? 0) > 5_000) reasons.push(`huge file addition detected: ${filePath}`);
     if (forbiddenPaths.some((rule) => pathMatchesRule(filePath, rule))) reasons.push(`task policy forbids: ${filePath}`);
-    if (scopePaths.length > 0 && !automationTaskPaths.has(filePath) && !isWithinScope(filePath, scopePaths)) reasons.push(`file is outside the declared task scope: ${filePath}`);
+    if (scopePaths.length > 0 && !isWithinScope(filePath, scopePaths)) reasons.push(`file is outside the declared task scope: ${filePath}`);
   }
 
   if (reasons.length > 0) {
@@ -868,12 +954,40 @@ function mergePr(prNumber) {
   }
 }
 
-function cleanupAfterTask(branchName, taskFile) {
+function canMoveTaskToDone(merged, branch) {
+  return merged && branch === "main";
+}
+
+function moveTaskToDoneAfterMerge(taskId, taskFile, merged) {
+  const branch = currentBranch();
+  if (!canMoveTaskToDone(merged, branch)) {
+    throw new AutomationStop("Refusing to move task to done before merge or outside main.", "task_state_failure");
+  }
+  const backlogPath = path.resolve("tasks", "backlog", taskFile);
+  if (!fs.existsSync(backlogPath)) {
+    throw new AutomationStop(`Expected backlog task is missing after merge: tasks/backlog/${taskFile}.`, "task_state_failure");
+  }
+  moveTaskFile("backlog", "done", taskFile);
+  let committed = false;
+  try {
+    run("git", ["add", "--", path.join("tasks", "backlog", taskFile), path.join("tasks", "done", taskFile)]);
+    run("git", ["commit", "-m", `Task ${taskId}: mark automation task done`]);
+    committed = true;
+    run("git", ["push", "origin", "main"]);
+  } catch (error) {
+    const suggestedRecovery = committed
+      ? "The implementation is merged and the task-state commit is local on main. Run: git push origin main"
+      : "The implementation is merged, but the task-state commit did not finish. Inspect git status, then commit only the backlog-to-done move on main.";
+    const stop = new AutomationStop("Implementation merged, but updating task state on main failed.", "task_state_failure", { cause: error });
+    stop.suggestedRecovery = suggestedRecovery;
+    throw stop;
+  }
+}
+
+function cleanupAfterTask(taskId, branchName, taskFile, merged) {
   run("git", ["checkout", "main"]);
   pullMain();
-  if (!fs.existsSync(path.resolve("tasks", "done", taskFile))) {
-    throw new AutomationStop(`Merged main does not contain tasks/done/${taskFile}.`, "task_state_failure");
-  }
+  moveTaskToDoneAfterMerge(taskId, taskFile, merged);
   try {
     run("git", ["branch", "-D", branchName]);
   } catch (error) {
@@ -882,21 +996,18 @@ function cleanupAfterTask(branchName, taskFile) {
   ensureCleanGit();
 }
 
-function moveTaskToFailed(taskFile) {
-  for (const source of ["backlog", "done"]) {
-    if (fs.existsSync(path.resolve("tasks", source, taskFile))) {
-      moveTaskFile(source, "failed", taskFile);
-      return true;
-    }
+function failureTaskStatePolicy(branchPushed, prCreated) {
+  if (branchPushed || prCreated) {
+    return "Implementation was already pushed or a PR may exist. Task state was left unchanged. Recover the PR/branch first; do not move the task locally on the task branch.";
   }
-  return false;
+  return "Task state was left unchanged in backlog. Preserve or inspect implementation changes on the task branch before cleanup.";
 }
 
 function runOneTask(taskFile) {
   const taskId = getTaskId(taskFile);
   const task = readTask(taskFile);
   let branchName = null;
-  let taskMoved = false;
+  let branchPushed = false;
   let merged = false;
   let pr = null;
 
@@ -905,30 +1016,25 @@ function runOneTask(taskFile) {
     ensureOnMain();
     branchName = createTaskBranch(taskId);
     const prompt = generatePrompt(taskId);
-    runCodexWithPrompt(prompt, taskId);
-    const repairsUsed = verifyWithRepairs(taskId);
-    moveTaskFile("backlog", "done", taskFile);
-    taskMoved = true;
+    runCodexWithPrompt(prompt, taskId, "implementation", task);
+    const repairsUsed = verifyWithRepairs(taskId, task);
     commitAndPush(taskId, branchName);
+    branchPushed = true;
     pr = createPr(taskId, taskFile, branchName, repairsUsed);
     waitForPrChecks(pr.number);
     validatePrBeforeMerge(pr.number, branchName, taskFile, task);
     mergePr(pr.number);
     merged = true;
-    cleanupAfterTask(branchName, taskFile);
+    cleanupAfterTask(taskId, branchName, taskFile, merged);
     return { taskId, prUrl: pr.url, merged: true, repairsUsed };
   } catch (error) {
     const stop = error instanceof AutomationStop
       ? error
       : new AutomationStop(error.message ?? String(error), "unexpected_failure", { cause: error, hardStop: stopOnFailure });
-    if (!merged && stop.code !== "codex_limit_or_auth" && stop.code !== "max_runtime") {
-      try {
-        if (!taskMoved || fs.existsSync(path.resolve("tasks", "done", taskFile))) moveTaskToFailed(taskFile);
-      } catch (moveError) {
-        stop.message += ` Failed to move task to tasks/failed: ${moveError.message}`;
-      }
-    }
-    writeFailureLog(stop, { taskId, phase: stop.code });
+    const recoveryMessage = stop.suggestedRecovery ?? failureTaskStatePolicy(branchPushed, Boolean(pr));
+    stop.message += `\n${recoveryMessage}`;
+    stop.suggestedRecovery = recoveryMessage;
+    writeFailureLog(stop, { taskId, phase: stop.code, suggestedRecovery: recoveryMessage });
     stop.taskId = taskId;
     stop.branchName = branchName;
     stop.prUrl = pr?.url;
@@ -959,11 +1065,11 @@ function printDryRunTaskPlan(taskFile, task) {
     console.log(`  3. Create ${branchName} and generate prompts/generated/${taskId}.md`);
     console.log(`  4. Run ${formatCommand("codex", getCodexArgs())} with the prompt on stdin`);
     console.log("  5. Run typecheck, test, and build; use bounded repairs if needed");
-    console.log(`  6. Move ${taskFile} from backlog to done in the task branch`);
-    console.log("  7. Commit, push, and create an automated PR into main");
+    console.log("  6. Commit implementation changes, push, and create an automated PR into main");
+    console.log("  7. Keep task state unchanged while the implementation PR is open");
     console.log("  8. Wait for GitHub checks and validate changed-file safety");
     console.log("  9. Squash-merge the PR and request remote branch deletion");
-    console.log(" 10. Checkout main, pull origin/main, delete the local task branch, and continue if loop mode is enabled");
+    console.log(` 10. Checkout main, pull the merge, move ${taskFile} from backlog to done on main, push that state commit, and continue`);
     if (task.auto_merge?.allowed === false) console.log("  Safety note: this task sets auto_merge.allowed=false, so a real run would stop before merge");
 }
 
@@ -1091,6 +1197,7 @@ function runLoop() {
     }
   } catch (error) {
     summary.stopReason = error.message ?? String(error);
+    if (mode === "single") console.error(summary.stopReason);
     process.exitCode = 1;
   }
 
@@ -1112,11 +1219,18 @@ if (isMainModule) {
 
 export {
   buildTaskYaml,
+  canMoveTaskToDone,
   collectProjectPlanningContext,
+  failureTaskStatePolicy,
   generateBacklogTasks,
   getNextTaskId,
+  guardDirtyTaskStateOnTaskBranch,
+  hasTaskRelevantChanges,
+  isRecoverableCodexSandboxVerificationFailure,
   listExistingTaskIds,
+  npmCommand,
   normalizeTitle,
   selectRoadmapTasks,
+  shouldContinueAfterCodexFailure,
   writeGeneratedTaskFiles
 };
