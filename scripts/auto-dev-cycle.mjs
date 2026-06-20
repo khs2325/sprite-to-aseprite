@@ -100,26 +100,28 @@ function generatePrompt(taskId) {
 }
 
 function runCodexWithPrompt(prompt) {
-  console.log("\n> codex exec -");
+  console.log("\n> codex exec --sandbox workspace-write --ask-for-approval never -");
 
   if (dryRun) {
     console.log("[dry-run] skipped");
     return;
   }
 
-  const result = spawnSync("codex", ["exec", "-"], {
-    input: prompt,
-    stdio: ["pipe", "inherit", "pipe"],
-    encoding: "utf8",
-    shell: false
-  });
-
-  if (result.stderr) {
-    process.stderr.write(result.stderr);
-  }
+  const result = spawnSync(
+    "codex",
+    ["exec", "--sandbox", "workspace-write", "--ask-for-approval", "never", "-"],
+    {
+      input: prompt,
+      stdio: ["pipe", "inherit", "inherit"],
+      encoding: "utf8",
+      shell: false
+    }
+  );
 
   if (result.status !== 0) {
-    throw new Error("Command failed: codex exec -");
+    throw new Error(
+      "Command failed: codex exec --sandbox workspace-write --ask-for-approval never -"
+    );
   }
 }
 
