@@ -80,6 +80,14 @@ describe("createSpritesheetGridProject", () => {
     });
 
     expect(redValues(project)).toEqual([1, 4, 2, 5, 3, 6]);
+    expect(project.frames.map(({ durationMs }) => durationMs)).toEqual([
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+    ]);
   });
 
   it("copies every pixel in multi-pixel frames", () => {
@@ -114,21 +122,56 @@ describe("createSpritesheetGridProject", () => {
     expect(() =>
       createSpritesheetGridProject(createSpritesheet(4, 2), DEFAULT_OPTIONS),
     ).toThrow("Grid dimensions 3x2 do not fit spritesheet dimensions 4x2.");
-  });
 
-  it("rejects invalid grid options", () => {
     expect(() =>
       createSpritesheetGridProject(createSpritesheet(3, 2), {
         ...DEFAULT_OPTIONS,
-        rows: 0,
+        rows: 3,
       }),
-    ).toThrow("Rows must be a positive integer.");
+    ).toThrow("Grid dimensions 3x3 do not fit spritesheet dimensions 3x2.");
+  });
+
+  it.each([
+    [{ frameWidth: 0 }, "Frame width"],
+    [{ frameHeight: 1.5 }, "Frame height"],
+    [{ rows: -1 }, "Rows"],
+    [{ columns: 0 }, "Columns"],
+  ])("rejects invalid grid dimension option %#", (overrides, field) => {
+    expect(() =>
+      createSpritesheetGridProject(createSpritesheet(3, 2), {
+        ...DEFAULT_OPTIONS,
+        ...overrides,
+      }),
+    ).toThrow(`${field} must be a positive integer.`);
+  });
+
+  it.each([0, -1, 1.5])(
+    "rejects invalid frame duration %s",
+    (frameDurationMs) => {
+      expect(() =>
+        createSpritesheetGridProject(createSpritesheet(3, 2), {
+          ...DEFAULT_OPTIONS,
+          frameDurationMs,
+        }),
+      ).toThrow(
+        "Frame duration in milliseconds must be a positive integer.",
+      );
+    },
+  );
+
+  it("rejects an unsupported frame order", () => {
     expect(() =>
       createSpritesheetGridProject(createSpritesheet(3, 2), {
         ...DEFAULT_OPTIONS,
         frameOrder: "diagonal" as "row-major",
       }),
     ).toThrow('Frame order must be "row-major" or "column-major".');
+  });
+
+  it("rejects invalid spritesheet dimensions", () => {
+    expect(() =>
+      createSpritesheetGridProject(createSpritesheet(0, 2), DEFAULT_OPTIONS),
+    ).toThrow("Spritesheet contains invalid RGBA image data.");
   });
 });
 
