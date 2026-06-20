@@ -1,0 +1,37 @@
+id: "017"
+title: Add synthetic sample fixtures
+status: backlog
+priority: high
+goal: Add tiny synthetic sprite fixtures for demos and automated tests.
+context: This task was generated deterministically from the repository roadmap, architecture, current source tree, and existing task history.
+scope:
+  summary: Add tiny synthetic sprite fixtures for demos and automated tests.
+  allowed_paths:
+    - tests/fixtures/**
+    - docs/**
+  forbidden_paths: &a1
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+non_goals:
+  - Do not implement unrelated roadmap features.
+  - Do not upload user artwork or use external processing services.
+  - Do not change dependencies, lockfiles, or GitHub workflows.
+requirements:
+  - Use newly generated synthetic artwork only.
+  - Keep files small and document expected frame geometry.
+  - Do not include real user sprite files or copyrighted assets.
+acceptance_criteria:
+  - Add tiny synthetic sprite fixtures for demos and automated tests.
+  - Focused tests cover the behavior introduced by this task.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *a1

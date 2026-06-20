@@ -1,0 +1,38 @@
+id: "020"
+title: Add frame duration editing
+status: backlog
+priority: high
+goal: Allow editing SpriteProject frame durations with validation in the browser UI.
+context: This task was generated deterministically from the repository roadmap, architecture, current source tree, and existing task history.
+scope:
+  summary: Allow editing SpriteProject frame durations with validation in the browser UI.
+  allowed_paths:
+    - src/app/**
+    - src/core/**
+    - src/**/*.test.*
+  forbidden_paths: &a1
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+non_goals:
+  - Do not implement unrelated roadmap features.
+  - Do not upload user artwork or use external processing services.
+  - Do not change dependencies, lockfiles, or GitHub workflows.
+requirements:
+  - Require finite positive frame durations within documented bounds.
+  - Update only the selected frame and preserve timeline ordering.
+  - Add model and UI tests.
+acceptance_criteria:
+  - Allow editing SpriteProject frame durations with validation in the browser UI.
+  - Focused tests cover the behavior introduced by this task.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *a1

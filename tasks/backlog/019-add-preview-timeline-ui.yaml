@@ -1,0 +1,37 @@
+id: "019"
+title: Add preview timeline UI
+status: backlog
+priority: high
+goal: Show imported SpriteProject frames in a simple browser preview timeline.
+context: This task was generated deterministically from the repository roadmap, architecture, current source tree, and existing task history.
+scope:
+  summary: Show imported SpriteProject frames in a simple browser preview timeline.
+  allowed_paths:
+    - src/app/**
+    - src/**/*.test.*
+  forbidden_paths: &a1
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+non_goals:
+  - Do not implement unrelated roadmap features.
+  - Do not upload user artwork or use external processing services.
+  - Do not change dependencies, lockfiles, or GitHub workflows.
+requirements:
+  - Render frame order and active-frame state without mutating project data.
+  - Keep artwork local to the browser.
+  - Add tests for navigation and empty state.
+acceptance_criteria:
+  - Show imported SpriteProject frames in a simple browser preview timeline.
+  - Focused tests cover the behavior introduced by this task.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *a1

@@ -1,0 +1,38 @@
+id: "018"
+title: Add drag-and-drop file import
+status: backlog
+priority: high
+goal: Add drag-and-drop as an alternative browser-local file import interaction.
+context: This task was generated deterministically from the repository roadmap, architecture, current source tree, and existing task history.
+scope:
+  summary: Add drag-and-drop as an alternative browser-local file import interaction.
+  allowed_paths:
+    - src/app/**
+    - src/**/*.test.*
+    - docs/**
+  forbidden_paths: &a1
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+non_goals:
+  - Do not implement unrelated roadmap features.
+  - Do not upload user artwork or use external processing services.
+  - Do not change dependencies, lockfiles, or GitHub workflows.
+requirements:
+  - Reuse the existing browser-local import pipeline.
+  - Provide keyboard-accessible fallback controls.
+  - Add tests for accepted, rejected, and mixed drops.
+acceptance_criteria:
+  - Add drag-and-drop as an alternative browser-local file import interaction.
+  - Focused tests cover the behavior introduced by this task.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *a1

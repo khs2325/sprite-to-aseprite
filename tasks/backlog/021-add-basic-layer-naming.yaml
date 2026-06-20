@@ -1,0 +1,38 @@
+id: "021"
+title: Add basic layer naming
+status: backlog
+priority: high
+goal: Allow users to rename SpriteProject layers before export.
+context: This task was generated deterministically from the repository roadmap, architecture, current source tree, and existing task history.
+scope:
+  summary: Allow users to rename SpriteProject layers before export.
+  allowed_paths:
+    - src/app/**
+    - src/core/**
+    - src/**/*.test.*
+  forbidden_paths: &a1
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+non_goals:
+  - Do not implement unrelated roadmap features.
+  - Do not upload user artwork or use external processing services.
+  - Do not change dependencies, lockfiles, or GitHub workflows.
+requirements:
+  - Validate non-empty layer names and preserve layer ordering.
+  - Do not imply that source layers were recovered from flat images.
+  - Add model and UI tests for rename behavior.
+acceptance_criteria:
+  - Allow users to rename SpriteProject layers before export.
+  - Focused tests cover the behavior introduced by this task.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *a1
