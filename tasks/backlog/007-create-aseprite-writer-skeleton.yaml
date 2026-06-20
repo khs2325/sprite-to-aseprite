@@ -1,0 +1,38 @@
+id: "007"
+title: Create Aseprite writer skeleton
+status: backlog
+priority: high
+goal: Define a minimal exporter boundary that consumes SpriteProject and produces binary output.
+context: This task was generated deterministically from the repository roadmap, architecture, current source tree, and existing task history.
+scope:
+  summary: Define a minimal exporter boundary that consumes SpriteProject and produces binary output.
+  allowed_paths:
+    - src/core/exporters/aseprite/**
+    - src/core/**/*.test.*
+    - docs/**
+  forbidden_paths: &a1
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+non_goals:
+  - Do not implement unrelated roadmap features.
+  - Do not upload user artwork or use external processing services.
+  - Do not change dependencies, lockfiles, or GitHub workflows.
+requirements:
+  - Keep the exporter independent from UI code.
+  - Define explicit binary writer helpers and unsupported-feature errors.
+  - Add tests for deterministic empty or minimal output structure without claiming full format support.
+acceptance_criteria:
+  - Define a minimal exporter boundary that consumes SpriteProject and produces binary output.
+  - Focused tests cover the behavior introduced by this task.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: false
+  max_changed_files: 8
+  forbidden_paths: *a1

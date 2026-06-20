@@ -1,0 +1,38 @@
+id: "011"
+title: Add browser file import UI
+status: backlog
+priority: high
+goal: Add browser-local file selection for supported sprite source files.
+context: This task was generated deterministically from the repository roadmap, architecture, current source tree, and existing task history.
+scope:
+  summary: Add browser-local file selection for supported sprite source files.
+  allowed_paths:
+    - src/app/**
+    - src/**/*.test.*
+    - docs/**
+  forbidden_paths: &a1
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+non_goals:
+  - Do not implement unrelated roadmap features.
+  - Do not upload user artwork or use external processing services.
+  - Do not change dependencies, lockfiles, or GitHub workflows.
+requirements:
+  - Read files only through browser APIs and never upload user artwork.
+  - Expose supported file types and reject unsupported inputs clearly.
+  - Add UI tests using synthetic File objects.
+acceptance_criteria:
+  - Add browser-local file selection for supported sprite source files.
+  - Focused tests cover the behavior introduced by this task.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *a1
