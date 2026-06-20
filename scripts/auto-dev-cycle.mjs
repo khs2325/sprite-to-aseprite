@@ -100,9 +100,23 @@ function generatePrompt(taskId) {
 }
 
 function runCodexWithPrompt(prompt) {
-  runVisible("codex", ["exec", "--sandbox", "workspace-write", prompt], {
-    skipInDryRun: true
+  console.log("\n> codex exec --sandbox workspace-write -");
+
+  if (dryRun) {
+    console.log("[dry-run] skipped");
+    return;
+  }
+
+  const result = spawnSync("codex", ["exec", "--sandbox", "workspace-write", "-"], {
+    input: prompt,
+    stdio: ["pipe", "inherit", "inherit"],
+    encoding: "utf8",
+    shell: false
   });
+
+  if (result.status !== 0) {
+    throw new Error("Command failed: codex exec --sandbox workspace-write -");
+  }
 }
 
 function readPrompt(taskId) {
