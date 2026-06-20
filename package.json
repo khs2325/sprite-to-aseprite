@@ -6,6 +6,9 @@
     "prompt": "node scripts/make-prompt.mjs",
     "codex:task": "node scripts/run-codex-task.mjs",
     "auto-dev": "node scripts/auto-dev-cycle.mjs",
+    "auto-dev:dry": "node scripts/auto-dev-cycle.mjs --dry-run",
+    "auto-dev:all": "node scripts/auto-dev-cycle.mjs --all",
+    "auto-dev:until-stop": "node scripts/auto-dev-cycle.mjs --until-stop",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "build": "vite build"
