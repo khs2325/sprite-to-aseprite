@@ -262,6 +262,7 @@ const stopOnFailure = readBoolean("AUTO_DEV_STOP_ON_FAILURE", true);
 const allowWorkflowChanges = readBoolean("AUTO_DEV_ALLOW_WORKFLOW_CHANGES", false);
 const allowLockfileChanges = readBoolean("AUTO_DEV_ALLOW_LOCKFILE_CHANGES", false);
 const allowNoPrChecks = readBoolean("AUTO_DEV_ALLOW_NO_PR_CHECKS", false);
+const allowPolicyFalseAutoMerge = readBoolean("AUTO_DEV_ALLOW_POLICY_FALSE_AUTOMERGE", false);
 const generateTasksWhenEmpty = readBoolean("AUTO_DEV_GENERATE_TASKS_WHEN_EMPTY", false);
 const generatedTaskCount = readNonNegativeInteger("AUTO_DEV_GENERATED_TASK_COUNT", 5);
 const maxGenerationRounds = readNonNegativeInteger("AUTO_DEV_MAX_GENERATION_ROUNDS", 1);
@@ -922,6 +923,30 @@ function isWithinScope(file, scopePaths) {
   });
 }
 
+function autoMergePolicyDecision({ taskPolicyAllowed, overrideEnabled, localVerificationPassed, safetyValidationPassed }) {
+  if (!localVerificationPassed) return "block-verification";
+  if (!safetyValidationPassed) return "block-safety";
+  if (taskPolicyAllowed === false && !overrideEnabled) return "block-policy";
+  return "allow";
+}
+
+function policyFalseRecoveryOptions(prNumber) {
+  return [
+    "Manual option:",
+    `gh pr view ${prNumber} --web`,
+    `gh pr merge ${prNumber} --squash --delete-branch`,
+    "git checkout main",
+    "git pull origin main",
+    "",
+    "Override option:",
+    "AUTO_DEV_ALLOW_POLICY_FALSE_AUTOMERGE=true npm run auto-dev:until-stop",
+    "",
+    "PowerShell:",
+    '$env:AUTO_DEV_ALLOW_POLICY_FALSE_AUTOMERGE="true"',
+    "npm run auto-dev:until-stop"
+  ].join("\n");
+}
+
 function validatePrBeforeMerge(prNumber, branchName, taskFile, task) {
   let pr;
   try {
@@ -940,9 +965,9 @@ function validatePrBeforeMerge(prNumber, branchName, taskFile, task) {
   const packageChanged = changedPaths.includes("package.json");
   const totalAdditions = files.reduce((sum, file) => sum + (file.additions ?? 0), 0);
 
+  if (!pr.headRefName?.startsWith("codex/task-")) reasons.push(`PR head is not a codex/task-* branch: ${pr.headRefName}`);
   if (pr.headRefName !== branchName) reasons.push(`PR head is ${pr.headRefName}, expected ${branchName}`);
   if (pr.baseRefName !== "main") reasons.push(`PR base is ${pr.baseRefName}, expected main`);
-  if (taskPolicy.allowed === false) reasons.push("task policy sets auto_merge.allowed to false");
   if (Number.isInteger(taskPolicy.max_changed_files) && files.length > taskPolicy.max_changed_files) {
     reasons.push(`changed file count ${files.length} exceeds task limit ${taskPolicy.max_changed_files}`);
   }
@@ -963,6 +988,22 @@ function validatePrBeforeMerge(prNumber, branchName, taskFile, task) {
 
   if (reasons.length > 0) {
     throw new AutomationStop(`PR safety validation rejected auto-merge:\n- ${[...new Set(reasons)].join("\n- ")}`, "suspicious_changes");
+  }
+
+  const policyDecision = autoMergePolicyDecision({
+    taskPolicyAllowed: taskPolicy.allowed,
+    overrideEnabled: allowPolicyFalseAutoMerge,
+    localVerificationPassed: true,
+    safetyValidationPassed: true
+  });
+  if (policyDecision === "block-policy") {
+    const stop = new AutomationStop("PR safety validation rejected auto-merge:\n- task policy sets auto_merge.allowed to false", "policy_automerge_disabled");
+    stop.prUrl = pr.url;
+    stop.suggestedRecovery = policyFalseRecoveryOptions(prNumber);
+    throw stop;
+  }
+  if (taskPolicy.allowed === false && allowPolicyFalseAutoMerge) {
+    console.warn("Warning: task policy has auto_merge.allowed=false, but AUTO_DEV_ALLOW_POLICY_FALSE_AUTOMERGE=true. Continuing only because all mandatory local and safety checks passed.");
   }
   return pr;
 }
@@ -1221,7 +1262,11 @@ function printDryRunTaskPlan(taskFile, task) {
     console.log("  8. Wait for GitHub checks and validate changed-file safety");
     console.log("  9. Squash-merge the PR and request remote branch deletion");
     console.log(` 10. Checkout main, pull the merge, move ${taskFile} from backlog to done on main, push that state commit, and continue`);
-    if (task.auto_merge?.allowed === false) console.log("  Safety note: this task sets auto_merge.allowed=false, so a real run would stop before merge");
+    if (task.auto_merge?.allowed === false && allowPolicyFalseAutoMerge) {
+      console.log("  Safety note: policy-false auto-merge override is enabled; all other verification and safety gates still apply");
+    } else if (task.auto_merge?.allowed === false) {
+      console.log("  Safety note: this task sets auto_merge.allowed=false, so a real run would stop before merge");
+    }
 }
 
 function printDryRunPlan() {
@@ -1371,6 +1416,7 @@ if (isMainModule) {
 export {
   buildFailureLogContent,
   buildTaskYaml,
+  autoMergePolicyDecision,
   canContinueWithoutPrChecks,
   canMoveTaskToDone,
   collectProjectPlanningContext,
@@ -1386,6 +1432,7 @@ export {
   npmCommand,
   normalizeTitle,
   prChecksFailurePolicy,
+  policyFalseRecoveryOptions,
   selectRoadmapTasks,
   shouldContinueAfterCodexFailure,
   verifyRecoveredBranch,

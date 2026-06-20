@@ -130,6 +130,7 @@ The loop also resumes existing task work instead of recreating it: merged PRs wi
 | `AUTO_DEV_ALLOW_WORKFLOW_CHANGES` | `false` | Permit `.github/workflows/*` during PR safety validation |
 | `AUTO_DEV_ALLOW_LOCKFILE_CHANGES` | `false` | Permit lockfile-only changes |
 | `AUTO_DEV_ALLOW_NO_PR_CHECKS` | `false` | Continue past GitHub's `no checks reported` response after mandatory local verification |
+| `AUTO_DEV_ALLOW_POLICY_FALSE_AUTOMERGE` | `false` | Override a task's explicit `auto_merge.allowed: false` policy after every other mandatory gate passes |
 | `AUTO_DEV_GENERATE_TASKS_WHEN_EMPTY` | `false` | Generate deterministic tasks when `--until-stop` finds an empty backlog |
 | `AUTO_DEV_GENERATED_TASK_COUNT` | `5` | Number of tasks in each generated batch |
 | `AUTO_DEV_MAX_GENERATION_ROUNDS` | `1` | Maximum generated batches in one `--until-stop` process |
@@ -173,6 +174,34 @@ PowerShell equivalent:
 $env:CODEX_EXEC_ARGS = "--sandbox workspace-write"
 npm run auto-dev
 ```
+
+## Tasks with automatic merge disabled
+
+`auto_merge.allowed: false` marks a task as requiring manual merge review. Automation stops by default even after local verification, CI, and changed-file safety checks pass.
+
+Manual merge:
+
+```bash
+gh pr view <number> --web
+gh pr merge <number> --squash --delete-branch
+git checkout main
+git pull origin main
+```
+
+To resume an existing task PR and override only this policy gate:
+
+```bash
+AUTO_DEV_ALLOW_POLICY_FALSE_AUTOMERGE=true npm run auto-dev:until-stop
+```
+
+PowerShell:
+
+```powershell
+$env:AUTO_DEV_ALLOW_POLICY_FALSE_AUTOMERGE="true"
+npm run auto-dev:until-stop
+```
+
+Use the override only when the local verification and PR safety validation are trusted. It does not bypass typecheck, tests, build, GitHub checks, branch/base validation, allowed/forbidden paths, workflow protection, secret detection, generated-artifact checks, lockfile policy, or diff-size limits.
 
 ## Safety defaults
 
