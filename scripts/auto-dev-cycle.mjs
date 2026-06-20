@@ -100,6 +100,10 @@ function runChecks() {
   runVisible("npm", ["run", "build"]);
 }
 
+function generatePrompt(taskId) {
+  runVisible("node", ["scripts/make-prompt.mjs", taskId]);
+}
+
 function runCodexWithPrompt(prompt) {
   console.log("\n> codex exec --sandbox workspace-write -");
 
