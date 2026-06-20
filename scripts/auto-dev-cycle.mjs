@@ -90,6 +90,11 @@ function getTaskId(fileName) {
 }
 
 function runChecks() {
+  if (dryRun) {
+    console.log("[dry-run] skipped verification checks");
+    return;
+  }
+
   runVisible("npm", ["run", "typecheck"]);
   runVisible("npm", ["run", "test"]);
   runVisible("npm", ["run", "build"]);
