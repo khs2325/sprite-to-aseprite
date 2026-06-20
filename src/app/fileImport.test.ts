@@ -93,6 +93,100 @@ describe("bindFileImportControl", () => {
     expect(statusOutput.hidden).toBe(true);
   });
 
+  it("shows format-specific importer errors without displaying file contents", async () => {
+    const input = createInput();
+    const errorOutput = createOutput();
+    const statusOutput = createOutput();
+    const control = bindFileImportControl(input, errorOutput, statusOutput, {
+      onFilesImported: () => {
+        throw new Error("Spritesheet metadata is not valid JSON.");
+      },
+    });
+    const privateContents = '{"privatePixelData":"do not display"}';
+    const png = new File(["png"], "atlas.png", { type: "image/png" });
+    const json = new File([privateContents], "atlas.json", {
+      type: "application/json",
+    });
+
+    expect(await control.selectFiles([png, json])).toBe(false);
+
+    expect(input.value).toBe("");
+    expect(errorOutput).toMatchObject({
+      hidden: false,
+      textContent:
+        "Spritesheet PNG + JSON import failed. " +
+        "Spritesheet metadata is not valid JSON. " +
+        "Check that the JSON frame data is valid and fits inside the PNG.",
+    });
+    expect(errorOutput.textContent).not.toContain(privateContents);
+    expect(statusOutput.hidden).toBe(true);
+  });
+
+  it("shows SpriteProject validation messages before reporting success", async () => {
+    const input = createInput();
+    const errorOutput = createOutput();
+    const statusOutput = createOutput();
+    const control = bindFileImportControl(input, errorOutput, statusOutput, {
+      format: "png-sequence",
+      onFilesImported: () => ({
+        width: 0,
+        height: 16,
+        colorMode: "rgba",
+        frames: [],
+        layers: [],
+      }),
+    });
+
+    expect(
+      await control.selectFiles([
+        new File(["png"], "walk-01.png", { type: "image/png" }),
+      ]),
+    ).toBe(false);
+
+    expect(errorOutput.hidden).toBe(false);
+    expect(errorOutput.textContent).toContain(
+      "PNG sequence import produced an invalid sprite project.",
+    );
+    expect(errorOutput.textContent).toContain(
+      "width: Project width must be a positive integer.",
+    );
+    expect(errorOutput.textContent).toContain(
+      "frames: Project must contain at least one frame.",
+    );
+    expect(errorOutput.textContent).toContain(
+      "layers: Project must contain at least one layer.",
+    );
+    expect(errorOutput.textContent).toContain(
+      "Check that every frame is a valid PNG with matching dimensions.",
+    );
+    expect(statusOutput.hidden).toBe(true);
+  });
+
+  it("does not expose unexpected thrown values", async () => {
+    const errorOutput = createOutput();
+    const control = bindFileImportControl(
+      createInput(),
+      errorOutput,
+      createOutput(),
+      {
+        format: "spritesheet-grid",
+        onFilesImported: () => {
+          throw { fileContents: "private bytes" };
+        },
+      },
+    );
+
+    expect(
+      await control.selectFiles([new File(["png"], "sheet.png")]),
+    ).toBe(false);
+
+    expect(errorOutput.textContent).toBe(
+      "Spritesheet grid import failed. " +
+        "Check the PNG dimensions and the configured frame grid values.",
+    );
+    expect(errorOutput.textContent).not.toContain("private bytes");
+  });
+
   it("uses files from the browser input change event and removes its handler", async () => {
     const input = createInput();
     const onFilesImported = vi.fn();

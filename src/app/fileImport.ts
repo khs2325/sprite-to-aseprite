@@ -1,5 +1,12 @@
+import { validateSpriteProject } from "../core/validation";
+
 export const SUPPORTED_SOURCE_ACCEPT =
   ".png,.json,image/png,application/json";
+
+export type FileImportFormat =
+  | "png-sequence"
+  | "spritesheet-grid"
+  | "spritesheet-json";
 
 export type BrowserSourceFile =
   | {
@@ -14,9 +21,10 @@ export type BrowserSourceFile =
     };
 
 export type FileImportDependencies = {
+  format?: FileImportFormat;
   onFilesImported?: (
     files: readonly BrowserSourceFile[],
-  ) => void | Promise<void>;
+  ) => unknown | Promise<unknown>;
 };
 
 export type FileImportControl = {
@@ -48,6 +56,56 @@ async function readSourceFile(
     return { file, kind, bytes: await file.arrayBuffer() };
   }
   return { file, kind, text: await file.text() };
+}
+
+type FormatHelp = {
+  label: string;
+  suggestion: string;
+};
+
+const FORMAT_HELP: Record<FileImportFormat, FormatHelp> = {
+  "png-sequence": {
+    label: "PNG sequence",
+    suggestion:
+      "Check that every frame is a valid PNG with matching dimensions.",
+  },
+  "spritesheet-grid": {
+    label: "Spritesheet grid",
+    suggestion:
+      "Check the PNG dimensions and the configured frame grid values.",
+  },
+  "spritesheet-json": {
+    label: "Spritesheet PNG + JSON",
+    suggestion:
+      "Check that the JSON frame data is valid and fits inside the PNG.",
+  },
+};
+
+function getFormatHelp(
+  format: FileImportFormat | undefined,
+  files: readonly BrowserSourceFile[],
+): FormatHelp {
+  if (format !== undefined) {
+    return FORMAT_HELP[format];
+  }
+  if (files.some((file) => file.kind === "json")) {
+    return FORMAT_HELP["spritesheet-json"];
+  }
+  if (files.length > 1) {
+    return FORMAT_HELP["png-sequence"];
+  }
+  return {
+    label: "PNG",
+    suggestion: "Check that the selected file is a valid PNG image.",
+  };
+}
+
+function getImporterMessage(error: unknown): string | null {
+  if (!(error instanceof Error)) {
+    return null;
+  }
+  const message = error.message.replace(/\s+/g, " ").trim();
+  return message.length > 0 ? message : null;
 }
 
 export function bindFileImportControl(
@@ -92,20 +150,55 @@ export function bindFileImportControl(
       classifiedFiles.push({ file, kind });
     }
 
+    let importedFiles: BrowserSourceFile[];
     try {
-      const importedFiles = await Promise.all(
+      importedFiles = await Promise.all(
         classifiedFiles.map(({ file, kind }) => readSourceFile(file, kind)),
       );
-      await dependencies.onFilesImported?.(importedFiles);
-      const noun = importedFiles.length === 1 ? "file" : "files";
-      statusOutput.textContent = `Selected ${importedFiles.length} supported ${noun}.`;
-      statusOutput.hidden = false;
-      return true;
     } catch {
       input.value = "";
       showError("Could not read the selected files in this browser.");
       return false;
     }
+
+    const formatHelp = getFormatHelp(dependencies.format, importedFiles);
+    let project: unknown;
+    try {
+      project = await dependencies.onFilesImported?.(importedFiles);
+    } catch (error) {
+      input.value = "";
+      const detail = getImporterMessage(error);
+      showError(
+        [
+          `${formatHelp.label} import failed.`,
+          detail,
+          formatHelp.suggestion,
+        ]
+          .filter((part): part is string => part !== null)
+          .join(" "),
+      );
+      return false;
+    }
+
+    if (project !== undefined) {
+      const validationErrors = validateSpriteProject(project);
+      if (validationErrors.length > 0) {
+        input.value = "";
+        const issues = validationErrors
+          .map(({ path, message }) => `${path}: ${message}`)
+          .join("; ");
+        showError(
+          `${formatHelp.label} import produced an invalid sprite project. ` +
+            `${issues} ${formatHelp.suggestion}`,
+        );
+        return false;
+      }
+    }
+
+    const noun = importedFiles.length === 1 ? "file" : "files";
+    statusOutput.textContent = `Selected ${importedFiles.length} supported ${noun}.`;
+    statusOutput.hidden = false;
+    return true;
   };
 
   const handleChange = (): void => {
