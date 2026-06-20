@@ -1,0 +1,38 @@
+id: "013"
+title: Expand importer unit tests
+status: backlog
+priority: high
+goal: Add edge-case unit coverage across the supported importers.
+context: This task was generated deterministically from the repository roadmap, architecture, current source tree, and existing task history.
+scope:
+  summary: Add edge-case unit coverage across the supported importers.
+  allowed_paths:
+    - src/core/importers/**/*.test.*
+    - src/**/*.test.*
+    - tests/**
+  forbidden_paths: &a1
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+non_goals:
+  - Do not implement unrelated roadmap features.
+  - Do not upload user artwork or use external processing services.
+  - Do not change dependencies, lockfiles, or GitHub workflows.
+requirements:
+  - Cover invalid dimensions, ordering, bounds, and duration metadata.
+  - Use synthetic fixtures and avoid real user artwork.
+  - Do not change importer behavior unless a test exposes a verified defect.
+acceptance_criteria:
+  - Add edge-case unit coverage across the supported importers.
+  - Focused tests cover the behavior introduced by this task.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *a1

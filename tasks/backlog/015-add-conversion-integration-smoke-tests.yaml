@@ -1,0 +1,38 @@
+id: "015"
+title: Add conversion integration smoke tests
+status: backlog
+priority: high
+goal: Add small end-to-end tests from synthetic importer input through Aseprite export.
+context: This task was generated deterministically from the repository roadmap, architecture, current source tree, and existing task history.
+scope:
+  summary: Add small end-to-end tests from synthetic importer input through Aseprite export.
+  allowed_paths:
+    - tests/**
+    - src/**/*.test.*
+    - docs/**
+  forbidden_paths: &a1
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+non_goals:
+  - Do not implement unrelated roadmap features.
+  - Do not upload user artwork or use external processing services.
+  - Do not change dependencies, lockfiles, or GitHub workflows.
+requirements:
+  - Cover one small happy path for each supported importer.
+  - Keep fixtures synthetic and tiny.
+  - Assert output structure without claiming unsupported lossless conversion.
+acceptance_criteria:
+  - Add small end-to-end tests from synthetic importer input through Aseprite export.
+  - Focused tests cover the behavior introduced by this task.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *a1

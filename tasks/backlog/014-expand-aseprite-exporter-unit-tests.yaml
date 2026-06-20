@@ -1,0 +1,38 @@
+id: "014"
+title: Expand Aseprite exporter unit tests
+status: backlog
+priority: high
+goal: Add byte-level regression coverage for the supported Aseprite exporter subset.
+context: This task was generated deterministically from the repository roadmap, architecture, current source tree, and existing task history.
+scope:
+  summary: Add byte-level regression coverage for the supported Aseprite exporter subset.
+  allowed_paths:
+    - src/core/exporters/aseprite/**/*.test.*
+    - src/**/*.test.*
+    - tests/**
+  forbidden_paths: &a1
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+non_goals:
+  - Do not implement unrelated roadmap features.
+  - Do not upload user artwork or use external processing services.
+  - Do not change dependencies, lockfiles, or GitHub workflows.
+requirements:
+  - Cover headers, frames, layers, cels, names, opacity, and duration.
+  - Assert deterministic bytes and explicit rejection of unsupported data.
+  - Do not broaden the exporter feature set in this task.
+acceptance_criteria:
+  - Add byte-level regression coverage for the supported Aseprite exporter subset.
+  - Focused tests cover the behavior introduced by this task.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *a1

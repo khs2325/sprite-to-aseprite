@@ -1,0 +1,37 @@
+id: "016"
+title: Document supported conversion behavior
+status: backlog
+priority: high
+goal: Document supported inputs, browser-only processing, and the limits of flat image formats.
+context: This task was generated deterministically from the repository roadmap, architecture, current source tree, and existing task history.
+scope:
+  summary: Document supported inputs, browser-only processing, and the limits of flat image formats.
+  allowed_paths:
+    - README.md
+    - docs/**
+  forbidden_paths: &a1
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+non_goals:
+  - Do not implement unrelated roadmap features.
+  - Do not upload user artwork or use external processing services.
+  - Do not change dependencies, lockfiles, or GitHub workflows.
+requirements:
+  - Describe frame conversion and timeline rebuilding accurately.
+  - State that flat PNG sources cannot recover original layers.
+  - Document supported and unsupported Aseprite features.
+acceptance_criteria:
+  - Document supported inputs, browser-only processing, and the limits of flat image formats.
+  - Focused tests cover the behavior introduced by this task.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *a1
