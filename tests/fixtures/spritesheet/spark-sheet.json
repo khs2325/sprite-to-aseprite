@@ -1,0 +1,22 @@
+{
+  "frames": [
+    {
+      "filename": "spark-01",
+      "frame": { "x": 0, "y": 0, "w": 4, "h": 4 },
+      "duration": 80,
+      "rotated": false,
+      "trimmed": false
+    },
+    {
+      "filename": "spark-02",
+      "frame": { "x": 4, "y": 0, "w": 4, "h": 4 },
+      "duration": 120,
+      "rotated": false,
+      "trimmed": false
+    }
+  ],
+  "meta": {
+    "image": "spark-sheet.png",
+    "size": { "w": 8, "h": 4 }
+  }
+}
