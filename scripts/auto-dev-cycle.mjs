@@ -192,12 +192,22 @@ function hasCommand(command) {
 }
 
 function commitAndPush(taskId, branchName) {
+  if (dryRun) {
+    console.log("[dry-run] skipped commit and push");
+    return;
+  }
+
   runVisible("git", ["add", "."]);
   runVisible("git", ["commit", "-m", `Task ${taskId}: automated Codex implementation`]);
-  runVisible("git", ["push", "-u", "origin", branchName], { skipInDryRun: true });
+  runVisible("git", ["push", "-u", "origin", branchName]);
 }
 
 function createPr(taskId, branchName) {
+  if (dryRun) {
+    console.log("[dry-run] skipped PR creation");
+    return;
+  }
+
   if (!hasCommand("gh")) {
     console.log("GitHub CLI not found. Skipping PR creation.");
     return;
