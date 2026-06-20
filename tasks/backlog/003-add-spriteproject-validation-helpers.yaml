@@ -1,0 +1,38 @@
+id: "003"
+title: Add SpriteProject validation helpers
+status: backlog
+priority: high
+goal: Validate SpriteProject dimensions, frame references, layer data, opacity, and cel placement.
+context: This task was generated deterministically from the repository roadmap, architecture, current source tree, and existing task history.
+scope:
+  summary: Validate SpriteProject dimensions, frame references, layer data, opacity, and cel placement.
+  allowed_paths:
+    - src/core/validation/**
+    - src/core/**/*.test.*
+    - src/**/*.test.*
+  forbidden_paths: &a1
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+non_goals:
+  - Do not implement unrelated roadmap features.
+  - Do not upload user artwork or use external processing services.
+  - Do not change dependencies, lockfiles, or GitHub workflows.
+requirements:
+  - Return clear validation errors for malformed project data.
+  - Reject invalid dimensions, frame indexes, opacity, and cel references.
+  - Add unit tests for valid and invalid projects.
+acceptance_criteria:
+  - Validate SpriteProject dimensions, frame references, layer data, opacity, and cel placement.
+  - Focused tests cover the behavior introduced by this task.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *a1

@@ -1,0 +1,39 @@
+id: "004"
+title: Implement PNG sequence importer
+status: backlog
+priority: high
+goal: Convert an ordered browser-local PNG sequence into a single-layer SpriteProject timeline.
+context: This task was generated deterministically from the repository roadmap, architecture, current source tree, and existing task history.
+scope:
+  summary: Convert an ordered browser-local PNG sequence into a single-layer SpriteProject timeline.
+  allowed_paths:
+    - src/core/importers/pngSequence/**
+    - src/core/**/*.test.*
+    - src/**/*.test.*
+  forbidden_paths: &a1
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+non_goals:
+  - Do not implement unrelated roadmap features.
+  - Do not upload user artwork or use external processing services.
+  - Do not change dependencies, lockfiles, or GitHub workflows.
+requirements:
+  - Keep all image processing browser-only and never upload user artwork.
+  - Create one layer because flat PNG files do not contain original layer data.
+  - Validate consistent frame dimensions and preserve input ordering.
+  - Add unit tests using synthetic image data rather than real user files.
+acceptance_criteria:
+  - Convert an ordered browser-local PNG sequence into a single-layer SpriteProject timeline.
+  - Focused tests cover the behavior introduced by this task.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *a1

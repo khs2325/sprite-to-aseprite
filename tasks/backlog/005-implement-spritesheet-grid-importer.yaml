@@ -1,0 +1,39 @@
+id: "005"
+title: Implement spritesheet grid importer
+status: backlog
+priority: high
+goal: Slice a browser-local spritesheet grid into ordered SpriteProject frames.
+context: This task was generated deterministically from the repository roadmap, architecture, current source tree, and existing task history.
+scope:
+  summary: Slice a browser-local spritesheet grid into ordered SpriteProject frames.
+  allowed_paths:
+    - src/core/importers/spritesheetGrid/**
+    - src/core/**/*.test.*
+    - src/**/*.test.*
+  forbidden_paths: &a1
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+non_goals:
+  - Do not implement unrelated roadmap features.
+  - Do not upload user artwork or use external processing services.
+  - Do not change dependencies, lockfiles, or GitHub workflows.
+requirements:
+  - Support explicit frame width, frame height, rows, columns, and frame order.
+  - Reject grids that exceed or do not fit the source image dimensions.
+  - Create one layer and do not claim original layers can be recovered.
+  - Add focused grid slicing tests with synthetic data.
+acceptance_criteria:
+  - Slice a browser-local spritesheet grid into ordered SpriteProject frames.
+  - Focused tests cover the behavior introduced by this task.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *a1

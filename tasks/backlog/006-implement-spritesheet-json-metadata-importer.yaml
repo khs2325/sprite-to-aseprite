@@ -1,0 +1,39 @@
+id: "006"
+title: Implement spritesheet JSON metadata importer
+status: backlog
+priority: high
+goal: Build SpriteProject frames from a spritesheet PNG and supported JSON frame metadata.
+context: This task was generated deterministically from the repository roadmap, architecture, current source tree, and existing task history.
+scope:
+  summary: Build SpriteProject frames from a spritesheet PNG and supported JSON frame metadata.
+  allowed_paths:
+    - src/core/importers/spritesheetJson/**
+    - src/core/**/*.test.*
+    - src/**/*.test.*
+  forbidden_paths: &a1
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+non_goals:
+  - Do not implement unrelated roadmap features.
+  - Do not upload user artwork or use external processing services.
+  - Do not change dependencies, lockfiles, or GitHub workflows.
+requirements:
+  - Parse a small documented JSON metadata subset with explicit validation.
+  - Preserve frame order and duration when the metadata provides them.
+  - Reject malformed or out-of-bounds frame rectangles.
+  - Add parser and frame mapping tests without external services.
+acceptance_criteria:
+  - Build SpriteProject frames from a spritesheet PNG and supported JSON frame metadata.
+  - Focused tests cover the behavior introduced by this task.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *a1

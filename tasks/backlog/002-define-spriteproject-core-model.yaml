@@ -1,0 +1,38 @@
+id: "002"
+title: Define SpriteProject core model
+status: backlog
+priority: high
+goal: Create the format-agnostic SpriteProject data model shared by importers and exporters.
+context: This task was generated deterministically from the repository roadmap, architecture, current source tree, and existing task history.
+scope:
+  summary: Create the format-agnostic SpriteProject data model shared by importers and exporters.
+  allowed_paths:
+    - src/core/**
+    - src/**/*.test.*
+    - docs/**
+  forbidden_paths: &a1
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+non_goals:
+  - Do not implement unrelated roadmap features.
+  - Do not upload user artwork or use external processing services.
+  - Do not change dependencies, lockfiles, or GitHub workflows.
+requirements:
+  - Represent canvas size, RGBA color mode, frames, layers, cels, frame duration, and cel placement.
+  - Keep the core model independent from browser UI code and file formats.
+  - Add focused construction tests without implementing importers or exporters.
+acceptance_criteria:
+  - Create the format-agnostic SpriteProject data model shared by importers and exporters.
+  - Focused tests cover the behavior introduced by this task.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *a1
