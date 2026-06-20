@@ -1,3 +1,5 @@
+import { inflateSync } from "node:zlib";
+
 import { describe, expect, it } from "vitest";
 
 import type { SpriteProject } from "../../SpriteProject";
@@ -23,6 +25,49 @@ function createMinimalProject(): SpriteProject {
       },
     ],
   };
+}
+
+function createImageData(
+  width: number,
+  height: number,
+  bytes: number[],
+): ImageData {
+  return {
+    colorSpace: "srgb",
+    data: new Uint8ClampedArray(bytes),
+    height,
+    width,
+  };
+}
+
+type ParsedChunk = {
+  bytes: Uint8Array;
+  type: number;
+};
+
+function parseFrame(
+  bytes: Uint8Array,
+  offset: number,
+): { chunks: ParsedChunk[]; nextOffset: number } {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const frameSize = view.getUint32(offset, true);
+  const oldChunkCount = view.getUint16(offset + 6, true);
+  const chunkCount =
+    oldChunkCount === 0xffff ? view.getUint32(offset + 12, true) : oldChunkCount;
+  const chunks: ParsedChunk[] = [];
+  let chunkOffset = offset + 16;
+
+  for (let index = 0; index < chunkCount; index += 1) {
+    const chunkSize = view.getUint32(chunkOffset, true);
+    chunks.push({
+      bytes: bytes.slice(chunkOffset, chunkOffset + chunkSize),
+      type: view.getUint16(chunkOffset + 4, true),
+    });
+    chunkOffset += chunkSize;
+  }
+
+  expect(chunkOffset).toBe(offset + frameSize);
+  return { chunks, nextOffset: offset + frameSize };
 }
 
 describe("BinaryWriter", () => {
@@ -60,7 +105,6 @@ describe("exportAseprite", () => {
     const bytes = exportAseprite(project);
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
-    expect(bytes).toHaveLength(128 + 2 * 16);
     expect(view.getUint32(0, true)).toBe(bytes.length);
     expect(view.getUint16(4, true)).toBe(0xa5e0);
     expect(view.getUint16(6, true)).toBe(2);
@@ -82,24 +126,129 @@ describe("exportAseprite", () => {
     expect(bytes.slice(44, 128)).toEqual(new Uint8Array(84));
   });
 
-  it("writes one zero-chunk frame header per frame", () => {
+  it("writes layer chunks in the first frame and preserves frame durations", () => {
     const project = createMinimalProject();
     project.frames.push({ index: 1, durationMs: 0x1234 });
 
     const bytes = exportAseprite(project);
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const firstFrame = parseFrame(bytes, 128);
+    const secondFrame = parseFrame(bytes, firstFrame.nextOffset);
 
-    for (const [offset, duration] of [
-      [128, 100],
-      [144, 0x1234],
+    for (const [offset, duration, chunkCount] of [
+      [128, 100, 1],
+      [firstFrame.nextOffset, 0x1234, 0],
     ] as const) {
-      expect(view.getUint32(offset, true)).toBe(16);
       expect(view.getUint16(offset + 4, true)).toBe(0xf1fa);
-      expect(view.getUint16(offset + 6, true)).toBe(0);
+      expect(view.getUint16(offset + 6, true)).toBe(chunkCount);
       expect(view.getUint16(offset + 8, true)).toBe(duration);
       expect(bytes.slice(offset + 10, offset + 12)).toEqual(new Uint8Array(2));
       expect(view.getUint32(offset + 12, true)).toBe(0);
     }
+    expect(firstFrame.chunks.map((chunk) => chunk.type)).toEqual([0x2004]);
+    expect(secondFrame.chunks).toEqual([]);
+    expect(secondFrame.nextOffset).toBe(bytes.length);
+  });
+
+  it("writes byte-level normal layer and compressed cel data across frames", () => {
+    const project: SpriteProject = {
+      width: 4,
+      height: 4,
+      colorMode: "rgba",
+      frames: [
+        { index: 0, durationMs: 80 },
+        { index: 1, durationMs: 125 },
+      ],
+      layers: [
+        {
+          id: "base",
+          name: "Base",
+          visible: true,
+          opacity: 128,
+          cels: [
+            {
+              frameIndex: 0,
+              x: -2,
+              y: 3,
+              imageData: createImageData(1, 1, [1, 2, 3, 4]),
+            },
+          ],
+        },
+        {
+          id: "ink",
+          name: "Ink 線",
+          visible: true,
+          opacity: 255,
+          cels: [
+            {
+              frameIndex: 0,
+              x: 0,
+              y: 1,
+              imageData: createImageData(1, 1, [10, 20, 30, 40]),
+            },
+            {
+              frameIndex: 1,
+              x: 2,
+              y: -1,
+              imageData: createImageData(2, 1, [5, 6, 7, 8, 9, 10, 11, 12]),
+            },
+          ],
+        },
+      ],
+    };
+
+    const bytes = exportAseprite(project);
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const frame0 = parseFrame(bytes, 128);
+    const frame1 = parseFrame(bytes, frame0.nextOffset);
+
+    expect(view.getUint32(0, true)).toBe(bytes.length);
+    expect(view.getUint16(128 + 6, true)).toBe(4);
+    expect(view.getUint16(128 + 8, true)).toBe(80);
+    expect(view.getUint16(frame0.nextOffset + 6, true)).toBe(1);
+    expect(view.getUint16(frame0.nextOffset + 8, true)).toBe(125);
+    expect(frame0.chunks.map((chunk) => chunk.type)).toEqual([
+      0x2004, 0x2004, 0x2005, 0x2005,
+    ]);
+    expect(frame1.chunks.map((chunk) => chunk.type)).toEqual([0x2005]);
+    expect(frame1.nextOffset).toBe(bytes.length);
+
+    const [baseLayer, inkLayer, baseCel, inkCel0] = frame0.chunks;
+    const inkCel1 = frame1.chunks[0];
+    const baseLayerView = new DataView(baseLayer.bytes.buffer);
+    const inkLayerView = new DataView(inkLayer.bytes.buffer);
+
+    expect(baseLayerView.getUint32(0, true)).toBe(baseLayer.bytes.length);
+    expect(baseLayerView.getUint16(6, true)).toBe(3); // Visible and editable.
+    expect(baseLayerView.getUint16(8, true)).toBe(0); // Normal layer.
+    expect(baseLayerView.getUint16(10, true)).toBe(0); // Top-level layer.
+    expect(baseLayerView.getUint16(16, true)).toBe(0); // Normal blend.
+    expect(baseLayerView.getUint8(18)).toBe(128);
+    expect(baseLayerView.getUint16(22, true)).toBe(4);
+    expect(new TextDecoder().decode(baseLayer.bytes.slice(24))).toBe("Base");
+    expect(inkLayerView.getUint16(22, true)).toBe(7);
+    expect(new TextDecoder().decode(inkLayer.bytes.slice(24))).toBe("Ink 線");
+
+    for (const [chunk, layerIndex, x, y, pixels] of [
+      [baseCel, 0, -2, 3, [1, 2, 3, 4]],
+      [inkCel0, 1, 0, 1, [10, 20, 30, 40]],
+      [inkCel1, 1, 2, -1, [5, 6, 7, 8, 9, 10, 11, 12]],
+    ] as const) {
+      const chunkView = new DataView(chunk.bytes.buffer);
+      expect(chunkView.getUint32(0, true)).toBe(chunk.bytes.length);
+      expect(chunkView.getUint16(6, true)).toBe(layerIndex);
+      expect(chunkView.getInt16(8, true)).toBe(x);
+      expect(chunkView.getInt16(10, true)).toBe(y);
+      expect(chunkView.getUint8(12)).toBe(255);
+      expect(chunkView.getUint16(13, true)).toBe(2);
+      expect(chunkView.getInt16(15, true)).toBe(0);
+      expect(chunk.bytes.slice(17, 22)).toEqual(new Uint8Array(5));
+      expect(Array.from(inflateSync(chunk.bytes.slice(26)))).toEqual(pixels);
+    }
+    expect(new DataView(baseCel.bytes.buffer).getUint16(22, true)).toBe(1);
+    expect(new DataView(baseCel.bytes.buffer).getUint16(24, true)).toBe(1);
+    expect(new DataView(inkCel1.bytes.buffer).getUint16(22, true)).toBe(2);
+    expect(new DataView(inkCel1.bytes.buffer).getUint16(24, true)).toBe(1);
   });
 
   it.each([
@@ -131,6 +280,25 @@ describe("exportAseprite", () => {
   it("rejects frame durations that cannot be written as a WORD", () => {
     const project = createMinimalProject();
     project.frames[0].durationMs = 0x10000;
+
+    expect(() => exportAseprite(project)).toThrow(RangeError);
+  });
+
+  it("rejects invalid layer and cel fields instead of truncating them", () => {
+    const project = createMinimalProject();
+    project.layers[0].opacity = 256;
+
+    expect(() => exportAseprite(project)).toThrow(RangeError);
+
+    project.layers[0].opacity = 255;
+    project.layers[0].cels = [
+      {
+        frameIndex: 0,
+        x: 0x8000,
+        y: 0,
+        imageData: createImageData(1, 1, [0, 0, 0, 0]),
+      },
+    ];
 
     expect(() => exportAseprite(project)).toThrow(RangeError);
   });

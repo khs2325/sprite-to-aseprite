@@ -1,4 +1,8 @@
-import type { SpriteProject } from "../../SpriteProject";
+import type {
+  SpriteCel,
+  SpriteLayer,
+  SpriteProject,
+} from "../../SpriteProject";
 
 import { BinaryWriter } from "./binaryWriter";
 
@@ -8,9 +12,20 @@ const FILE_HEADER_SIZE = 128;
 const FRAME_HEADER_SIZE = 16;
 const FILE_MAGIC = 0xa5e0;
 const FRAME_MAGIC = 0xf1fa;
+const LAYER_CHUNK_TYPE = 0x2004;
+const CEL_CHUNK_TYPE = 0x2005;
 const RGBA_COLOR_DEPTH = 32;
 const LAYER_OPACITY_IS_VALID = 1;
+const LAYER_VISIBLE = 1;
+const LAYER_EDITABLE = 2;
+const NORMAL_LAYER = 0;
+const NORMAL_BLEND_MODE = 0;
+const COMPRESSED_IMAGE_CEL = 2;
+const UINT8_MAX = 0xff;
 const UINT16_MAX = 0xffff;
+const UINT32_MAX = 0xffffffff;
+const INT16_MIN = -0x8000;
+const INT16_MAX = 0x7fff;
 
 export class UnsupportedAsepriteFeatureError extends Error {
   readonly feature: string;
@@ -22,21 +37,116 @@ export class UnsupportedAsepriteFeatureError extends Error {
   }
 }
 
-function assertPositiveUint16(value: number, field: string): void {
-  if (!Number.isInteger(value) || value < 1 || value > UINT16_MAX) {
+function assertIntegerInRange(
+  value: number,
+  minimum: number,
+  maximum: number,
+  field: string,
+): void {
+  if (!Number.isInteger(value) || value < minimum || value > maximum) {
     throw new RangeError(
-      `${field} must be an integer from 1 to ${UINT16_MAX}.`,
+      `${field} must be an integer from ${minimum} to ${maximum}.`,
     );
   }
 }
 
-function validateHeaderFields(project: SpriteProject): void {
+function assertPositiveUint16(value: number, field: string): void {
+  assertIntegerInRange(value, 1, UINT16_MAX, field);
+}
+
+function writeInt16LE(writer: BinaryWriter, value: number): void {
+  writer.writeUint16LE(value < 0 ? 0x10000 + value : value);
+}
+
+function encodeString(value: string, field: string): Uint8Array {
+  if (typeof value !== "string") {
+    throw new TypeError(`${field} must be a string.`);
+  }
+
+  const bytes = new TextEncoder().encode(value);
+  if (bytes.length > UINT16_MAX) {
+    throw new RangeError(
+      `${field} must contain at most ${UINT16_MAX} UTF-8 bytes.`,
+    );
+  }
+  return bytes;
+}
+
+function validateCel(
+  cel: SpriteCel,
+  layerIndex: number,
+  celIndex: number,
+  frameCount: number,
+): void {
+  const field = `Layer ${layerIndex} cel ${celIndex}`;
+  assertIntegerInRange(cel.frameIndex, 0, frameCount - 1, `${field} frame index`);
+  assertIntegerInRange(cel.x, INT16_MIN, INT16_MAX, `${field} x position`);
+  assertIntegerInRange(cel.y, INT16_MIN, INT16_MAX, `${field} y position`);
+
+  const imageData = cel.imageData;
+  if (
+    typeof imageData !== "object" ||
+    imageData === null ||
+    !(imageData.data instanceof Uint8ClampedArray)
+  ) {
+    throw new TypeError(`${field} image data must contain RGBA bytes.`);
+  }
+
+  assertPositiveUint16(imageData.width, `${field} image width`);
+  assertPositiveUint16(imageData.height, `${field} image height`);
+  if (imageData.data.length !== imageData.width * imageData.height * 4) {
+    throw new RangeError(
+      `${field} image data length must equal width x height x 4 RGBA bytes.`,
+    );
+  }
+}
+
+function validateProjectFields(project: SpriteProject): void {
   assertPositiveUint16(project.width, "Project width");
   assertPositiveUint16(project.height, "Project height");
   assertPositiveUint16(project.frames.length, "Project frame count");
 
   project.frames.forEach((frame, index) => {
+    if (frame.index !== index) {
+      throw new RangeError(`Frame ${index} index must be ${index}.`);
+    }
     assertPositiveUint16(frame.durationMs, `Frame ${index} duration`);
+  });
+
+  if (!Array.isArray(project.layers) || project.layers.length < 1) {
+    throw new RangeError("Project must contain at least one layer.");
+  }
+  if (project.layers.length > UINT16_MAX + 1) {
+    throw new RangeError(
+      `Project must contain at most ${UINT16_MAX + 1} layers.`,
+    );
+  }
+
+  project.layers.forEach((layer, layerIndex) => {
+    if (typeof layer.visible !== "boolean") {
+      throw new TypeError(`Layer ${layerIndex} visibility must be a boolean.`);
+    }
+    assertIntegerInRange(
+      layer.opacity,
+      0,
+      UINT8_MAX,
+      `Layer ${layerIndex} opacity`,
+    );
+    encodeString(layer.name, `Layer ${layerIndex} name`);
+    if (!Array.isArray(layer.cels)) {
+      throw new TypeError(`Layer ${layerIndex} cels must be an array.`);
+    }
+
+    const frameIndexes = new Set<number>();
+    layer.cels.forEach((cel, celIndex) => {
+      validateCel(cel, layerIndex, celIndex, project.frames.length);
+      if (frameIndexes.has(cel.frameIndex)) {
+        throw new RangeError(
+          `Layer ${layerIndex} cannot contain multiple cels for frame ${cel.frameIndex}.`,
+        );
+      }
+      frameIndexes.add(cel.frameIndex);
+    });
   });
 }
 
@@ -67,13 +177,109 @@ function writeFileHeader(
   writer.writeBytes(new Uint8Array(84));
 }
 
-function writeFrameHeader(writer: BinaryWriter, durationMs: number): void {
-  writer.writeUint32LE(FRAME_HEADER_SIZE);
+function createChunk(type: number, data: Uint8Array): Uint8Array {
+  const writer = new BinaryWriter();
+  writer.writeUint32LE(6 + data.length);
+  writer.writeUint16LE(type);
+  writer.writeBytes(data);
+  return writer.toUint8Array();
+}
+
+function createLayerChunk(layer: SpriteLayer): Uint8Array {
+  const name = encodeString(layer.name, "Layer name");
+  const data = new BinaryWriter();
+  data.writeUint16LE((layer.visible ? LAYER_VISIBLE : 0) | LAYER_EDITABLE);
+  data.writeUint16LE(NORMAL_LAYER);
+  data.writeUint16LE(0); // No parent group.
+  data.writeUint16LE(0); // Ignored default width.
+  data.writeUint16LE(0); // Ignored default height.
+  data.writeUint16LE(NORMAL_BLEND_MODE);
+  data.writeUint8(layer.opacity);
+  data.writeBytes(new Uint8Array(3));
+  data.writeUint16LE(name.length);
+  data.writeBytes(name);
+  return createChunk(LAYER_CHUNK_TYPE, data.toUint8Array());
+}
+
+function adler32(bytes: Uint8Array): number {
+  let a = 1;
+  let b = 0;
+  for (const byte of bytes) {
+    a = (a + byte) % 65521;
+    b = (b + a) % 65521;
+  }
+  return ((b << 16) | a) >>> 0;
+}
+
+function zlibStore(bytes: Uint8Array): Uint8Array {
+  const writer = new BinaryWriter();
+  writer.writeUint8(0x78); // Deflate with a 32 KiB window.
+  writer.writeUint8(0x01); // No preset dictionary, fastest compression level.
+
+  for (let offset = 0; offset < bytes.length; ) {
+    const length = Math.min(UINT16_MAX, bytes.length - offset);
+    const isFinal = offset + length === bytes.length;
+    writer.writeUint8(isFinal ? 1 : 0); // Stored DEFLATE block.
+    writer.writeUint16LE(length);
+    writer.writeUint16LE(UINT16_MAX - length);
+    writer.writeBytes(bytes.slice(offset, offset + length));
+    offset += length;
+  }
+
+  const checksum = adler32(bytes);
+  writer.writeBytes(
+    new Uint8Array([
+      (checksum >>> 24) & UINT8_MAX,
+      (checksum >>> 16) & UINT8_MAX,
+      (checksum >>> 8) & UINT8_MAX,
+      checksum & UINT8_MAX,
+    ]),
+  );
+  return writer.toUint8Array();
+}
+
+function createCelChunk(cel: SpriteCel, layerIndex: number): Uint8Array {
+  const data = new BinaryWriter();
+  data.writeUint16LE(layerIndex);
+  writeInt16LE(data, cel.x);
+  writeInt16LE(data, cel.y);
+  data.writeUint8(UINT8_MAX); // SpriteProject has no per-cel opacity.
+  data.writeUint16LE(COMPRESSED_IMAGE_CEL);
+  data.writeUint16LE(0); // Default z-index.
+  data.writeBytes(new Uint8Array(5));
+  data.writeUint16LE(cel.imageData.width);
+  data.writeUint16LE(cel.imageData.height);
+  data.writeBytes(
+    zlibStore(
+      new Uint8Array(
+        cel.imageData.data.buffer,
+        cel.imageData.data.byteOffset,
+        cel.imageData.data.byteLength,
+      ),
+    ),
+  );
+  return createChunk(CEL_CHUNK_TYPE, data.toUint8Array());
+}
+
+function writeFrame(
+  writer: BinaryWriter,
+  durationMs: number,
+  chunks: Uint8Array[],
+): void {
+  const frameSize =
+    FRAME_HEADER_SIZE +
+    chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  if (frameSize > UINT32_MAX) {
+    throw new RangeError("Aseprite frame size exceeds the DWORD range.");
+  }
+
+  writer.writeUint32LE(frameSize);
   writer.writeUint16LE(FRAME_MAGIC);
-  writer.writeUint16LE(0); // Old chunk count.
+  writer.writeUint16LE(Math.min(chunks.length, UINT16_MAX));
   writer.writeUint16LE(durationMs);
   writer.writeUint16LE(0);
-  writer.writeUint32LE(0); // New chunk count.
+  writer.writeUint32LE(chunks.length >= UINT16_MAX ? chunks.length : 0);
+  chunks.forEach((chunk) => writer.writeBytes(chunk));
 }
 
 export function exportAseprite(project: SpriteProject): Uint8Array {
@@ -83,14 +289,38 @@ export function exportAseprite(project: SpriteProject): Uint8Array {
     );
   }
 
-  validateHeaderFields(project);
+  validateProjectFields(project);
+
+  const frameChunks = project.frames.map(() => [] as Uint8Array[]);
+  project.layers.forEach((layer) => {
+    frameChunks[0].push(createLayerChunk(layer));
+  });
+  project.layers.forEach((layer, layerIndex) => {
+    layer.cels.forEach((cel) => {
+      frameChunks[cel.frameIndex].push(createCelChunk(cel, layerIndex));
+    });
+  });
+
+  const fileSize =
+    FILE_HEADER_SIZE +
+    project.frames.reduce(
+      (sum, _frame, index) =>
+        sum +
+        FRAME_HEADER_SIZE +
+        frameChunks[index].reduce(
+          (chunkSum, chunk) => chunkSum + chunk.length,
+          0,
+        ),
+      0,
+    );
+  if (fileSize > UINT32_MAX) {
+    throw new RangeError("Aseprite file size exceeds the DWORD range.");
+  }
 
   const writer = new BinaryWriter();
-  const fileSize = FILE_HEADER_SIZE + FRAME_HEADER_SIZE * project.frames.length;
-
   writeFileHeader(writer, project, fileSize);
-  project.frames.forEach((frame) => {
-    writeFrameHeader(writer, frame.durationMs);
+  project.frames.forEach((frame, index) => {
+    writeFrame(writer, frame.durationMs, frameChunks[index]);
   });
 
   return writer.toUint8Array();
