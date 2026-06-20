@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import YAML from "yaml";
 import {
+  autoMergePolicyDecision,
   buildFailureLogContent,
   buildTaskYaml,
   canContinueWithoutPrChecks,
@@ -16,6 +17,7 @@ import {
   guardDirtyTaskStateOnTaskBranch,
   isRecoverableCodexSandboxVerificationFailure,
   npmCommand,
+  policyFalseRecoveryOptions,
   prChecksFailurePolicy,
   selectRoadmapTasks,
   shouldContinueAfterCodexFailure,
@@ -172,6 +174,60 @@ describe("Windows sandbox recovery and task-state safety", () => {
     expect(existingTaskRecoveryAction(openPr, false, true)).toBe("resume-pr");
     expect(existingTaskRecoveryAction(mergedPr, false, false)).toBe("complete-merged");
     expect(existingTaskRecoveryAction(null, false, false)).toBe("start");
+  });
+
+  it("blocks auto_merge.allowed=false by default", () => {
+    expect(autoMergePolicyDecision({
+      taskPolicyAllowed: false,
+      overrideEnabled: false,
+      localVerificationPassed: true,
+      safetyValidationPassed: true
+    })).toBe("block-policy");
+  });
+
+  it("allows policy-false auto-merge only with the explicit override", () => {
+    expect(autoMergePolicyDecision({
+      taskPolicyAllowed: false,
+      overrideEnabled: true,
+      localVerificationPassed: true,
+      safetyValidationPassed: true
+    })).toBe("allow");
+  });
+
+  it("keeps local verification and safety validation mandatory under the override", () => {
+    expect(autoMergePolicyDecision({
+      taskPolicyAllowed: false,
+      overrideEnabled: true,
+      localVerificationPassed: false,
+      safetyValidationPassed: true
+    })).toBe("block-verification");
+    expect(autoMergePolicyDecision({
+      taskPolicyAllowed: false,
+      overrideEnabled: true,
+      localVerificationPassed: true,
+      safetyValidationPassed: false
+    })).toBe("block-safety");
+  });
+
+  it("resumes an existing policy-blocked PR when the override is enabled", () => {
+    const existingPr = { state: "OPEN", mergedAt: null };
+    expect(existingTaskRecoveryAction(existingPr, false, true)).toBe("resume-pr");
+    expect(autoMergePolicyDecision({
+      taskPolicyAllowed: false,
+      overrideEnabled: true,
+      localVerificationPassed: true,
+      safetyValidationPassed: true
+    })).toBe("allow");
+  });
+
+  it("prints manual and override recovery commands for policy-false stops", () => {
+    const recovery = policyFalseRecoveryOptions(8);
+    expect(recovery).toContain("gh pr view 8 --web");
+    expect(recovery).toContain("gh pr merge 8 --squash --delete-branch");
+    expect(recovery).toContain("git checkout main");
+    expect(recovery).toContain("git pull origin main");
+    expect(recovery).toContain("AUTO_DEV_ALLOW_POLICY_FALSE_AUTOMERGE=true npm run auto-dev:until-stop");
+    expect(recovery).toContain('$env:AUTO_DEV_ALLOW_POLICY_FALSE_AUTOMERGE="true"');
   });
 
   it("includes recovery commands and workflow context in failure logs", () => {
