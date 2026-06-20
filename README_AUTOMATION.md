@@ -88,6 +88,20 @@ Process tasks continuously with runtime and task-count safety limits:
 npm run auto-dev:until-stop
 ```
 
+Generate the next deterministic batch of backlog tasks:
+
+```bash
+npm run auto-dev:generate-tasks
+```
+
+The generator inspects project documentation, current source/test paths, and task files in `backlog`, `done`, and `failed`. It selects the next small roadmap items, skips normalized duplicate titles and work with known completion paths, assigns the next numeric IDs, writes only `tasks/backlog/*.yaml`, and commits/pushes those files on `main`. The default batch size is five; override it with `AUTO_DEV_GENERATED_TASK_COUNT`.
+
+Preview generation without pulling, writing, committing, or pushing:
+
+```bash
+node scripts/auto-dev-cycle.mjs --dry-run --generate-tasks
+```
+
 Each real task cycle:
 
 1. Requires a clean tree, checks out `main`, and pulls `origin/main` with `--ff-only`.
@@ -111,6 +125,9 @@ Each real task cycle:
 | `AUTO_DEV_STOP_ON_FAILURE` | `true` | Return a failing exit code for task failures |
 | `AUTO_DEV_ALLOW_WORKFLOW_CHANGES` | `false` | Permit `.github/workflows/*` during PR safety validation |
 | `AUTO_DEV_ALLOW_LOCKFILE_CHANGES` | `false` | Permit lockfile-only changes |
+| `AUTO_DEV_GENERATE_TASKS_WHEN_EMPTY` | `false` | Generate deterministic tasks when `--until-stop` finds an empty backlog |
+| `AUTO_DEV_GENERATED_TASK_COUNT` | `5` | Number of tasks in each generated batch |
+| `AUTO_DEV_MAX_GENERATION_ROUNDS` | `1` | Maximum generated batches in one `--until-stop` process |
 
 Example:
 
@@ -123,6 +140,19 @@ PowerShell equivalent:
 ```powershell
 $env:AUTO_DEV_MAX_TASKS = "20"
 $env:AUTO_DEV_MAX_MINUTES = "240"
+npm run auto-dev:until-stop
+```
+
+To let `--until-stop` refill an empty backlog once and continue:
+
+```bash
+AUTO_DEV_GENERATE_TASKS_WHEN_EMPTY=true npm run auto-dev:until-stop
+```
+
+PowerShell:
+
+```powershell
+$env:AUTO_DEV_GENERATE_TASKS_WHEN_EMPTY = "true"
 npm run auto-dev:until-stop
 ```
 
@@ -154,7 +184,7 @@ npm run auto-dev
 
 ```bash
 npm run prompt 001
-npm run auto-dev -- --dry-run
+npm run auto-dev:dry
 ```
 
 Then run:

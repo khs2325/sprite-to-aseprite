@@ -39,6 +39,19 @@ function asList(value) {
   return String(value).trim();
 }
 
+function formatScope(value) {
+  if (!value || Array.isArray(value) || typeof value !== "object") return asList(value);
+  return [
+    String(value.summary ?? "").trim(),
+    "",
+    "Allowed paths:",
+    asList(value.allowed_paths),
+    "",
+    "Forbidden paths:",
+    asList(value.forbidden_paths)
+  ].join("\n").trim();
+}
+
 function required(task, key) {
   if (task[key] === undefined || task[key] === null || task[key] === "") {
     throw new Error(`Task is missing required field: ${key}`);
@@ -77,7 +90,7 @@ const prompt = template
   .replaceAll("{{title}}", String(task.title))
   .replaceAll("{{goal}}", String(task.goal).trim())
   .replaceAll("{{context}}", String(task.context).trim())
-  .replaceAll("{{scope}}", asList(task.scope))
+  .replaceAll("{{scope}}", formatScope(task.scope))
   .replaceAll("{{non_goals}}", asList(task.non_goals))
   .replaceAll("{{requirements}}", asList(task.requirements))
   .replaceAll("{{acceptance_criteria}}", asList(task.acceptance_criteria))

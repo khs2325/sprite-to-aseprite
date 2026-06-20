@@ -9,6 +9,7 @@
     "auto-dev:dry": "node scripts/auto-dev-cycle.mjs --dry-run",
     "auto-dev:all": "node scripts/auto-dev-cycle.mjs --all",
     "auto-dev:until-stop": "node scripts/auto-dev-cycle.mjs --until-stop",
+    "auto-dev:generate-tasks": "node scripts/auto-dev-cycle.mjs --generate-tasks",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "build": "vite build"

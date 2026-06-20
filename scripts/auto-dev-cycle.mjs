@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 
 const CHECK_COMMANDS = [
@@ -10,6 +11,248 @@ const CHECK_COMMANDS = [
 ];
 const LOCKFILES = new Set(["package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock"]);
 const GENERATED_PREFIXES = [".cache/", ".vite/", "build/", "coverage/", "dist/", "node_modules/", "prompts/generated/", "test-output/", "tmp/"];
+const DEFAULT_FORBIDDEN_PATHS = [".github/workflows/**", ".env", ".env.*", "dist/**", "build/**"];
+const ROADMAP = [
+  {
+    title: "Define SpriteProject core model",
+    summary: "Create the format-agnostic SpriteProject data model shared by importers and exporters.",
+    allowedPaths: ["src/core/**", "src/**/*.test.*", "docs/**"],
+    requirements: [
+      "Represent canvas size, RGBA color mode, frames, layers, cels, frame duration, and cel placement.",
+      "Keep the core model independent from browser UI code and file formats.",
+      "Add focused construction tests without implementing importers or exporters."
+    ],
+    completionPaths: ["src/core/SpriteProject.ts"],
+    autoMerge: true
+  },
+  {
+    title: "Add SpriteProject validation helpers",
+    summary: "Validate SpriteProject dimensions, frame references, layer data, opacity, and cel placement.",
+    allowedPaths: ["src/core/validation/**", "src/core/**/*.test.*", "src/**/*.test.*"],
+    requirements: [
+      "Return clear validation errors for malformed project data.",
+      "Reject invalid dimensions, frame indexes, opacity, and cel references.",
+      "Add unit tests for valid and invalid projects."
+    ],
+    completionPaths: ["src/core/validation/index.ts"],
+    autoMerge: true
+  },
+  {
+    title: "Implement PNG sequence importer",
+    summary: "Convert an ordered browser-local PNG sequence into a single-layer SpriteProject timeline.",
+    allowedPaths: ["src/core/importers/pngSequence/**", "src/core/**/*.test.*", "src/**/*.test.*"],
+    requirements: [
+      "Keep all image processing browser-only and never upload user artwork.",
+      "Create one layer because flat PNG files do not contain original layer data.",
+      "Validate consistent frame dimensions and preserve input ordering.",
+      "Add unit tests using synthetic image data rather than real user files."
+    ],
+    completionPaths: ["src/core/importers/pngSequence/index.ts"],
+    autoMerge: true
+  },
+  {
+    title: "Implement spritesheet grid importer",
+    summary: "Slice a browser-local spritesheet grid into ordered SpriteProject frames.",
+    allowedPaths: ["src/core/importers/spritesheetGrid/**", "src/core/**/*.test.*", "src/**/*.test.*"],
+    requirements: [
+      "Support explicit frame width, frame height, rows, columns, and frame order.",
+      "Reject grids that exceed or do not fit the source image dimensions.",
+      "Create one layer and do not claim original layers can be recovered.",
+      "Add focused grid slicing tests with synthetic data."
+    ],
+    completionPaths: ["src/core/importers/spritesheetGrid/index.ts"],
+    autoMerge: true
+  },
+  {
+    title: "Implement spritesheet JSON metadata importer",
+    summary: "Build SpriteProject frames from a spritesheet PNG and supported JSON frame metadata.",
+    allowedPaths: ["src/core/importers/spritesheetJson/**", "src/core/**/*.test.*", "src/**/*.test.*"],
+    requirements: [
+      "Parse a small documented JSON metadata subset with explicit validation.",
+      "Preserve frame order and duration when the metadata provides them.",
+      "Reject malformed or out-of-bounds frame rectangles.",
+      "Add parser and frame mapping tests without external services."
+    ],
+    completionPaths: ["src/core/importers/spritesheetJson/index.ts"],
+    autoMerge: true
+  },
+  {
+    title: "Create Aseprite writer skeleton",
+    summary: "Define a minimal exporter boundary that consumes SpriteProject and produces binary output.",
+    allowedPaths: ["src/core/exporters/aseprite/**", "src/core/**/*.test.*", "docs/**"],
+    requirements: [
+      "Keep the exporter independent from UI code.",
+      "Define explicit binary writer helpers and unsupported-feature errors.",
+      "Add tests for deterministic empty or minimal output structure without claiming full format support."
+    ],
+    completionPaths: ["src/core/exporters/aseprite/index.ts"],
+    autoMerge: false
+  },
+  {
+    title: "Write minimal Aseprite binary header",
+    summary: "Write and test the minimal .aseprite file and frame headers for RGBA projects.",
+    allowedPaths: ["src/core/exporters/aseprite/**", "src/core/**/*.test.*", "docs/**"],
+    requirements: [
+      "Write correct little-endian header fields for the supported RGBA subset.",
+      "Validate dimensions and frame count before writing.",
+      "Add byte-level tests against documented constants and offsets."
+    ],
+    completionPaths: ["src/core/exporters/aseprite/header.ts"],
+    autoMerge: false
+  },
+  {
+    title: "Write Aseprite layers and cels",
+    summary: "Encode normal layer and cel chunks from SpriteProject into the supported Aseprite subset.",
+    allowedPaths: ["src/core/exporters/aseprite/**", "src/core/**/*.test.*", "docs/**"],
+    requirements: [
+      "Support normal visible layers, opacity, names, cel coordinates, and frame duration.",
+      "Reject unsupported modes explicitly rather than silently accepting them.",
+      "Add byte-level tests for multiple frames, layers, and cels."
+    ],
+    completionPaths: ["src/core/exporters/aseprite/cels.ts"],
+    autoMerge: false
+  },
+  {
+    title: "Add export download UI",
+    summary: "Add a browser-only action that exports the current SpriteProject and downloads an .aseprite file.",
+    allowedPaths: ["src/app/**", "src/**/*.test.*", "docs/**"],
+    requirements: [
+      "Use Blob and browser download APIs without uploading project data.",
+      "Disable export when no valid project is loaded.",
+      "Show clear export errors and add focused UI tests."
+    ],
+    completionPaths: ["src/app/components/ExportDownload.ts"],
+    autoMerge: true
+  },
+  {
+    title: "Add browser file import UI",
+    summary: "Add browser-local file selection for supported sprite source files.",
+    allowedPaths: ["src/app/**", "src/**/*.test.*", "docs/**"],
+    requirements: [
+      "Read files only through browser APIs and never upload user artwork.",
+      "Expose supported file types and reject unsupported inputs clearly.",
+      "Add UI tests using synthetic File objects."
+    ],
+    completionPaths: ["src/app/components/FileImport.ts"],
+    autoMerge: true
+  },
+  {
+    title: "Add import error and validation UI",
+    summary: "Present importer and SpriteProject validation failures in a clear browser UI.",
+    allowedPaths: ["src/app/**", "src/**/*.test.*"],
+    requirements: [
+      "Display actionable errors without exposing file contents.",
+      "Keep validation messages format-specific where useful.",
+      "Add UI tests for common invalid inputs."
+    ],
+    completionPaths: ["src/app/components/ImportErrors.ts"],
+    autoMerge: true
+  },
+  {
+    title: "Expand importer unit tests",
+    summary: "Add edge-case unit coverage across the supported importers.",
+    allowedPaths: ["src/core/importers/**/*.test.*", "src/**/*.test.*", "tests/**"],
+    requirements: [
+      "Cover invalid dimensions, ordering, bounds, and duration metadata.",
+      "Use synthetic fixtures and avoid real user artwork.",
+      "Do not change importer behavior unless a test exposes a verified defect."
+    ],
+    autoMerge: true
+  },
+  {
+    title: "Expand Aseprite exporter unit tests",
+    summary: "Add byte-level regression coverage for the supported Aseprite exporter subset.",
+    allowedPaths: ["src/core/exporters/aseprite/**/*.test.*", "src/**/*.test.*", "tests/**"],
+    requirements: [
+      "Cover headers, frames, layers, cels, names, opacity, and duration.",
+      "Assert deterministic bytes and explicit rejection of unsupported data.",
+      "Do not broaden the exporter feature set in this task."
+    ],
+    autoMerge: true
+  },
+  {
+    title: "Add conversion integration smoke tests",
+    summary: "Add small end-to-end tests from synthetic importer input through Aseprite export.",
+    allowedPaths: ["tests/**", "src/**/*.test.*", "docs/**"],
+    requirements: [
+      "Cover one small happy path for each supported importer.",
+      "Keep fixtures synthetic and tiny.",
+      "Assert output structure without claiming unsupported lossless conversion."
+    ],
+    autoMerge: true
+  },
+  {
+    title: "Document supported conversion behavior",
+    summary: "Document supported inputs, browser-only processing, and the limits of flat image formats.",
+    allowedPaths: ["README.md", "docs/**"],
+    requirements: [
+      "Describe frame conversion and timeline rebuilding accurately.",
+      "State that flat PNG sources cannot recover original layers.",
+      "Document supported and unsupported Aseprite features."
+    ],
+    completionPaths: ["README.md"],
+    autoMerge: true
+  },
+  {
+    title: "Add synthetic sample fixtures",
+    summary: "Add tiny synthetic sprite fixtures for demos and automated tests.",
+    allowedPaths: ["tests/fixtures/**", "docs/**"],
+    requirements: [
+      "Use newly generated synthetic artwork only.",
+      "Keep files small and document expected frame geometry.",
+      "Do not include real user sprite files or copyrighted assets."
+    ],
+    autoMerge: true
+  },
+  {
+    title: "Add drag-and-drop file import",
+    summary: "Add drag-and-drop as an alternative browser-local file import interaction.",
+    allowedPaths: ["src/app/**", "src/**/*.test.*", "docs/**"],
+    requirements: [
+      "Reuse the existing browser-local import pipeline.",
+      "Provide keyboard-accessible fallback controls.",
+      "Add tests for accepted, rejected, and mixed drops."
+    ],
+    completionPaths: ["src/app/components/DropImport.ts"],
+    autoMerge: true
+  },
+  {
+    title: "Add preview timeline UI",
+    summary: "Show imported SpriteProject frames in a simple browser preview timeline.",
+    allowedPaths: ["src/app/**", "src/**/*.test.*"],
+    requirements: [
+      "Render frame order and active-frame state without mutating project data.",
+      "Keep artwork local to the browser.",
+      "Add tests for navigation and empty state."
+    ],
+    completionPaths: ["src/app/components/TimelinePreview.ts"],
+    autoMerge: true
+  },
+  {
+    title: "Add frame duration editing",
+    summary: "Allow editing SpriteProject frame durations with validation in the browser UI.",
+    allowedPaths: ["src/app/**", "src/core/**", "src/**/*.test.*"],
+    requirements: [
+      "Require finite positive frame durations within documented bounds.",
+      "Update only the selected frame and preserve timeline ordering.",
+      "Add model and UI tests."
+    ],
+    completionPaths: ["src/app/components/FrameDurationEditor.ts"],
+    autoMerge: true
+  },
+  {
+    title: "Add basic layer naming",
+    summary: "Allow users to rename SpriteProject layers before export.",
+    allowedPaths: ["src/app/**", "src/core/**", "src/**/*.test.*"],
+    requirements: [
+      "Validate non-empty layer names and preserve layer ordering.",
+      "Do not imply that source layers were recovered from flat images.",
+      "Add model and UI tests for rename behavior."
+    ],
+    completionPaths: ["src/app/components/LayerNameEditor.ts"],
+    autoMerge: true
+  }
+];
 const cliArgs = new Set(process.argv.slice(2));
 const dryRun = cliArgs.has("--dry-run");
 const mode = getMode();
@@ -18,6 +261,9 @@ const maxRepairAttempts = readNonNegativeInteger("AUTO_DEV_MAX_REPAIR_ATTEMPTS",
 const stopOnFailure = readBoolean("AUTO_DEV_STOP_ON_FAILURE", true);
 const allowWorkflowChanges = readBoolean("AUTO_DEV_ALLOW_WORKFLOW_CHANGES", false);
 const allowLockfileChanges = readBoolean("AUTO_DEV_ALLOW_LOCKFILE_CHANGES", false);
+const generateTasksWhenEmpty = readBoolean("AUTO_DEV_GENERATE_TASKS_WHEN_EMPTY", false);
+const generatedTaskCount = readNonNegativeInteger("AUTO_DEV_GENERATED_TASK_COUNT", 5);
+const maxGenerationRounds = readNonNegativeInteger("AUTO_DEV_MAX_GENERATION_ROUNDS", 1);
 const maxTasks = readMaxTasks();
 const maxMinutes = readMaxMinutes();
 const deadline = Number.isFinite(maxMinutes) ? startedAt + maxMinutes * 60_000 : Infinity;
@@ -36,9 +282,9 @@ class AutomationStop extends Error {
 }
 
 function getMode() {
-  if (cliArgs.has("--all") && cliArgs.has("--until-stop")) {
-    throw new Error("Use either --all or --until-stop, not both.");
-  }
+  const selectedModes = ["--all", "--until-stop", "--generate-tasks"].filter((flag) => cliArgs.has(flag));
+  if (selectedModes.length > 1) throw new Error(`Use only one automation mode, not ${selectedModes.join(", ")}.`);
+  if (cliArgs.has("--generate-tasks")) return "generate-tasks";
   if (cliArgs.has("--until-stop")) return "until-stop";
   if (cliArgs.has("--all")) return "all";
   return "single";
@@ -188,6 +434,166 @@ function listBacklogTasks() {
   const backlogDir = path.resolve("tasks", "backlog");
   if (!fs.existsSync(backlogDir)) return [];
   return fs.readdirSync(backlogDir).filter((file) => file.endsWith(".yaml")).sort();
+}
+
+function walkFiles(directory) {
+  if (!fs.existsSync(directory)) return [];
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(directory, entry.name);
+    return entry.isDirectory() ? walkFiles(entryPath) : [path.relative(process.cwd(), entryPath).replaceAll("\\", "/")];
+  });
+}
+
+function collectProjectPlanningContext() {
+  const docPaths = ["AGENTS.md", "README.md", "docs/architecture.md", "docs/product-spec.md", "docs/roadmap.md"];
+  const docs = Object.fromEntries(docPaths.filter((file) => fs.existsSync(file)).map((file) => [file, fs.readFileSync(file, "utf8")]));
+  const sourceFiles = walkFiles(path.resolve("src"));
+  const testFiles = [
+    ...walkFiles(path.resolve("test")),
+    ...walkFiles(path.resolve("tests")),
+    ...walkFiles(path.resolve("scripts")).filter((file) => /\.(?:test|spec)\./u.test(file)),
+    ...sourceFiles.filter((file) => /\.(?:test|spec)\./u.test(file))
+  ];
+  const tasks = [];
+
+  for (const state of ["backlog", "done", "failed"]) {
+    const directory = path.resolve("tasks", state);
+    if (!fs.existsSync(directory)) continue;
+    for (const file of fs.readdirSync(directory).filter((name) => name.endsWith(".yaml")).sort()) {
+      const filePath = path.join(directory, file);
+      try {
+        tasks.push({ state, file, data: YAML.parse(fs.readFileSync(filePath, "utf8")) });
+      } catch (error) {
+        throw new AutomationStop(`Could not parse existing task ${path.relative(process.cwd(), filePath)}: ${error.message}`, "task_parse_failure");
+      }
+    }
+  }
+
+  return { docs, sourceFiles, testFiles: [...new Set(testFiles)].sort(), tasks };
+}
+
+function listExistingTaskIds(context = collectProjectPlanningContext()) {
+  return context.tasks.map((task) => String(task.data?.id ?? getTaskId(task.file))).filter(Boolean);
+}
+
+function getNextTaskId(existingIds, offset = 0) {
+  const numericIds = existingIds.map((id) => Number.parseInt(String(id), 10)).filter(Number.isFinite);
+  const next = (numericIds.length > 0 ? Math.max(...numericIds) : 0) + 1 + offset;
+  return String(next).padStart(Math.max(3, String(next).length), "0");
+}
+
+function normalizeTitle(title) {
+  return String(title).toLocaleLowerCase("en-US").replace(/[^a-z0-9]+/gu, " ").trim();
+}
+
+function slugify(title) {
+  return normalizeTitle(title).replaceAll(" ", "-").slice(0, 70).replace(/-$/u, "");
+}
+
+function buildGeneratedTask(roadmapItem, id) {
+  return {
+    id,
+    title: roadmapItem.title,
+    status: "backlog",
+    priority: "high",
+    goal: roadmapItem.summary,
+    context: "This task was generated deterministically from the repository roadmap, architecture, current source tree, and existing task history.",
+    scope: {
+      summary: roadmapItem.summary,
+      allowed_paths: roadmapItem.allowedPaths,
+      forbidden_paths: DEFAULT_FORBIDDEN_PATHS
+    },
+    non_goals: [
+      "Do not implement unrelated roadmap features.",
+      "Do not upload user artwork or use external processing services.",
+      "Do not change dependencies, lockfiles, or GitHub workflows."
+    ],
+    requirements: roadmapItem.requirements,
+    acceptance_criteria: [
+      roadmapItem.summary,
+      "Focused tests cover the behavior introduced by this task.",
+      "Typecheck, tests, and build pass."
+    ],
+    verification: CHECK_COMMANDS.map(([command, args]) => `${command} ${args.join(" ")}`),
+    auto_merge: {
+      allowed: roadmapItem.autoMerge,
+      max_changed_files: 8,
+      forbidden_paths: DEFAULT_FORBIDDEN_PATHS
+    }
+  };
+}
+
+function selectRoadmapTasks(context, count = generatedTaskCount) {
+  const existingTitles = new Set(context.tasks.map((task) => normalizeTitle(task.data?.title ?? "")));
+  const existingPaths = new Set(context.sourceFiles);
+  const available = ROADMAP.filter((item) => {
+    if (existingTitles.has(normalizeTitle(item.title))) return false;
+    return !(item.completionPaths ?? []).some((file) => existingPaths.has(file));
+  }).slice(0, count);
+  const existingIds = listExistingTaskIds(context);
+  return available.map((item, index) => buildGeneratedTask(item, getNextTaskId(existingIds, index)));
+}
+
+function buildTaskYaml(task) {
+  return YAML.stringify(task, { lineWidth: 0 });
+}
+
+function generatedTaskFileName(task) {
+  return `${task.id}-${slugify(task.title)}.yaml`;
+}
+
+function writeGeneratedTaskFiles(tasks, options = {}) {
+  const backlogDir = path.resolve("tasks", "backlog");
+  if (!options.dryRun) fs.mkdirSync(backlogDir, { recursive: true });
+  return tasks.map((task) => {
+    const fileName = generatedTaskFileName(task);
+    const filePath = path.join(backlogDir, fileName);
+    if (!options.dryRun) {
+      if (fs.existsSync(filePath)) throw new AutomationStop(`Refusing to overwrite existing task ${fileName}.`, "task_generation_collision");
+      fs.writeFileSync(filePath, buildTaskYaml(task), "utf8");
+    }
+    return { task, fileName, filePath };
+  });
+}
+
+function generateBacklogTasks(options = {}) {
+  const context = options.context ?? collectProjectPlanningContext();
+  const tasks = selectRoadmapTasks(context, options.count ?? generatedTaskCount);
+  return writeGeneratedTaskFiles(tasks, { dryRun: options.dryRun ?? false });
+}
+
+function printGeneratedTaskSummary(generated, prefix = "Generated") {
+  if (generated.length === 0) {
+    console.log(`${prefix} tasks: none`);
+    return;
+  }
+  console.log(`${prefix} tasks:`);
+  for (const { task, fileName } of generated) console.log(`- ${task.id}: ${task.title} (${fileName})`);
+}
+
+function commitAndPushGeneratedTasks(generated) {
+  const relativePaths = generated.map(({ filePath }) => path.relative(process.cwd(), filePath));
+  run("git", ["add", "--", ...relativePaths]);
+  run("git", ["commit", "-m", `chore(tasks): generate ${generated.length} backlog tasks`]);
+  run("git", ["push", "origin", "main"]);
+}
+
+function runGenerateTasksMode() {
+  if (dryRun) {
+    const generated = generateBacklogTasks({ dryRun: true });
+    printGeneratedTaskSummary(generated, "[dry-run] would generate");
+    console.log("[dry-run] no task files, commits, pushes, or pulls were created");
+    return generated;
+  }
+
+  ensureCleanGit();
+  ensureOnMain();
+  pullMain();
+  ensureCleanGit();
+  const generated = generateBacklogTasks();
+  if (generated.length > 0) commitAndPushGeneratedTasks(generated);
+  printGeneratedTaskSummary(generated);
+  return generated;
 }
 
 function getTaskId(taskFile) {
@@ -366,6 +772,9 @@ function pathMatchesRule(file, rule) {
 }
 
 function extractScopePaths(task) {
+  if (task.scope && !Array.isArray(task.scope) && typeof task.scope === "object") {
+    return task.scope.allowed_paths ?? [];
+  }
   const values = Array.isArray(task.scope) ? task.scope : [task.scope ?? ""];
   return values.flatMap((value) => String(value).match(/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.*-]+)+/gu) ?? []);
 }
@@ -373,8 +782,22 @@ function extractScopePaths(task) {
 function isWithinScope(file, scopePaths) {
   return scopePaths.some((scopePath) => {
     const normalized = scopePath.replaceAll("\\", "/").replace(/[.,;:]$/u, "");
-    const prefix = normalized.replace(/\*.*$/u, "").replace(/\/$/u, "");
-    return file === prefix || file.startsWith(`${prefix}/`);
+    if (!normalized.includes("*")) {
+      const prefix = normalized.replace(/\/$/u, "");
+      return file === prefix || file.startsWith(`${prefix}/`);
+    }
+    const segments = normalized.split("/");
+    let pattern = "^";
+    for (let index = 0; index < segments.length; index += 1) {
+      const segment = segments[index];
+      if (segment === "**") {
+        pattern += index === segments.length - 1 ? ".*" : "(?:[^/]+/)*";
+        continue;
+      }
+      pattern += segment.replace(/[.+?^${}()|[\]\\]/gu, "\\$&").replaceAll("*", "[^/]*");
+      if (index < segments.length - 1) pattern += "/";
+    }
+    return new RegExp(`${pattern}$`, "u").test(file);
   });
 }
 
@@ -391,6 +814,7 @@ function validatePrBeforeMerge(prNumber, branchName, taskFile, task) {
   const files = pr.files ?? [];
   const changedPaths = files.map((file) => file.path.replaceAll("\\", "/"));
   const taskPolicy = task.auto_merge ?? {};
+  const forbiddenPaths = [...(taskPolicy.forbidden_paths ?? []), ...(task.scope?.forbidden_paths ?? [])];
   const automationTaskPaths = new Set([`tasks/backlog/${taskFile}`, `tasks/done/${taskFile}`]);
   const scopePaths = extractScopePaths(task);
   const packageChanged = changedPaths.includes("package.json");
@@ -413,7 +837,7 @@ function validatePrBeforeMerge(prNumber, branchName, taskFile, task) {
     if (/\.(?:key|p12|pem|pfx)$/iu.test(baseName) || /(?:credential|secret)/iu.test(baseName)) reasons.push(`possible secret material detected: ${filePath}`);
     if (GENERATED_PREFIXES.some((prefix) => filePath.startsWith(prefix)) || filePath.endsWith(".log")) reasons.push(`generated artifact detected: ${filePath}`);
     if ((file.additions ?? 0) > 5_000) reasons.push(`huge file addition detected: ${filePath}`);
-    if ((taskPolicy.forbidden_paths ?? []).some((rule) => pathMatchesRule(filePath, rule))) reasons.push(`task policy forbids: ${filePath}`);
+    if (forbiddenPaths.some((rule) => pathMatchesRule(filePath, rule))) reasons.push(`task policy forbids: ${filePath}`);
     if (scopePaths.length > 0 && !automationTaskPaths.has(filePath) && !isWithinScope(filePath, scopePaths)) reasons.push(`file is outside the declared task scope: ${filePath}`);
   }
 
@@ -526,18 +950,9 @@ function inspectGitState() {
   }
 }
 
-function printDryRunPlan() {
-  const backlog = listBacklogTasks();
-  const dryRunTaskLimit = maxTasks ?? backlog.length;
-  const plannedTasks = backlog.slice(0, dryRunTaskLimit);
-  console.log(`[dry-run] mode: ${mode}`);
-  console.log(`[dry-run] safety limits: max tasks=${maxTasks === null ? "backlog length" : maxTasks}, max minutes=${Number.isFinite(maxMinutes) ? maxMinutes : "none"}`);
-  if (plannedTasks.length === 0) console.log("[dry-run] no backlog tasks found; no repository changes would be made");
-
-  for (const taskFile of plannedTasks) {
+function printDryRunTaskPlan(taskFile, task) {
     const taskId = getTaskId(taskFile);
     const branchName = `codex/task-${taskId}`;
-    const task = readTask(taskFile);
     console.log(`\n[dry-run] planned task ${taskId}: ${taskFile}`);
     console.log("  1. Verify the working tree is clean and checkout main");
     console.log("  2. Pull origin/main with --ff-only and verify gh authentication");
@@ -550,9 +965,30 @@ function printDryRunPlan() {
     console.log("  9. Squash-merge the PR and request remote branch deletion");
     console.log(" 10. Checkout main, pull origin/main, delete the local task branch, and continue if loop mode is enabled");
     if (task.auto_merge?.allowed === false) console.log("  Safety note: this task sets auto_merge.allowed=false, so a real run would stop before merge");
+}
+
+function printDryRunPlan() {
+  const backlog = listBacklogTasks();
+  const dryRunTaskLimit = maxTasks ?? backlog.length;
+  let plannedTasks = backlog.slice(0, dryRunTaskLimit).map((fileName) => ({ fileName, task: readTask(fileName) }));
+  console.log(`[dry-run] mode: ${mode}`);
+  console.log(`[dry-run] safety limits: max tasks=${maxTasks === null ? "backlog length" : maxTasks}, max minutes=${Number.isFinite(maxMinutes) ? maxMinutes : "none"}, generation rounds=${maxGenerationRounds}`);
+
+  if (plannedTasks.length === 0 && mode === "until-stop" && generateTasksWhenEmpty) {
+    if (maxGenerationRounds === 0) {
+      console.log("[dry-run] backlog is empty and task generation limit is already reached");
+    } else {
+      const generated = generateBacklogTasks({ dryRun: true, count: Math.min(generatedTaskCount, dryRunTaskLimit) });
+      printGeneratedTaskSummary(generated, "[dry-run] would generate");
+      plannedTasks = generated.map(({ task, fileName }) => ({ task, fileName }));
+    }
   }
 
+  if (plannedTasks.length === 0) console.log("[dry-run] no backlog tasks remain and no tasks would be generated");
+  for (const { fileName, task } of plannedTasks) printDryRunTaskPlan(fileName, task);
+
   if (backlog.length > plannedTasks.length) console.log(`\n[dry-run] would stop at the max task limit with ${backlog.length - plannedTasks.length} task(s) remaining`);
+  else if (mode === "until-stop" && generateTasksWhenEmpty && maxGenerationRounds > 0) console.log("\n[dry-run] would stop when the generation-round or task/runtime limit is reached");
   else console.log("\n[dry-run] would stop when the backlog is empty");
   console.log("[dry-run] no commands or repository mutations were performed");
 }
@@ -570,6 +1006,7 @@ function printLoopSummary(summary) {
   console.log(`Working tree clean: ${gitState.clean ? "yes" : "no"}`);
   console.log(`PR URLs created: ${summary.prUrls.join(", ") || "None"}`);
   console.log(`PRs merged: ${summary.mergedPrUrls.join(", ") || "None"}`);
+  console.log(`Generated task IDs: ${summary.generatedTaskIds.join(", ") || "None"}`);
 }
 
 function runLoop() {
@@ -579,7 +1016,8 @@ function runLoop() {
     failedTaskId: null,
     stopReason: "Not started",
     prUrls: [],
-    mergedPrUrls: []
+    mergedPrUrls: [],
+    generatedTaskIds: []
   };
 
   if (dryRun) {
@@ -590,6 +1028,7 @@ function runLoop() {
   }
 
   let effectiveMaxTasks = maxTasks;
+  let generationRounds = 0;
 
   try {
     while (true) {
@@ -602,15 +1041,31 @@ function runLoop() {
       ensureOnMain();
       pullMain();
       const backlog = listBacklogTasks();
+      if (effectiveMaxTasks !== null && summary.completedTaskIds.length >= effectiveMaxTasks) {
+        summary.stopReason = `Max task limit reached (${effectiveMaxTasks})`;
+        break;
+      }
       if (backlog.length === 0) {
+        if (mode === "until-stop" && generateTasksWhenEmpty) {
+          if (generationRounds >= maxGenerationRounds) {
+            summary.stopReason = `No backlog tasks remain and task generation limit reached (${maxGenerationRounds})`;
+            break;
+          }
+          const generated = generateBacklogTasks();
+          if (generated.length === 0) {
+            summary.stopReason = "No backlog tasks remain and no tasks could be generated";
+            break;
+          }
+          commitAndPushGeneratedTasks(generated);
+          printGeneratedTaskSummary(generated);
+          summary.generatedTaskIds.push(...generated.map(({ task }) => task.id));
+          generationRounds += 1;
+          continue;
+        }
         summary.stopReason = "No backlog tasks remain";
         break;
       }
       if (effectiveMaxTasks === null) effectiveMaxTasks = backlog.length;
-      if (summary.completedTaskIds.length >= effectiveMaxTasks) {
-        summary.stopReason = `Max task limit reached (${effectiveMaxTasks})`;
-        break;
-      }
       ensureGhReady();
 
       const taskFile = backlog[0];
@@ -643,9 +1098,25 @@ function runLoop() {
   return summary;
 }
 
-try {
-  runLoop();
-} catch (error) {
-  console.error(error);
-  process.exitCode = 1;
+const isMainModule = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isMainModule) {
+  try {
+    if (mode === "generate-tasks") runGenerateTasksMode();
+    else runLoop();
+  } catch (error) {
+    console.error(error);
+    process.exitCode = 1;
+  }
 }
+
+export {
+  buildTaskYaml,
+  collectProjectPlanningContext,
+  generateBacklogTasks,
+  getNextTaskId,
+  listExistingTaskIds,
+  normalizeTitle,
+  selectRoadmapTasks,
+  writeGeneratedTaskFiles
+};
