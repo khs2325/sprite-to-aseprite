@@ -78,6 +78,23 @@ describe("validateSpriteProject", () => {
     );
   });
 
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, 65_536])(
+    "rejects an out-of-range frame duration %s",
+    (durationMs) => {
+      const project = createValidProject();
+      project.frames[0].durationMs = durationMs;
+
+      expect(validateSpriteProject(project)).toContainEqual(
+        expect.objectContaining({
+          code: "invalid_frame_duration",
+          path: "frames[0].durationMs",
+          message:
+            "Frame duration must be a whole number from 1 to 65535 milliseconds.",
+        }),
+      );
+    },
+  );
+
   it("rejects malformed layer data and opacity", () => {
     const project = createValidProject() as unknown as Record<string, unknown>;
     project.layers = [

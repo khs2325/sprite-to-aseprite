@@ -1,8 +1,18 @@
-import type { SpriteProject } from "../core/SpriteProject";
+import {
+  MAX_FRAME_DURATION_MS,
+  MIN_FRAME_DURATION_MS,
+  updateFrameDuration,
+  type SpriteProject,
+} from "../core/SpriteProject";
+
+export type PreviewTimelineDependencies = {
+  onProjectChange?(project: SpriteProject): void;
+};
 
 export type PreviewTimelineControl = {
   destroy(): void;
   getActiveFrameIndex(): number | null;
+  getProject(): SpriteProject | null;
   setProject(project: SpriteProject | null): void;
 };
 
@@ -12,6 +22,7 @@ export type PreviewTimelineUi = PreviewTimelineControl & {
 
 export function mountPreviewTimelineUi(
   container: HTMLElement,
+  dependencies: PreviewTimelineDependencies = {},
 ): PreviewTimelineUi {
   const document = container.ownerDocument;
   const element = document.createElement("section");
@@ -21,6 +32,11 @@ export function mountPreviewTimelineUi(
   const previousButton = document.createElement("button");
   const nextButton = document.createElement("button");
   const activeFrameOutput = document.createElement("p");
+  const durationEditor = document.createElement("div");
+  const durationLabel = document.createElement("label");
+  const durationInput = document.createElement("input");
+  const updateDurationButton = document.createElement("button");
+  const durationError = document.createElement("p");
   const timeline = document.createElement("ol");
 
   element.setAttribute("aria-label", "Sprite preview timeline");
@@ -32,6 +48,20 @@ export function mountPreviewTimelineUi(
   nextButton.type = "button";
   nextButton.textContent = "Next frame";
   activeFrameOutput.setAttribute("aria-live", "polite");
+  durationLabel.textContent = "Frame duration (milliseconds)";
+  durationInput.type = "number";
+  durationInput.min = String(MIN_FRAME_DURATION_MS);
+  durationInput.max = String(MAX_FRAME_DURATION_MS);
+  durationInput.step = "1";
+  durationInput.setAttribute(
+    "aria-label",
+    `Frame duration from ${MIN_FRAME_DURATION_MS} to ${MAX_FRAME_DURATION_MS} milliseconds`,
+  );
+  updateDurationButton.type = "button";
+  updateDurationButton.textContent = "Update duration";
+  durationError.setAttribute("role", "alert");
+  durationLabel.append(durationInput);
+  durationEditor.append(durationLabel, updateDurationButton, durationError);
   timeline.setAttribute("aria-label", "Imported frames");
   navigation.append(previousButton, nextButton);
   element.append(
@@ -39,6 +69,7 @@ export function mountPreviewTimelineUi(
     emptyState,
     navigation,
     activeFrameOutput,
+    durationEditor,
     timeline,
   );
   container.append(element);
@@ -57,6 +88,11 @@ export function mountPreviewTimelineUi(
     timeline.replaceChildren();
   };
 
+  const clearDurationError = (): void => {
+    durationError.hidden = true;
+    durationError.textContent = "";
+  };
+
   const renderActiveFrame = (): void => {
     const frames = currentProject?.frames ?? [];
     const hasActiveFrame = activePosition >= 0 && activePosition < frames.length;
@@ -65,6 +101,7 @@ export function mountPreviewTimelineUi(
     nextButton.disabled =
       !hasActiveFrame || activePosition === frames.length - 1;
     activeFrameOutput.hidden = !hasActiveFrame;
+    durationEditor.hidden = !hasActiveFrame;
 
     frameButtons.forEach((button, position) => {
       if (position === activePosition) {
@@ -79,8 +116,10 @@ export function mountPreviewTimelineUi(
       activeFrameOutput.textContent =
         `Frame ${activePosition + 1} of ${frames.length}, ` +
         `${frame.durationMs} milliseconds.`;
+      durationInput.value = String(frame.durationMs);
     } else {
       activeFrameOutput.textContent = "";
+      durationInput.value = "";
     }
   };
 
@@ -90,6 +129,7 @@ export function mountPreviewTimelineUi(
       return;
     }
     activePosition = position;
+    clearDurationError();
     renderActiveFrame();
   };
 
@@ -101,20 +141,61 @@ export function mountPreviewTimelineUi(
     selectFrame(activePosition + 1);
   };
 
+  const handleDurationInput = (): void => {
+    clearDurationError();
+  };
+
+  const handleUpdateDuration = (): void => {
+    const frame = currentProject?.frames[activePosition];
+    if (currentProject === null || frame === undefined) {
+      return;
+    }
+
+    const durationMs = Number(durationInput.value);
+    try {
+      currentProject = updateFrameDuration(
+        currentProject,
+        frame.index,
+        durationMs,
+      );
+    } catch (error) {
+      durationError.textContent =
+        error instanceof RangeError
+          ? error.message
+          : "Could not update the frame duration.";
+      durationError.hidden = false;
+      return;
+    }
+
+    clearDurationError();
+    frameButtons[activePosition].textContent =
+      `Frame ${activePosition + 1} - ${durationMs} ms`;
+    renderActiveFrame();
+    dependencies.onProjectChange?.(currentProject);
+  };
+
   previousButton.addEventListener("click", handlePrevious);
   nextButton.addEventListener("click", handleNext);
+  durationInput.addEventListener("input", handleDurationInput);
+  updateDurationButton.addEventListener("click", handleUpdateDuration);
 
   const control: PreviewTimelineControl = {
     destroy(): void {
       clearFrameButtons();
       previousButton.removeEventListener("click", handlePrevious);
       nextButton.removeEventListener("click", handleNext);
+      durationInput.removeEventListener("input", handleDurationInput);
+      updateDurationButton.removeEventListener("click", handleUpdateDuration);
     },
     getActiveFrameIndex(): number | null {
       return currentProject?.frames[activePosition]?.index ?? null;
     },
+    getProject(): SpriteProject | null {
+      return currentProject;
+    },
     setProject(project: SpriteProject | null): void {
       currentProject = project;
+      clearDurationError();
       clearFrameButtons();
 
       const frames = project?.frames ?? [];

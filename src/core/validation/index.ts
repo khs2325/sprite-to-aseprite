@@ -1,4 +1,9 @@
-import type { SpriteProject } from "../SpriteProject";
+import {
+  MAX_FRAME_DURATION_MS,
+  MIN_FRAME_DURATION_MS,
+  isValidFrameDuration,
+  type SpriteProject,
+} from "../SpriteProject";
 
 export type SpriteProjectValidationError = {
   code: string;
@@ -98,12 +103,15 @@ export function validateSpriteProject(
         }
       }
 
-      if (!isPositiveInteger(frame.durationMs)) {
+      if (
+        typeof frame.durationMs !== "number" ||
+        !isValidFrameDuration(frame.durationMs)
+      ) {
         addError(
           errors,
           "invalid_frame_duration",
           `${path}.durationMs`,
-          "Frame duration must be a positive integer in milliseconds.",
+          `Frame duration must be a whole number from ${MIN_FRAME_DURATION_MS} to ${MAX_FRAME_DURATION_MS} milliseconds.`,
         );
       }
     });
