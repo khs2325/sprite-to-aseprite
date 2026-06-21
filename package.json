@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "vite",
     "prompt": "node scripts/make-prompt.mjs",
     "codex:task": "node scripts/run-codex-task.mjs",
     "auto-dev": "node scripts/auto-dev-cycle.mjs",
