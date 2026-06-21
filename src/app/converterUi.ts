@@ -14,6 +14,7 @@ import {
   type FileImportFormat,
 } from "./fileImport";
 import { mountLayerNamingUi } from "./layerNaming";
+import { renderLargeFileWarning } from "./largeFileWarning";
 import { mountPreviewTimelineUi } from "./previewTimeline";
 
 type ConverterImporters = {
@@ -173,6 +174,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   const fileInput = document.createElement("input");
   const sourceError = document.createElement("p");
   const sourceStatus = document.createElement("p");
+  const memoryWarning = document.createElement("p");
   importPanel.className = "panel";
   importHeading.textContent = "2. Add source files";
   dropZone.className = "drop-zone";
@@ -186,8 +188,18 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   sourceError.setAttribute("aria-live", "assertive");
   sourceStatus.setAttribute("role", "status");
   sourceStatus.setAttribute("aria-live", "polite");
+  memoryWarning.className = "memory-warning";
+  memoryWarning.setAttribute("role", "status");
+  memoryWarning.setAttribute("aria-live", "polite");
+  memoryWarning.hidden = true;
   dropZone.append(dropInstructions, fileInput);
-  importPanel.append(importHeading, dropZone, sourceError, sourceStatus);
+  importPanel.append(
+    importHeading,
+    dropZone,
+    sourceError,
+    sourceStatus,
+    memoryWarning,
+  );
 
   const convertPanel = document.createElement("section");
   const convertHeading = document.createElement("h2");
@@ -258,6 +270,8 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
     conversionStatus.textContent = "Choose source files to begin.";
     conversionError.hidden = true;
     conversionError.textContent = "";
+    memoryWarning.hidden = true;
+    memoryWarning.textContent = "";
     syncProject(null);
   };
 
@@ -272,6 +286,11 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
       selectedFiles = files;
       convertButton.disabled = false;
       conversionStatus.textContent = "Source files are ready to convert.";
+      renderLargeFileWarning(
+        memoryWarning,
+        mode,
+        files.map(({ file }) => file),
+      );
     },
   };
   const fileImportControl = bindFileImportControl(
