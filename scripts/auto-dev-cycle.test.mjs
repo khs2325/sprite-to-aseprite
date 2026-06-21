@@ -654,6 +654,24 @@ describe("product completeness audits and task generation", () => {
     }
   });
 
+  it("recognizes a mounted TypeScript entry that types querySelector", () => {
+    const workspace = createMountedMvpWorkspace();
+    try {
+      writeWorkspaceFile(workspace, "src/index.ts", `
+        import { mountConverterApp } from "./app/converter";
+        const root = document.querySelector<HTMLElement>("#app");
+        if (root) mountConverterApp(root);
+      `);
+      const context = collectProjectPlanningContext(workspace);
+      const audit = auditProductCompleteness({ rootDirectory: workspace, context });
+
+      expect(audit.checks.browserAppMounted.passed).toBe(true);
+      expect(audit.checks.productionBundle.passed).toBe(true);
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("generates importer-specific end-to-end tasks when conversion coverage is missing", () => {
     const workspace = createMountedMvpWorkspace();
     try {
