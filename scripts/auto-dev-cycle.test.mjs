@@ -672,19 +672,38 @@ describe("product completeness audits and task generation", () => {
     }
   });
 
-  it("recognizes a mounted TypeScript entry that types querySelector", () => {
+  it("recognizes the production converter entry and does not queue another UI mount task", () => {
     const workspace = createMountedMvpWorkspace();
     try {
+      const converterPath = path.join(workspace, "src", "app", "converter.ts");
+      const converterSource = fs.readFileSync(converterPath, "utf8");
+      fs.writeFileSync(
+        converterPath,
+        converterSource.replaceAll("mountConverterApp", "mountConverterUi"),
+        "utf8"
+      );
       writeWorkspaceFile(workspace, "src/index.ts", `
-        import { mountConverterApp } from "./app/converter";
-        const root = document.querySelector<HTMLElement>("#app");
-        if (root) mountConverterApp(root);
+        import { mountConverterUi } from "./app/converter";
+        const appRoot = document.querySelector<HTMLElement>("#app");
+        if (appRoot === null) throw new Error("The Sprite to Aseprite app root is missing.");
+        mountConverterUi(appRoot);
       `);
+      writeWorkspaceFile(
+        workspace,
+        "tasks/done/030-browser-ui-audit-gap.yaml",
+        'id: "030"\ntitle: Complete browser converter UI audit gap after task 029\n'
+      );
       const context = collectProjectPlanningContext(workspace);
       const audit = auditProductCompleteness({ rootDirectory: workspace, context });
+      const taskTitles = selectProductCompletionTasks(audit, context, 10)
+        .map((task) => task.title);
 
       expect(audit.checks.browserAppMounted.passed).toBe(true);
       expect(audit.checks.productionBundle.passed).toBe(true);
+      expect(taskTitles).not.toContain("Mount browser converter UI");
+      expect(taskTitles.some((title) =>
+        title.startsWith("Complete browser converter UI audit gap")
+      )).toBe(false);
     } finally {
       fs.rmSync(workspace, { recursive: true, force: true });
     }
