@@ -1,0 +1,73 @@
+id: "030"
+title: Complete browser converter UI audit gap after task 029
+status: backlog
+task_origin: product-completion
+audit_gap:
+  kind: remediation
+  category: ui
+  check_keys:
+    - browserAppMounted
+    - productionBundle
+  previous_task_id: "029"
+  previous_task_state: done
+priority: high
+goal: 'Complete the still-failing UI audit check(s) after done task 029 "Complete browser converter UI audit gap after task 023": browserAppMounted: src/index.ts mounts or initializes the browser converter; productionBundle: the production entry is more than a placeholder bundle.'
+context: This task was generated deterministically because a product-completeness audit found missing product work in the repository.
+scope:
+  summary: 'Complete the still-failing UI audit check(s) after done task 029 "Complete browser converter UI audit gap after task 023": browserAppMounted: src/index.ts mounts or initializes the browser converter; productionBundle: the production entry is more than a placeholder bundle.'
+  allowed_paths:
+    - index.html
+    - package.json
+    - src/index.ts
+    - src/app/**
+    - src/**/*.test.*
+    - docs/**
+    - scripts/auto-dev-cycle.mjs
+    - scripts/auto-dev-cycle.test.mjs
+    - README_AUTOMATION.md
+  forbidden_paths: &a1
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+non_goals:
+  - Do not implement unrelated roadmap features.
+  - Do not upload user artwork or use external processing services.
+  - Do not change dependencies, lockfiles, or GitHub workflows.
+requirements:
+  - Use plain TypeScript and DOM APIs.
+  - Do not add React, Vue, Svelte, or other dependencies.
+  - Keep files processed browser-locally.
+  - Do not upload user artwork.
+  - Reuse existing app, core, importer, and exporter helpers.
+  - Do not duplicate conversion logic.
+  - Add focused tests.
+  - "Reproduce and inspect the remaining UI audit check(s): browserAppMounted: src/index.ts mounts or initializes the browser converter; productionBundle: the production entry is more than a placeholder bundle."
+  - Review task 029 "Complete browser converter UI audit gap after task 023" and its resulting changes before editing.
+  - Distinguish genuinely missing product work from an incomplete prior implementation and a stale or incorrect audit detector/mapping.
+  - Apply the smallest safe product fix; if the product already satisfies the requirement, correct the audit detector or mapping and add a focused regression test.
+  - Add an npm run dev script if it is missing.
+  - Ensure index.html has an app root element.
+  - Mount the real browser UI from src/index.ts.
+  - Show the title Sprite to Aseprite Converter.
+  - Explain that files are processed browser-locally.
+  - Include a mode selector for the available import modes.
+  - Include a file input and a drag-and-drop area.
+  - Include a convert button.
+  - Include a preview, status, and error area.
+  - Include a .aseprite download button when conversion succeeds.
+  - Add minimal responsive styling.
+  - Add tests for mounted UI state or DOM-free UI helpers.
+acceptance_criteria:
+  - 'Complete the still-failing UI audit check(s) after done task 029 "Complete browser converter UI audit gap after task 023": browserAppMounted: src/index.ts mounts or initializes the browser converter; productionBundle: the production entry is more than a placeholder bundle.'
+  - Focused tests cover the behavior introduced by this task.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: false
+  max_changed_files: 8
+  forbidden_paths: *a1
