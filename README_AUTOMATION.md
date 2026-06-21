@@ -96,6 +96,35 @@ npm run auto-dev:generate-tasks
 
 The generator inspects project documentation, current source/test paths, and task files in `backlog`, `done`, and `failed`. It selects the next small roadmap items, skips normalized duplicate titles and work with known completion paths, assigns the next numeric IDs, writes only `tasks/backlog/*.yaml`, and commits/pushes those files on `main`. The default batch size is five; override it with `AUTO_DEV_GENERATED_TASK_COUNT`.
 
+Backlog exhaustion is not the same as product completion. When no normal roadmap task remains, the automation runs a deterministic product-completeness audit framework before it can report the product complete. A placeholder entry such as a constant export from `src/index.ts` or an `index.html` page that only says the automation is installed fails even when all core helpers and unit tests exist.
+
+The framework currently has eight audit categories:
+
+1. **UI:** Vite development command, app root and mount, file/drop/mode controls, preview/status/error output, download flow, responsive styling, and a non-placeholder production entry.
+2. **Import coverage:** reachability of every implemented PNG sequence, spritesheet grid, and spritesheet JSON importer from `src/index.ts`.
+3. **Export/download:** Aseprite exporter availability, reachable browser download, clear export failures, and a disabled state before a valid project exists.
+4. **End-to-end conversion:** synthetic importer-to-`SpriteProject`-to-Aseprite coverage for every implemented input plus focused app-flow or DOM-free UI state tests.
+5. **Documentation/manual usage:** browser-local/no-upload policy, supported inputs, flat-PNG layer limits, UI instructions, manual Aseprite output verification, and compatibility limits.
+6. **Deployment readiness:** a static deployment guide or task and production build verification notes. The audit never enables workflow changes automatically.
+7. **Error handling:** tested invalid file, unsupported format, grid, failed export, no-project, status, and error states.
+8. **Performance/large-file readiness:** large-file/browser-memory warnings, long-running conversion status, and browser memory documentation.
+
+The reachability checks follow local imports starting at `src/index.ts`; a helper merely existing under `src/app` or `src/core` does not make it part of the browser product. Each category reports its passed and missing checks independently.
+
+If checks fail, the generator maps missing check keys to small, deterministic product-completion cards. These can mount or wire UI controls, connect individual importers and export, add importer-specific E2E tests, improve error states, add usage/compatibility/deployment/performance documentation, or add large-file and progress UI. Generated cards use the next repository-wide numeric IDs, include verification and acceptance criteria, and preserve the default allowed/forbidden path policy. UI cards require plain TypeScript and DOM APIs, browser-local processing, reuse of existing helpers, no framework or other dependency additions, no server upload, no duplicated conversion logic, and focused tests.
+
+Duplicate prevention covers normalized titles and goals across `tasks/backlog`, `tasks/done`, and `tasks/failed`. If an existing task already describes the missing work, the framework does not create another copy and does not falsely report completion while that audit still fails.
+
+To add an audit later, add its evidence check to `auditProductCompleteness`, register the check key under a category in `PRODUCT_AUDIT_DEFINITIONS` (or add a new category), and map the missing key to one or more safe templates in `PRODUCT_COMPLETION_TASKS`. Add one passing fixture and one missing-work test for the new check.
+
+When product-completion cards are generated outside a continuing `--until-stop` run, rerun the automation with:
+
+```bash
+npm run auto-dev:until-stop
+```
+
+To let that process refill an empty backlog and continue automatically, set `AUTO_DEV_GENERATE_TASKS_WHEN_EMPTY=true` as described below. The successful terminal reason is `No backlog tasks remain and product completeness audits passed`; generating new product work reports `Generated product-completion tasks; rerun automation to continue` unless the current mode continues automatically.
+
 Preview generation without pulling, writing, committing, or pushing:
 
 ```bash
@@ -131,7 +160,7 @@ The loop also resumes existing task work instead of recreating it: merged PRs wi
 | `AUTO_DEV_ALLOW_LOCKFILE_CHANGES` | `false` | Permit lockfile-only changes |
 | `AUTO_DEV_ALLOW_NO_PR_CHECKS` | `false` | Continue past GitHub's `no checks reported` response after mandatory local verification |
 | `AUTO_DEV_ALLOW_POLICY_FALSE_AUTOMERGE` | `false` | Override a task's explicit `auto_merge.allowed: false` policy after every other mandatory gate passes |
-| `AUTO_DEV_GENERATE_TASKS_WHEN_EMPTY` | `false` | Generate deterministic tasks when `--until-stop` finds an empty backlog |
+| `AUTO_DEV_GENERATE_TASKS_WHEN_EMPTY` | `false` | Generate normal roadmap tasks and continue processing generated MVP-completion tasks when `--until-stop` finds an empty backlog |
 | `AUTO_DEV_GENERATED_TASK_COUNT` | `5` | Number of tasks in each generated batch |
 | `AUTO_DEV_MAX_GENERATION_ROUNDS` | `1` | Maximum generated batches in one `--until-stop` process |
 

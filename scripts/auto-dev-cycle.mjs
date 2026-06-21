@@ -253,6 +253,373 @@ const ROADMAP = [
     autoMerge: true
   }
 ];
+const UI_TASK_REQUIREMENTS = [
+  "Use plain TypeScript and DOM APIs.",
+  "Do not add React, Vue, Svelte, or other dependencies.",
+  "Keep files processed browser-locally.",
+  "Do not upload user artwork.",
+  "Reuse existing app, core, importer, and exporter helpers.",
+  "Do not duplicate conversion logic.",
+  "Add focused tests."
+];
+const PRODUCT_COMPLETION_TASKS = [
+  {
+    title: "Add Vite dev script",
+    summary: "Add the missing npm development command so the browser product can be run locally with Vite.",
+    auditKeys: ["devScript"],
+    allowedPaths: ["package.json"],
+    requirements: [
+      "Add exactly a dev script that runs vite.",
+      "Use the existing Vite development dependency and do not change dependencies or lockfiles."
+    ],
+    autoMerge: true
+  },
+  {
+    title: "Mount browser converter UI",
+    summary: "Replace the placeholder entry page with the mounted, browser-local Sprite to Aseprite converter flow.",
+    auditKeys: ["appRoot", "browserAppMounted", "productionBundle"],
+    covers: [
+      "appRoot",
+      "browserAppMounted",
+      "fileImportUi",
+      "dragAndDrop",
+      "modeSelector",
+      "pngSequenceUi",
+      "spritesheetGridUi",
+      "spritesheetJsonUi",
+      "asepriteDownloadUi",
+      "exportFailureHandling",
+      "disabledExportState",
+      "previewTimelineUi",
+      "statusAndErrors",
+      "uiFlowTest",
+      "productionBundle",
+      "responsiveStyling"
+    ],
+    allowedPaths: ["index.html", "package.json", "src/index.ts", "src/app/**", "src/**/*.test.*", "docs/**"],
+    requirements: [
+      "Add an npm run dev script if it is missing.",
+      "Ensure index.html has an app root element.",
+      "Mount the real browser UI from src/index.ts.",
+      "Show the title Sprite to Aseprite Converter.",
+      "Explain that files are processed browser-locally.",
+      "Include a mode selector for the available import modes.",
+      "Include a file input and a drag-and-drop area.",
+      "Include a convert button.",
+      "Include a preview, status, and error area.",
+      "Include a .aseprite download button when conversion succeeds.",
+      "Add minimal responsive styling.",
+      "Add tests for mounted UI state or DOM-free UI helpers."
+    ],
+    autoMerge: false,
+    uiTask: true
+  },
+  {
+    title: "Wire browser-local file import into UI",
+    summary: "Make the existing browser-local file import control reachable from the mounted converter.",
+    auditKeys: ["fileImportUi"],
+    allowedPaths: ["index.html", "src/index.ts", "src/app/**", "src/**/*.test.*", "docs/**"],
+    requirements: ["Expose an accessible file input and wire it to the existing browser-local file import helper."],
+    autoMerge: true,
+    uiTask: true
+  },
+  {
+    title: "Add browser drag-and-drop import area",
+    summary: "Make drag-and-drop import reachable in the mounted converter UI.",
+    auditKeys: ["dragAndDrop"],
+    allowedPaths: ["index.html", "src/index.ts", "src/app/**", "src/**/*.test.*", "docs/**"],
+    requirements: ["Wire dragover and drop events to the same local file import pipeline used by the file input."],
+    autoMerge: true,
+    uiTask: true
+  },
+  {
+    title: "Add converter import mode selector",
+    summary: "Expose a mode selector for every implemented MVP importer in the mounted converter.",
+    auditKeys: ["modeSelector"],
+    allowedPaths: ["index.html", "src/index.ts", "src/app/**", "src/**/*.test.*", "docs/**"],
+    requirements: ["Offer PNG sequence, spritesheet grid, and spritesheet JSON modes when their importers exist."],
+    autoMerge: true,
+    uiTask: true
+  },
+  {
+    title: "Wire PNG sequence import into UI",
+    summary: "Connect the implemented PNG sequence importer to the mounted converter flow.",
+    auditKeys: ["pngSequenceUi"],
+    allowedPaths: ["index.html", "src/index.ts", "src/app/**", "src/**/*.test.*", "docs/**"],
+    requirements: ["Invoke the existing PNG sequence importer for the matching selected mode and surface its result or error."],
+    autoMerge: true,
+    uiTask: true
+  },
+  {
+    title: "Wire spritesheet grid import into UI",
+    summary: "Connect the implemented spritesheet grid importer and its grid settings to the mounted converter flow.",
+    auditKeys: ["spritesheetGridUi"],
+    allowedPaths: ["index.html", "src/index.ts", "src/app/**", "src/**/*.test.*", "docs/**"],
+    requirements: ["Invoke the existing grid importer with explicit frame width, frame height, rows, and columns."],
+    autoMerge: true,
+    uiTask: true
+  },
+  {
+    title: "Wire spritesheet JSON import into UI",
+    summary: "Connect the implemented spritesheet PNG plus JSON importer to the mounted converter flow.",
+    auditKeys: ["spritesheetJsonUi"],
+    allowedPaths: ["index.html", "src/index.ts", "src/app/**", "src/**/*.test.*", "docs/**"],
+    requirements: ["Accept a spritesheet PNG and its JSON metadata and invoke the existing JSON importer."],
+    autoMerge: true,
+    uiTask: true
+  },
+  {
+    title: "Wire Aseprite export download into UI",
+    summary: "Make the implemented .aseprite exporter and browser download control reachable after conversion.",
+    auditKeys: ["asepriteDownloadUi"],
+    allowedPaths: ["index.html", "src/index.ts", "src/app/**", "src/**/*.test.*", "docs/**"],
+    requirements: ["Enable an .aseprite download only after a valid SpriteProject has been produced."],
+    autoMerge: true,
+    uiTask: true
+  },
+  {
+    title: "Wire browser preview timeline into converter UI",
+    summary: "Make the existing preview and timeline helpers reachable from the mounted converter flow.",
+    auditKeys: ["previewTimelineUi"],
+    allowedPaths: ["index.html", "src/index.ts", "src/app/**", "src/**/*.test.*", "docs/**"],
+    requirements: ["Update the preview timeline when a conversion produces a SpriteProject."],
+    autoMerge: true,
+    uiTask: true
+  },
+  {
+    title: "Add UI status and error handling",
+    summary: "Expose clear converter progress, success, validation, and failure states in the mounted UI.",
+    auditKeys: ["statusAndErrors"],
+    allowedPaths: ["index.html", "src/index.ts", "src/app/**", "src/**/*.test.*", "docs/**"],
+    requirements: ["Do not display file contents in errors and use accessible live status and alert output."],
+    autoMerge: true,
+    uiTask: true
+  },
+  {
+    title: "Add end-to-end browser conversion smoke tests",
+    summary: "Cover the mounted or DOM-free browser converter flow from mode selection through a downloadable result.",
+    auditKeys: ["uiFlowTest"],
+    allowedPaths: ["src/index.ts", "src/app/**", "src/**/*.test.*", "docs/**"],
+    requirements: ["Use tiny synthetic inputs and cover at least one browser converter success path plus an error path."],
+    autoMerge: true,
+    uiTask: true
+  },
+  {
+    title: "Add manual usage guide",
+    summary: "Document how to run and use each browser-local MVP conversion mode.",
+    auditKeys: ["manualUsageGuide"],
+    allowedPaths: ["docs/**"],
+    requirements: [
+      "Document npm run dev, file selection, each available MVP import mode, conversion, preview, and .aseprite download.",
+      "State that artwork stays in the browser and flat PNG sources cannot recover original layers."
+    ],
+    autoMerge: true
+  },
+  {
+    title: "Add basic responsive styling",
+    summary: "Add minimal responsive styling for the mounted converter controls, status, and preview.",
+    auditKeys: ["responsiveStyling"],
+    allowedPaths: ["index.html", "src/index.ts", "src/app/**", "src/**/*.test.*", "docs/**"],
+    requirements: ["Keep the layout usable at narrow and wide browser widths without adding a styling dependency."],
+    autoMerge: true,
+    uiTask: true
+  },
+  {
+    title: "Add export failure handling",
+    summary: "Show a clear browser-local error when Aseprite export or download fails.",
+    auditKeys: ["exportFailureHandling"],
+    allowedPaths: ["index.html", "src/index.ts", "src/app/**", "src/**/*.test.*", "docs/**"],
+    requirements: ["Catch exporter and browser download failures without displaying file contents."],
+    autoMerge: true,
+    uiTask: true
+  },
+  {
+    title: "Add disabled export state when no valid project exists",
+    summary: "Keep the Aseprite download action disabled until conversion produces a valid SpriteProject.",
+    auditKeys: ["disabledExportState"],
+    allowedPaths: ["index.html", "src/index.ts", "src/app/**", "src/**/*.test.*", "docs/**"],
+    requirements: ["Reuse SpriteProject validation and add focused empty, invalid, and valid project state tests."],
+    autoMerge: true,
+    uiTask: true
+  },
+  {
+    title: "Restore Aseprite exporter product path",
+    summary: "Restore the missing Aseprite exporter entry point required by the browser conversion product.",
+    auditKeys: ["asepriteExporterExists"],
+    allowedPaths: ["src/core/**", "src/**/*.test.*", "tests/**", "docs/**"],
+    requirements: ["Reuse the documented SpriteProject exporter boundary and add deterministic byte-level tests."],
+    autoMerge: false
+  },
+  {
+    title: "Add end-to-end PNG sequence conversion smoke test",
+    summary: "Cover synthetic PNG sequence import through SpriteProject and Aseprite byte export.",
+    auditKeys: ["pngSequenceE2e"],
+    allowedPaths: ["src/core/**", "src/**/*.test.*", "tests/**", "docs/**"],
+    requirements: ["Use tiny synthetic PNG data and assert a valid deterministic Aseprite structure."],
+    autoMerge: true
+  },
+  {
+    title: "Add end-to-end spritesheet grid conversion smoke test",
+    summary: "Cover synthetic spritesheet grid import through SpriteProject and Aseprite byte export.",
+    auditKeys: ["spritesheetGridE2e"],
+    allowedPaths: ["src/core/**", "src/**/*.test.*", "tests/**", "docs/**"],
+    requirements: ["Use a tiny synthetic grid and assert frame order and deterministic Aseprite structure."],
+    autoMerge: true
+  },
+  {
+    title: "Add end-to-end spritesheet JSON conversion smoke test",
+    summary: "Cover synthetic spritesheet JSON import through SpriteProject and Aseprite byte export.",
+    auditKeys: ["spritesheetJsonE2e"],
+    allowedPaths: ["src/core/**", "src/**/*.test.*", "tests/**", "docs/**"],
+    requirements: ["Use tiny synthetic PNG and JSON data and assert duration, order, and deterministic Aseprite structure."],
+    autoMerge: true
+  },
+  {
+    title: "Document how to test output in Aseprite",
+    summary: "Document a manual verification path for opening generated files in Aseprite.",
+    auditKeys: ["asepriteOutputVerificationDocs"],
+    allowedPaths: ["docs/**"],
+    requirements: ["Explain how to open a generated file, inspect frames and durations, and report compatibility problems without overstating fidelity."],
+    autoMerge: true
+  },
+  {
+    title: "Document browser-local processing policy",
+    summary: "Document that artwork is read, converted, and downloaded entirely in the browser.",
+    auditKeys: ["browserLocalDocs"],
+    allowedPaths: ["docs/**"],
+    requirements: ["State explicitly that user artwork is not uploaded or sent to remote processing services."],
+    autoMerge: true
+  },
+  {
+    title: "Document supported converter inputs",
+    summary: "Document every currently supported MVP import mode and its required files.",
+    auditKeys: ["supportedInputsDocs"],
+    allowedPaths: ["docs/**"],
+    requirements: ["Cover PNG sequences, spritesheet grids, and spritesheet PNG plus JSON without claiming unsupported formats."],
+    autoMerge: true
+  },
+  {
+    title: "Document flat PNG layer limitations",
+    summary: "Explain that flat PNG sources cannot recover original layer structure.",
+    auditKeys: ["flatLayerLimitsDocs"],
+    allowedPaths: ["docs/**"],
+    requirements: ["Use accurate timeline rebuilding language and avoid lossless or layer-recovery claims."],
+    autoMerge: true
+  },
+  {
+    title: "Document Aseprite compatibility limits",
+    summary: "Document the supported Aseprite subset and known unsupported output features.",
+    auditKeys: ["compatibilityLimitsDocs"],
+    allowedPaths: ["docs/**"],
+    requirements: ["Describe supported frames, layers, cels, durations, and explicit unsupported features accurately."],
+    autoMerge: true
+  },
+  {
+    title: "Add static deployment guide",
+    summary: "Document how to deploy the Vite production output as a static browser-only site.",
+    auditKeys: ["staticDeploymentReadiness"],
+    allowedPaths: ["docs/**"],
+    requirements: [
+      "Document a provider-neutral static deployment process and browser-only privacy constraints.",
+      "Do not add or change GitHub Actions workflows."
+    ],
+    autoMerge: true
+  },
+  {
+    title: "Add production build verification notes",
+    summary: "Document how to verify the built static site before deployment.",
+    auditKeys: ["productionBuildNotes"],
+    allowedPaths: ["docs/**"],
+    requirements: ["Document npm run build, how to serve the built output locally, and a short browser conversion smoke checklist."],
+    autoMerge: true
+  },
+  {
+    title: "Add invalid import error tests",
+    summary: "Cover clear UI errors for invalid files, unsupported formats, and invalid spritesheet grid settings.",
+    auditKeys: ["invalidImportErrors"],
+    allowedPaths: ["src/app/**", "src/**/*.test.*", "docs/**"],
+    requirements: ["Use synthetic files, keep errors actionable, and never include file contents in messages."],
+    autoMerge: true,
+    uiTask: true
+  },
+  {
+    title: "Add export error UI tests",
+    summary: "Cover failed export and no-project-loaded states in the browser UI helpers.",
+    auditKeys: ["exportErrorTests"],
+    allowedPaths: ["src/app/**", "src/**/*.test.*", "docs/**"],
+    requirements: ["Test exporter failures, disabled state, and recovery after a valid project loads."],
+    autoMerge: true,
+    uiTask: true
+  },
+  {
+    title: "Add large-file warning UI",
+    summary: "Warn users that very large sprites or long sequences may exceed browser memory limits.",
+    auditKeys: ["largeFileWarning"],
+    allowedPaths: ["index.html", "src/index.ts", "src/app/**", "src/**/*.test.*", "docs/**"],
+    requirements: ["Use a clear non-blocking warning and do not inspect or upload files outside the browser."],
+    autoMerge: true,
+    uiTask: true
+  },
+  {
+    title: "Add conversion progress status UI",
+    summary: "Expose a clear working/progress state for potentially long browser-local conversions.",
+    auditKeys: ["conversionProgress"],
+    allowedPaths: ["index.html", "src/index.ts", "src/app/**", "src/**/*.test.*", "docs/**"],
+    requirements: ["Keep controls and accessible status text consistent while conversion is running or fails."],
+    autoMerge: true,
+    uiTask: true
+  },
+  {
+    title: "Document browser memory limits",
+    summary: "Document practical large-file and browser-memory constraints for local conversion.",
+    auditKeys: ["browserMemoryDocs"],
+    allowedPaths: ["docs/**"],
+    requirements: ["Explain that decoded RGBA frames can use substantially more memory than compressed source files and recommend practical mitigations."],
+    autoMerge: true
+  }
+];
+const PRODUCT_AUDIT_DEFINITIONS = [
+  {
+    id: "ui",
+    label: "UI audit",
+    checkKeys: ["devScript", "appRoot", "browserAppMounted", "fileImportUi", "dragAndDrop", "modeSelector", "previewTimelineUi", "statusAndErrors", "asepriteDownloadUi", "responsiveStyling", "productionBundle"]
+  },
+  {
+    id: "import-coverage",
+    label: "Import coverage audit",
+    checkKeys: ["pngSequenceUi", "spritesheetGridUi", "spritesheetJsonUi"]
+  },
+  {
+    id: "export-download",
+    label: "Export/download audit",
+    checkKeys: ["asepriteExporterExists", "asepriteDownloadUi", "exportFailureHandling", "disabledExportState"]
+  },
+  {
+    id: "end-to-end-conversion",
+    label: "End-to-end conversion audit",
+    checkKeys: ["pngSequenceE2e", "spritesheetGridE2e", "spritesheetJsonE2e", "uiFlowTest"]
+  },
+  {
+    id: "documentation",
+    label: "Documentation/manual usage audit",
+    checkKeys: ["browserLocalDocs", "supportedInputsDocs", "flatLayerLimitsDocs", "manualUsageGuide", "asepriteOutputVerificationDocs", "compatibilityLimitsDocs"]
+  },
+  {
+    id: "deployment-readiness",
+    label: "Deployment readiness audit",
+    checkKeys: ["staticDeploymentReadiness", "productionBuildNotes"]
+  },
+  {
+    id: "error-handling",
+    label: "Error handling audit",
+    checkKeys: ["invalidImportErrors", "exportFailureHandling", "disabledExportState", "exportErrorTests", "statusAndErrors"]
+  },
+  {
+    id: "performance-large-file",
+    label: "Performance/large-file readiness audit",
+    checkKeys: ["largeFileWarning", "conversionProgress", "browserMemoryDocs"]
+  }
+];
 const cliArgs = new Set(process.argv.slice(2));
 const dryRun = cliArgs.has("--dry-run");
 const mode = getMode();
@@ -468,40 +835,202 @@ function listBacklogTasks() {
   return fs.readdirSync(backlogDir).filter((file) => file.endsWith(".yaml")).sort();
 }
 
-function walkFiles(directory) {
+function walkFiles(directory, rootDirectory = process.cwd()) {
   if (!fs.existsSync(directory)) return [];
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const entryPath = path.join(directory, entry.name);
-    return entry.isDirectory() ? walkFiles(entryPath) : [path.relative(process.cwd(), entryPath).replaceAll("\\", "/")];
+    return entry.isDirectory() ? walkFiles(entryPath, rootDirectory) : [path.relative(rootDirectory, entryPath).replaceAll("\\", "/")];
   });
 }
 
-function collectProjectPlanningContext() {
+function collectProjectPlanningContext(rootDirectory = process.cwd()) {
   const docPaths = ["AGENTS.md", "README.md", "docs/architecture.md", "docs/product-spec.md", "docs/roadmap.md"];
-  const docs = Object.fromEntries(docPaths.filter((file) => fs.existsSync(file)).map((file) => [file, fs.readFileSync(file, "utf8")]));
-  const sourceFiles = walkFiles(path.resolve("src"));
+  const docs = Object.fromEntries(docPaths.filter((file) => fs.existsSync(path.join(rootDirectory, file))).map((file) => [file, fs.readFileSync(path.join(rootDirectory, file), "utf8")]));
+  const sourceFiles = walkFiles(path.join(rootDirectory, "src"), rootDirectory);
   const testFiles = [
-    ...walkFiles(path.resolve("test")),
-    ...walkFiles(path.resolve("tests")),
-    ...walkFiles(path.resolve("scripts")).filter((file) => /\.(?:test|spec)\./u.test(file)),
+    ...walkFiles(path.join(rootDirectory, "test"), rootDirectory),
+    ...walkFiles(path.join(rootDirectory, "tests"), rootDirectory),
+    ...walkFiles(path.join(rootDirectory, "scripts"), rootDirectory).filter((file) => /\.(?:test|spec)\./u.test(file)),
     ...sourceFiles.filter((file) => /\.(?:test|spec)\./u.test(file))
   ];
   const tasks = [];
 
   for (const state of ["backlog", "done", "failed"]) {
-    const directory = path.resolve("tasks", state);
+    const directory = path.join(rootDirectory, "tasks", state);
     if (!fs.existsSync(directory)) continue;
     for (const file of fs.readdirSync(directory).filter((name) => name.endsWith(".yaml")).sort()) {
       const filePath = path.join(directory, file);
       try {
         tasks.push({ state, file, data: YAML.parse(fs.readFileSync(filePath, "utf8")) });
       } catch (error) {
-        throw new AutomationStop(`Could not parse existing task ${path.relative(process.cwd(), filePath)}: ${error.message}`, "task_parse_failure");
+        throw new AutomationStop(`Could not parse existing task ${path.relative(rootDirectory, filePath)}: ${error.message}`, "task_parse_failure");
       }
     }
   }
 
   return { docs, sourceFiles, testFiles: [...new Set(testFiles)].sort(), tasks };
+}
+
+function readTextFile(rootDirectory, relativePath) {
+  const filePath = path.join(rootDirectory, relativePath);
+  return fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : "";
+}
+
+function resolveLocalModule(rootDirectory, importerPath, specifier) {
+  if (!specifier.startsWith(".")) return null;
+  const unresolved = path.resolve(path.dirname(path.join(rootDirectory, importerPath)), specifier);
+  const candidates = [
+    unresolved,
+    `${unresolved}.ts`,
+    `${unresolved}.tsx`,
+    `${unresolved}.js`,
+    `${unresolved}.mjs`,
+    path.join(unresolved, "index.ts"),
+    path.join(unresolved, "index.tsx"),
+    path.join(unresolved, "index.js")
+  ];
+  const resolved = candidates.find((candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile());
+  return resolved ? path.relative(rootDirectory, resolved).replaceAll("\\", "/") : null;
+}
+
+function collectReachableSource(rootDirectory, entryPath = "src/index.ts") {
+  const reachable = new Set();
+  const pending = [entryPath];
+  const importPattern = /(?:\b(?:import|export)\s+(?:[^"']*?\s+from\s+)?["']([^"']+)["']|\bimport\(\s*["']([^"']+)["']\s*\))/gu;
+
+  while (pending.length > 0) {
+    const relativePath = pending.pop();
+    if (!relativePath || reachable.has(relativePath)) continue;
+    const source = readTextFile(rootDirectory, relativePath);
+    if (!source) continue;
+    reachable.add(relativePath);
+    for (const match of source.matchAll(importPattern)) {
+      const resolved = resolveLocalModule(rootDirectory, relativePath, match[1] ?? match[2]);
+      if (resolved && !reachable.has(resolved)) pending.push(resolved);
+    }
+  }
+
+  return reachable;
+}
+
+function auditProductCompleteness(options = {}) {
+  const rootDirectory = path.resolve(options.rootDirectory ?? process.cwd());
+  const context = options.context ?? collectProjectPlanningContext(rootDirectory);
+  const packageText = readTextFile(rootDirectory, "package.json");
+  let packageJson = {};
+  try {
+    packageJson = packageText ? JSON.parse(packageText) : {};
+  } catch {
+    packageJson = {};
+  }
+
+  const indexHtml = readTextFile(rootDirectory, "index.html");
+  const entrySource = readTextFile(rootDirectory, "src/index.ts");
+  const reachableFiles = collectReachableSource(rootDirectory);
+  const reachableText = [...reachableFiles].map((file) => readTextFile(rootDirectory, file)).join("\n");
+  const lowerReachableText = reachableText.toLocaleLowerCase("en-US");
+  const sourceFileSet = new Set(context.sourceFiles);
+  const hasImporter = {
+    pngSequence: sourceFileSet.has("src/core/importers/pngSequence/index.ts"),
+    spritesheetGrid: sourceFileSet.has("src/core/importers/spritesheetGrid/index.ts"),
+    spritesheetJson: sourceFileSet.has("src/core/importers/spritesheetJson/index.ts")
+  };
+  const hasExporter = sourceFileSet.has("src/core/exporters/aseprite/index.ts");
+  const hasPreviewHelper = sourceFileSet.has("src/app/previewTimeline.ts") || context.sourceFiles.some((file) => /(?:preview|timeline)/iu.test(file));
+  const appRoot = /<(?:div|main|section)[^>]+id=["'](?:app|root)["'][^>]*>/iu.test(indexHtml);
+  const callsMountFunction = /\b(?:mount|initialize|init|render|create)[A-Za-z0-9]*(?:App|Ui|Converter)?\s*\(/u.test(entrySource);
+  const locatesAppRoot = /(?:getElementById|querySelector)\s*\(/u.test(entrySource);
+  const mutatesDom = /(?:createElement|append|replaceChildren|innerHTML)/u.test(entrySource);
+  const importsAppModule = /(?:from\s+|import\s*)["']\.\/app(?:\/|["'])/u.test(entrySource);
+  const browserAppMounted = appRoot && locatesAppRoot && (mutatesDom || (importsAppModule && callsMountFunction)) && !/placeholder|automation framework installed/iu.test(entrySource);
+  const createsFileInput = /createElement\(\s*["']input["']\s*\)/u.test(reachableText) && /\.type\s*=\s*["']file["']/u.test(reachableText);
+  const declarativeFileInput = /<input[^>]+type=["']file["']/iu.test(indexHtml + reachableText);
+  const fileImportUi = (createsFileInput || declarativeFileInput) && /(?:bindFileImportControl|mountFileImportUi|addEventListener\(\s*["']change["'])/u.test(reachableText);
+  const dragAndDrop = /addEventListener\(\s*["']dragover["']/u.test(reachableText) && /addEventListener\(\s*["']drop["']/u.test(reachableText) && /dataTransfer/u.test(reachableText);
+  const modeControl = /createElement\(\s*["']select["']\s*\)|<select\b|(?:type=["']radio["']|\.type\s*=\s*["']radio["'])/iu.test(reachableText + indexHtml);
+  const availableModeNames = [
+    hasImporter.pngSequence ? /png[ -]?sequence/iu : null,
+    hasImporter.spritesheetGrid ? /spritesheet[ -]?grid/iu : null,
+    hasImporter.spritesheetJson ? /spritesheet[ -]?(?:json|png\s*\+\s*json)/iu : null
+  ].filter(Boolean);
+  const modeSelector = modeControl && availableModeNames.every((pattern) => pattern.test(reachableText + indexHtml));
+  const uiTestText = context.testFiles.filter((file) => /(?:^|\/)src\/(?:app\/|index\.)/u.test(file)).map((file) => readTextFile(rootDirectory, file)).join("\n");
+  const uiFlowTest = /(?:mount[A-Za-z0-9]*(?:Ui|App|Converter)|bind[A-Za-z0-9]*Control|converter\s+(?:flow|state))/iu.test(uiTestText);
+  const docsText = Object.values(context.docs).join("\n") + "\n" + walkFiles(path.join(rootDirectory, "docs"), rootDirectory).map((file) => readTextFile(rootDirectory, file)).join("\n");
+  const manualUsageGuide = /npm run dev/iu.test(docsText) && /(?:png sequence|spritesheet grid|spritesheet.*json)/iu.test(docsText) && /download/iu.test(docsText);
+  const appSourceText = context.sourceFiles.filter((file) => file.startsWith("src/app/") && !/\.(?:test|spec)\./u.test(file)).map((file) => readTextFile(rootDirectory, file)).join("\n");
+  const appTestText = context.testFiles.filter((file) => file.startsWith("src/app/")).map((file) => readTextFile(rootDirectory, file)).join("\n");
+  const testSources = context.testFiles.map((file) => ({ file, text: readTextFile(rootDirectory, file) }));
+  const hasConversionTest = (importName) => testSources.some(({ text }) => text.includes(importName) && text.includes("exportAseprite") && /synthetic|fixture/iu.test(text));
+  const taskHistoryText = context.tasks.map((task) => `${task.data?.title ?? ""} ${task.data?.goal ?? ""}`).join("\n");
+  const hasCssFile = context.sourceFiles.some((file) => /\.css$/iu.test(file));
+  const responsiveStyling = (hasCssFile || /<style\b|\.style\./iu.test(indexHtml + reachableText)) && /@media|clamp\(|min\(|max-width|grid-template|flex-wrap/iu.test(indexHtml + reachableText + context.sourceFiles.map((file) => readTextFile(rootDirectory, file)).join("\n"));
+  const reachesConversionCode = [...reachableFiles].some((file) => /src\/core\/(?:importers|exporters)\//u.test(file));
+  const productionBundle = browserAppMounted && reachableFiles.size > 1 && reachesConversionCode && !/automation framework installed/iu.test(indexHtml);
+  const downloadReachable = hasExporter && reachableFiles.has("src/core/exporters/aseprite/index.ts") && /download[^\n]{0,80}\.aseprite|\.aseprite[^\n]{0,80}download/iu.test(reachableText);
+  const exportFailureHandling = downloadReachable && /(?:try\s*\{|catch\s*\(|export[^\n]{0,80}(?:failed|error)|could not export)/iu.test(reachableText);
+  const disabledExportState = downloadReachable && /disabled/u.test(reachableText) && /(?:valid\s*SpriteProject|isValidSpriteProject|no valid project|before exporting)/iu.test(reachableText);
+  const invalidImportErrors = /unsupported[^\n]{0,80}(?:file|format)|invalid[^\n]{0,80}(?:file|grid)|grid[^\n]{0,80}(?:invalid|failed|error)/iu.test(appSourceText + appTestText);
+  const exportErrorTests = /(?:could not export|export fails|no valid project|before exporting)/iu.test(appTestText) && /disabled/iu.test(appTestText);
+  const browserLocalDocs = /browser[- ](?:only|local)|processed in the browser|stay in the browser/iu.test(docsText) && /(?:not|never|do not)[^\n]{0,50}upload/iu.test(docsText);
+  const supportedInputsDocs = /png sequence/iu.test(docsText) && /spritesheet grid/iu.test(docsText) && /spritesheet[^\n]{0,40}json/iu.test(docsText);
+  const flatLayerLimitsDocs = /(?:cannot|can't|do not|does not)[^\n]{0,60}(?:recover|reconstruct)[^\n]{0,40}(?:layer|layers)|flat png[^\n]{0,80}(?:layer|layers)/iu.test(docsText);
+  const asepriteOutputVerificationDocs = /(?:open|inspect|test|verify)[^\n]{0,80}(?:generated[^\n]{0,30})?\.aseprite|aseprite[^\n]{0,80}(?:open|inspect|test|verify)/iu.test(docsText);
+  const compatibilityLimitsDocs = /(?:unsupported|does not currently export|compatibility limit|supported subset)/iu.test(docsText) && /(?:linked cels|tilemap|indexed|grayscale|frame tags|blend modes)/iu.test(docsText);
+  const staticDeploymentReadiness = /(?:static deployment|deploy[^\n]{0,80}(?:static|github pages|netlify|vercel)|github pages)/iu.test(docsText) || /(?:static deployment|github pages deployment)/iu.test(taskHistoryText);
+  const productionBuildNotes = /npm run build/iu.test(docsText) && /(?:serve|preview|deploy)[^\n]{0,80}(?:dist|built|production)|(?:dist|built|production)[^\n]{0,80}(?:serve|preview|deploy)/iu.test(docsText);
+  const largeFileWarning = /(?:large|long)[^\n]{0,80}(?:file|sprite|sequence)[^\n]{0,80}(?:memory|slow|limit|warning)|browser memory/iu.test(indexHtml + reachableText);
+  const conversionProgress = /(?:converting|processing|working|progress)[^\n]{0,80}(?:status|aria-live|disabled)|(?:status|aria-live)[^\n]{0,80}(?:converting|processing|working|progress)/iu.test(reachableText);
+  const browserMemoryDocs = /browser[^\n]{0,60}memory|memory[^\n]{0,60}(?:browser|rgba|decoded|large file)/iu.test(docsText);
+
+  const checks = {
+    devScript: { passed: packageJson.scripts?.dev === "vite", message: 'package.json has a "dev": "vite" script' },
+    appRoot: { passed: appRoot, message: "index.html contains an app root" },
+    browserAppMounted: { passed: browserAppMounted, message: "src/index.ts mounts or initializes the browser converter" },
+    fileImportUi: { passed: fileImportUi, message: "a usable browser-local file import UI is reachable" },
+    dragAndDrop: { passed: dragAndDrop, message: "a drag-and-drop area is wired to local file import" },
+    modeSelector: { passed: modeSelector, message: "a mode selector exposes the available import modes" },
+    pngSequenceUi: { passed: !hasImporter.pngSequence || reachableFiles.has("src/core/importers/pngSequence/index.ts"), message: "PNG sequence import is reachable from the UI" },
+    spritesheetGridUi: { passed: !hasImporter.spritesheetGrid || reachableFiles.has("src/core/importers/spritesheetGrid/index.ts"), message: "spritesheet grid import is reachable from the UI" },
+    spritesheetJsonUi: { passed: !hasImporter.spritesheetJson || reachableFiles.has("src/core/importers/spritesheetJson/index.ts"), message: "spritesheet JSON import is reachable from the UI" },
+    asepriteExporterExists: { passed: hasExporter, message: "Aseprite exporter entry point exists" },
+    asepriteDownloadUi: { passed: !hasExporter || downloadReachable, message: ".aseprite export and download are reachable from the UI" },
+    exportFailureHandling: { passed: !hasExporter || exportFailureHandling, message: "export and download failures have clear UI handling" },
+    disabledExportState: { passed: !hasExporter || disabledExportState, message: "export stays disabled until a valid project exists" },
+    previewTimelineUi: { passed: !hasPreviewHelper || [...reachableFiles].some((file) => /(?:preview|timeline)/iu.test(file)), message: "preview or timeline output is reachable from the UI" },
+    statusAndErrors: { passed: /(?:role["']?\s*,?\s*["'](?:alert|status)|aria-live|statusOutput|errorOutput)/iu.test(reachableText), message: "status and error output are reachable from the UI" },
+    uiFlowTest: { passed: uiFlowTest, message: "a focused mounted-flow or DOM-free UI state test exists" },
+    pngSequenceE2e: { passed: !hasImporter.pngSequence || hasConversionTest("importPngSequence"), message: "synthetic PNG sequence conversion has an end-to-end Aseprite test" },
+    spritesheetGridE2e: { passed: !hasImporter.spritesheetGrid || hasConversionTest("importSpritesheetGrid"), message: "synthetic spritesheet grid conversion has an end-to-end Aseprite test" },
+    spritesheetJsonE2e: { passed: !hasImporter.spritesheetJson || hasConversionTest("importSpritesheetJson"), message: "synthetic spritesheet JSON conversion has an end-to-end Aseprite test" },
+    productionBundle: { passed: productionBundle, message: "the production entry is more than a placeholder bundle" },
+    browserLocalDocs: { passed: browserLocalDocs, message: "documentation states that artwork stays browser-local and is not uploaded" },
+    supportedInputsDocs: { passed: supportedInputsDocs, message: "documentation lists every supported MVP input" },
+    flatLayerLimitsDocs: { passed: flatLayerLimitsDocs, message: "documentation says flat PNG layers cannot be recovered" },
+    manualUsageGuide: { passed: manualUsageGuide, message: "manual browser conversion usage is documented" },
+    asepriteOutputVerificationDocs: { passed: asepriteOutputVerificationDocs, message: "documentation explains how to test generated output in Aseprite" },
+    compatibilityLimitsDocs: { passed: compatibilityLimitsDocs, message: "Aseprite compatibility limits are documented" },
+    staticDeploymentReadiness: { passed: staticDeploymentReadiness, message: "a static deployment guide or task exists" },
+    productionBuildNotes: { passed: productionBuildNotes, message: "production build verification is documented" },
+    invalidImportErrors: { passed: invalidImportErrors, message: "invalid files, formats, and grid settings have clear tested errors" },
+    exportErrorTests: { passed: exportErrorTests, message: "failed export and no-project UI states have focused tests" },
+    largeFileWarning: { passed: largeFileWarning, message: "the UI warns about large files or browser memory pressure" },
+    conversionProgress: { passed: conversionProgress, message: "long-running conversion progress is exposed in UI status" },
+    browserMemoryDocs: { passed: browserMemoryDocs, message: "browser memory and large-file limits are documented" },
+    responsiveStyling: { passed: responsiveStyling, message: "basic responsive converter styling exists" }
+  };
+  const missing = Object.entries(checks).filter(([, check]) => !check.passed).map(([key, check]) => ({ key, message: check.message }));
+  const audits = PRODUCT_AUDIT_DEFINITIONS.map((definition) => {
+    const auditChecks = definition.checkKeys.map((key) => ({ key, ...checks[key] }));
+    return {
+      id: definition.id,
+      label: definition.label,
+      passed: auditChecks.every((check) => check.passed),
+      checks: auditChecks,
+      missing: auditChecks.filter((check) => !check.passed)
+    };
+  });
+  return { passed: audits.every((audit) => audit.passed), audits, checks, missing, reachableFiles: [...reachableFiles].sort() };
 }
 
 function listExistingTaskIds(context = collectProjectPlanningContext()) {
@@ -523,13 +1052,18 @@ function slugify(title) {
 }
 
 function buildGeneratedTask(roadmapItem, id) {
+  const productContext = "This task was generated deterministically because a product-completeness audit found missing product work in the repository.";
+  const requirements = [
+    ...(roadmapItem.uiTask ? UI_TASK_REQUIREMENTS : []),
+    ...roadmapItem.requirements
+  ];
   return {
     id,
     title: roadmapItem.title,
     status: "backlog",
     priority: "high",
     goal: roadmapItem.summary,
-    context: "This task was generated deterministically from the repository roadmap, architecture, current source tree, and existing task history.",
+    context: roadmapItem.productCompletion ? productContext : "This task was generated deterministically from the repository roadmap, architecture, current source tree, and existing task history.",
     scope: {
       summary: roadmapItem.summary,
       allowed_paths: roadmapItem.allowedPaths,
@@ -540,7 +1074,7 @@ function buildGeneratedTask(roadmapItem, id) {
       "Do not upload user artwork or use external processing services.",
       "Do not change dependencies, lockfiles, or GitHub workflows."
     ],
-    requirements: roadmapItem.requirements,
+    requirements,
     acceptance_criteria: [
       roadmapItem.summary,
       "Focused tests cover the behavior introduced by this task.",
@@ -564,6 +1098,25 @@ function selectRoadmapTasks(context, count = generatedTaskCount) {
   }).slice(0, count);
   const existingIds = listExistingTaskIds(context);
   return available.map((item, index) => buildGeneratedTask(item, getNextTaskId(existingIds, index)));
+}
+
+function selectProductCompletionTasks(audit, context, count = generatedTaskCount) {
+  const existingTitles = new Set(context.tasks.map((task) => normalizeTitle(task.data?.title ?? "")));
+  const existingGoals = new Set(context.tasks.map((task) => normalizeTitle(task.data?.goal ?? "")));
+  const missingKeys = new Set(audit.missing.map((item) => item.key));
+  const coveredKeys = new Set();
+  const selected = [];
+
+  for (const template of PRODUCT_COMPLETION_TASKS) {
+    if (selected.length >= count) break;
+    const needsTask = template.auditKeys.some((key) => missingKeys.has(key) && !coveredKeys.has(key));
+    if (!needsTask || existingTitles.has(normalizeTitle(template.title)) || existingGoals.has(normalizeTitle(template.summary))) continue;
+    selected.push({ ...template, productCompletion: true });
+    for (const key of template.covers ?? template.auditKeys) coveredKeys.add(key);
+  }
+
+  const existingIds = listExistingTaskIds(context);
+  return selected.map((item, index) => buildGeneratedTask(item, getNextTaskId(existingIds, index)));
 }
 
 function buildTaskYaml(task) {
@@ -594,6 +1147,31 @@ function generateBacklogTasks(options = {}) {
   return writeGeneratedTaskFiles(tasks, { dryRun: options.dryRun ?? false });
 }
 
+function generateProductCompletionTasks(options = {}) {
+  const context = options.context ?? collectProjectPlanningContext();
+  const audit = options.audit ?? auditProductCompleteness({ context });
+  const tasks = selectProductCompletionTasks(audit, context, options.count ?? generatedTaskCount);
+  return writeGeneratedTaskFiles(tasks, { dryRun: options.dryRun ?? false });
+}
+
+function printProductAuditSummary(audit) {
+  console.log("Running product completeness audits...");
+  if (audit.passed) {
+    for (const category of audit.audits) console.log(`${category.label}: passed`);
+    return;
+  }
+  for (const category of audit.audits) {
+    if (category.passed) console.log(`${category.label}: passed`);
+    else console.log(`${category.label}: missing ${category.missing.map((check) => check.message).join("; ")}`);
+  }
+}
+
+function productCompletionStopReason(audit, generatedCount) {
+  if (generatedCount > 0) return "Generated product-completion tasks; rerun automation to continue";
+  if (audit.passed) return "No backlog tasks remain and product completeness audits passed";
+  return "Product completeness audits failed and no non-duplicate product-completion tasks could be generated";
+}
+
 function printGeneratedTaskSummary(generated, prefix = "Generated") {
   if (generated.length === 0) {
     console.log(`${prefix} tasks: none`);
@@ -612,8 +1190,21 @@ function commitAndPushGeneratedTasks(generated) {
 
 function runGenerateTasksMode() {
   if (dryRun) {
-    const generated = generateBacklogTasks({ dryRun: true });
-    printGeneratedTaskSummary(generated, "[dry-run] would generate");
+    const context = collectProjectPlanningContext();
+    let generated = generateBacklogTasks({ context, dryRun: true });
+    let stopReason = null;
+    if (generated.length === 0) {
+      console.log("No normal roadmap tasks remain.");
+      const audit = auditProductCompleteness({ context });
+      printProductAuditSummary(audit);
+      generated = generateProductCompletionTasks({ audit, context, dryRun: true });
+      console.log(`[dry-run] would generate product-completion tasks: ${generated.map(({ task }) => task.id).join(", ") || "none"}`);
+      printGeneratedTaskSummary(generated, "[dry-run] product-completion");
+      stopReason = productCompletionStopReason(audit, generated.length);
+    } else {
+      printGeneratedTaskSummary(generated, "[dry-run] would generate");
+    }
+    if (stopReason) console.log(`[dry-run] Stop reason: ${stopReason}`);
     console.log("[dry-run] no task files, commits, pushes, or pulls were created");
     return generated;
   }
@@ -622,9 +1213,20 @@ function runGenerateTasksMode() {
   ensureOnMain();
   pullMain();
   ensureCleanGit();
-  const generated = generateBacklogTasks();
+  const context = collectProjectPlanningContext();
+  let generated = generateBacklogTasks({ context });
+  let stopReason = null;
+  if (generated.length === 0) {
+    console.log("No normal roadmap tasks remain.");
+    const audit = auditProductCompleteness({ context });
+    printProductAuditSummary(audit);
+    generated = generateProductCompletionTasks({ audit, context });
+    console.log(`Generated product-completion tasks: ${generated.map(({ task }) => task.id).join(", ") || "none"}`);
+    stopReason = productCompletionStopReason(audit, generated.length);
+  }
   if (generated.length > 0) commitAndPushGeneratedTasks(generated);
   printGeneratedTaskSummary(generated);
+  if (stopReason) console.log(`Stop reason: ${stopReason}`);
   return generated;
 }
 
@@ -1272,27 +1874,55 @@ function printDryRunTaskPlan(taskFile, task) {
 function printDryRunPlan() {
   const backlog = listBacklogTasks();
   const dryRunTaskLimit = maxTasks ?? backlog.length;
+  const generationPreviewCount = dryRunTaskLimit > 0 ? Math.min(generatedTaskCount, dryRunTaskLimit) : generatedTaskCount;
   let plannedTasks = backlog.slice(0, dryRunTaskLimit).map((fileName) => ({ fileName, task: readTask(fileName) }));
+  let emptyBacklogStopReason = null;
   console.log(`[dry-run] mode: ${mode}`);
   console.log(`[dry-run] safety limits: max tasks=${maxTasks === null ? "backlog length" : maxTasks}, max minutes=${Number.isFinite(maxMinutes) ? maxMinutes : "none"}, generation rounds=${maxGenerationRounds}`);
 
-  if (plannedTasks.length === 0 && mode === "until-stop" && generateTasksWhenEmpty) {
-    if (maxGenerationRounds === 0) {
-      console.log("[dry-run] backlog is empty and task generation limit is already reached");
-    } else {
-      const generated = generateBacklogTasks({ dryRun: true, count: Math.min(generatedTaskCount, dryRunTaskLimit) });
+  if (plannedTasks.length === 0) {
+    const context = collectProjectPlanningContext();
+    const normalTasks = selectRoadmapTasks(context, generationPreviewCount);
+    if (mode === "until-stop" && generateTasksWhenEmpty && normalTasks.length > 0 && maxGenerationRounds > 0) {
+      const generated = writeGeneratedTaskFiles(normalTasks, { dryRun: true });
       printGeneratedTaskSummary(generated, "[dry-run] would generate");
       plannedTasks = generated.map(({ task, fileName }) => ({ task, fileName }));
+    } else if (normalTasks.length > 0) {
+      if (mode === "until-stop" && generateTasksWhenEmpty && maxGenerationRounds === 0) {
+        console.log("[dry-run] backlog is empty and task generation limit is already reached");
+      } else {
+        console.log("[dry-run] no backlog tasks remain; normal roadmap generation is available but not enabled for this mode");
+      }
+      emptyBacklogStopReason = "No backlog tasks remain";
+    } else {
+      console.log("No normal roadmap tasks remain.");
+      const audit = auditProductCompleteness({ context });
+      printProductAuditSummary(audit);
+      let generated = [];
+      if (maxGenerationRounds === 0) {
+        console.log("[dry-run] task generation limit is already reached");
+      } else {
+        generated = generateProductCompletionTasks({ audit, context, dryRun: true, count: generationPreviewCount });
+      }
+      console.log(`[dry-run] would generate product-completion tasks: ${generated.map(({ task }) => task.id).join(", ") || "none"}`);
+      printGeneratedTaskSummary(generated, "[dry-run] product-completion");
+      emptyBacklogStopReason = maxGenerationRounds === 0 && !audit.passed
+        ? `Product completeness audits failed; task generation limit reached (${maxGenerationRounds})`
+        : productCompletionStopReason(audit, generated.length);
+      if (mode === "until-stop" && generateTasksWhenEmpty) {
+        plannedTasks = generated.map(({ task, fileName }) => ({ task, fileName }));
+      }
     }
   }
 
-  if (plannedTasks.length === 0) console.log("[dry-run] no backlog tasks remain and no tasks would be generated");
+  if (plannedTasks.length === 0 && emptyBacklogStopReason) console.log(`[dry-run] Stop reason: ${emptyBacklogStopReason}`);
   for (const { fileName, task } of plannedTasks) printDryRunTaskPlan(fileName, task);
 
   if (backlog.length > plannedTasks.length) console.log(`\n[dry-run] would stop at the max task limit with ${backlog.length - plannedTasks.length} task(s) remaining`);
-  else if (mode === "until-stop" && generateTasksWhenEmpty && maxGenerationRounds > 0) console.log("\n[dry-run] would stop when the generation-round or task/runtime limit is reached");
+  else if (mode === "until-stop" && generateTasksWhenEmpty && maxGenerationRounds > 0 && plannedTasks.length > 0) console.log("\n[dry-run] would stop when the generation-round or task/runtime limit is reached");
   else console.log("\n[dry-run] would stop when the backlog is empty");
   console.log("[dry-run] no commands or repository mutations were performed");
+  return emptyBacklogStopReason ?? "Dry-run plan completed without mutations";
 }
 
 function printLoopSummary(summary) {
@@ -1323,8 +1953,7 @@ function runLoop() {
   };
 
   if (dryRun) {
-    printDryRunPlan();
-    summary.stopReason = "Dry-run plan completed without mutations";
+    summary.stopReason = printDryRunPlan();
     if (mode !== "single") printLoopSummary(summary);
     return summary;
   }
@@ -1348,23 +1977,49 @@ function runLoop() {
         break;
       }
       if (backlog.length === 0) {
-        if (mode === "until-stop" && generateTasksWhenEmpty) {
-          if (generationRounds >= maxGenerationRounds) {
-            summary.stopReason = `No backlog tasks remain and task generation limit reached (${maxGenerationRounds})`;
-            break;
+        const context = collectProjectPlanningContext();
+        const normalTasks = selectRoadmapTasks(context, generatedTaskCount);
+        if (normalTasks.length > 0) {
+          if (mode === "until-stop" && generateTasksWhenEmpty) {
+            if (generationRounds >= maxGenerationRounds) {
+              summary.stopReason = `No backlog tasks remain and task generation limit reached (${maxGenerationRounds})`;
+              break;
+            }
+            const generated = writeGeneratedTaskFiles(normalTasks);
+            commitAndPushGeneratedTasks(generated);
+            printGeneratedTaskSummary(generated);
+            summary.generatedTaskIds.push(...generated.map(({ task }) => task.id));
+            generationRounds += 1;
+            continue;
           }
-          const generated = generateBacklogTasks();
-          if (generated.length === 0) {
-            summary.stopReason = "No backlog tasks remain and no tasks could be generated";
-            break;
-          }
-          commitAndPushGeneratedTasks(generated);
-          printGeneratedTaskSummary(generated);
-          summary.generatedTaskIds.push(...generated.map(({ task }) => task.id));
-          generationRounds += 1;
-          continue;
+          summary.stopReason = "No backlog tasks remain";
+          break;
         }
-        summary.stopReason = "No backlog tasks remain";
+
+        console.log("No normal roadmap tasks remain.");
+        const audit = auditProductCompleteness({ context });
+        printProductAuditSummary(audit);
+        if (audit.passed) {
+          summary.stopReason = productCompletionStopReason(audit, 0);
+          break;
+        }
+        if (generationRounds >= maxGenerationRounds) {
+          summary.stopReason = `Product completeness audits failed; task generation limit reached (${maxGenerationRounds})`;
+          break;
+        }
+
+        const generated = generateProductCompletionTasks({ audit, context });
+        console.log(`Generated product-completion tasks: ${generated.map(({ task }) => task.id).join(", ") || "none"}`);
+        if (generated.length === 0) {
+          summary.stopReason = productCompletionStopReason(audit, 0);
+          break;
+        }
+        commitAndPushGeneratedTasks(generated);
+        printGeneratedTaskSummary(generated, "Generated product-completion");
+        summary.generatedTaskIds.push(...generated.map(({ task }) => task.id));
+        generationRounds += 1;
+        if (mode === "until-stop" && generateTasksWhenEmpty) continue;
+        summary.stopReason = productCompletionStopReason(audit, generated.length);
         break;
       }
       if (effectiveMaxTasks === null) effectiveMaxTasks = backlog.length;
@@ -1414,6 +2069,7 @@ if (isMainModule) {
 }
 
 export {
+  auditProductCompleteness,
   buildFailureLogContent,
   buildTaskYaml,
   autoMergePolicyDecision,
@@ -1423,6 +2079,7 @@ export {
   existingTaskRecoveryAction,
   failureTaskStatePolicy,
   generateBacklogTasks,
+  generateProductCompletionTasks,
   getNextTaskId,
   guardDirtyTaskStateOnTaskBranch,
   hasTaskRelevantChanges,
@@ -1431,9 +2088,11 @@ export {
   listExistingTaskIds,
   npmCommand,
   normalizeTitle,
+  productCompletionStopReason,
   prChecksFailurePolicy,
   policyFalseRecoveryOptions,
   selectRoadmapTasks,
+  selectProductCompletionTasks,
   shouldContinueAfterCodexFailure,
   verifyRecoveredBranch,
   writeGeneratedTaskFiles

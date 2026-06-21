@@ -6,20 +6,24 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import YAML from "yaml";
 import {
+  auditProductCompleteness,
   autoMergePolicyDecision,
   buildFailureLogContent,
   buildTaskYaml,
   canContinueWithoutPrChecks,
   canMoveTaskToDone,
+  collectProjectPlanningContext,
   existingTaskRecoveryAction,
   failureTaskStatePolicy,
   getNextTaskId,
   guardDirtyTaskStateOnTaskBranch,
   isRecoverableCodexSandboxVerificationFailure,
   npmCommand,
+  productCompletionStopReason,
   policyFalseRecoveryOptions,
   prChecksFailurePolicy,
   selectRoadmapTasks,
+  selectProductCompletionTasks,
   shouldContinueAfterCodexFailure,
   verifyRecoveredBranch
 } from "./auto-dev-cycle.mjs";
@@ -59,6 +63,68 @@ function createPlanningWorkspace() {
   return workspace;
 }
 
+function writeWorkspaceFile(workspace, relativePath, content) {
+  const filePath = path.join(workspace, relativePath);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, content, "utf8");
+}
+
+function markNormalRoadmapComplete(workspace) {
+  for (const file of fs.readdirSync(path.join(root, "tasks", "done")).filter((name) => name.endsWith(".yaml"))) {
+    fs.copyFileSync(path.join(root, "tasks", "done", file), path.join(workspace, "tasks", "done", file));
+  }
+}
+
+function createMountedMvpWorkspace(options = {}) {
+  const workspace = createPlanningWorkspace();
+  writeWorkspaceFile(workspace, "package.json", JSON.stringify({ scripts: options.devScript === false ? {} : { dev: "vite" } }));
+  writeWorkspaceFile(workspace, "index.html", `
+    <div id="app"></div>
+    <style>@media (max-width: 600px) { #app { width: 100%; } }</style>
+    <script type="module" src="/src/index.ts"></script>
+  `);
+  writeWorkspaceFile(workspace, "src/index.ts", `
+    import { mountConverterApp } from "./app/converter";
+    const root = document.getElementById("app");
+    if (root) mountConverterApp(root);
+  `);
+  writeWorkspaceFile(workspace, "src/app/converter.ts", `
+    import { importPngSequence } from "../core/importers/pngSequence";
+    import { importSpritesheetGrid } from "../core/importers/spritesheetGrid";
+    import { importSpritesheetJson } from "../core/importers/spritesheetJson";
+    import { exportAseprite } from "../core/exporters/aseprite";
+    void importPngSequence; void importSpritesheetGrid; void importSpritesheetJson; void exportAseprite;
+    export function mountConverterApp(root) {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.addEventListener("change", () => {});
+      ${options.modeSelector === false ? "" : 'const select = document.createElement("select"); select.textContent = "PNG sequence spritesheet grid spritesheet JSON";'}
+      const statusOutput = document.createElement("p");
+      const errorOutput = document.createElement("p");
+      statusOutput.setAttribute("aria-live", "polite");
+      statusOutput.textContent = "Processing conversion progress";
+      errorOutput.textContent = "Unsupported format or invalid grid settings";
+      const warning = document.createElement("p");
+      warning.textContent = "Large files may exceed browser memory limits";
+      root.addEventListener("dragover", (event) => event.dataTransfer);
+      root.addEventListener("drop", (event) => event.dataTransfer);
+      root.append(input, ${options.modeSelector === false ? "" : "select,"} statusOutput, errorOutput, warning);
+      ${options.download === false ? "" : 'const button = document.createElement("button"); button.textContent = "Download .aseprite"; button.disabled = true; try { /* enable only for a valid SpriteProject */ } catch (error) { errorOutput.textContent = "Could not export"; } root.append(button);'}
+    }
+  `);
+  for (const importer of ["pngSequence", "spritesheetGrid", "spritesheetJson"]) {
+    const exportName = importer === "pngSequence" ? "importPngSequence" : importer === "spritesheetGrid" ? "importSpritesheetGrid" : "importSpritesheetJson";
+    writeWorkspaceFile(workspace, `src/core/importers/${importer}/index.ts`, `export function ${exportName}() {}`);
+  }
+  writeWorkspaceFile(workspace, "src/core/exporters/aseprite/index.ts", "export function exportAseprite() {}\n");
+  writeWorkspaceFile(workspace, "src/app/converter.test.ts", 'describe("mountConverterApp", () => { it("tracks converter state", () => { const disabled = true; expect(disabled).toBe(true); }); it("shows could not export before exporting with no valid project", () => {}); });\n');
+  writeWorkspaceFile(workspace, "src/core/conversion.integration.test.ts", "// synthetic fixtures\nimportPngSequence(); importSpritesheetGrid(); importSpritesheetJson(); exportAseprite();\n");
+  writeWorkspaceFile(workspace, "docs/manual-usage.md", "Run `npm run dev`, choose PNG sequence, spritesheet grid, or spritesheet JSON, then convert and download the result. Artwork stays browser-local and is never uploaded. Flat PNG files cannot recover original layers. Open the generated `.aseprite` file in Aseprite and inspect frames and durations. Unsupported features include linked cels and tilemaps.\n");
+  writeWorkspaceFile(workspace, "docs/deployment.md", "For static deployment, run `npm run build`, serve the built `dist` output locally, then deploy it to a static host. Keep processing browser-only.\n");
+  writeWorkspaceFile(workspace, "docs/performance.md", "Large decoded RGBA sequences can use substantial browser memory. Browser memory limits vary, so split large files when needed.\n");
+  return workspace;
+}
+
 function runPlanner(workspace, args, env = {}) {
   return spawnSync(process.execPath, [path.join(root, "scripts", "auto-dev-cycle.mjs"), ...args], {
     cwd: workspace,
@@ -91,7 +157,7 @@ describe("auto-dev dry run", () => {
       expect(result.stdout).toContain("Wait for GitHub checks");
       expect(result.stdout).toContain("Squash-merge the PR");
     } else {
-      expect(result.stdout).toContain("no backlog tasks remain");
+      expect(result.stdout).toMatch(/(?:no backlog tasks remain|Running product completeness audits)/u);
     }
     expect(result.stdout).not.toContain("\n> ");
     expect(git("branch", "--show-current")).toBe(branchBefore);
@@ -359,6 +425,219 @@ describe("backlog task generation", () => {
       });
       expect(result.status).toBe(0);
       expect(result.stdout).toContain("task generation limit is already reached");
+      expect(fs.readdirSync(path.join(workspace, "tasks", "backlog"))).toEqual([]);
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("product completeness audits and task generation", () => {
+  it("passes only when the mounted browser product exposes the complete audited flow", () => {
+    const workspace = createMountedMvpWorkspace();
+    try {
+      const context = collectProjectPlanningContext(workspace);
+      const audit = auditProductCompleteness({ rootDirectory: workspace, context });
+
+      expect(audit.passed).toBe(true);
+      expect(audit.missing).toEqual([]);
+      expect(audit.audits.map(({ id }) => id)).toEqual([
+        "ui",
+        "import-coverage",
+        "export-download",
+        "end-to-end-conversion",
+        "documentation",
+        "deployment-readiness",
+        "error-handling",
+        "performance-large-file"
+      ]);
+      expect(selectProductCompletionTasks(audit, context, 5)).toEqual([]);
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("generates importer-specific end-to-end tasks when conversion coverage is missing", () => {
+    const workspace = createMountedMvpWorkspace();
+    try {
+      fs.rmSync(path.join(workspace, "src/core/conversion.integration.test.ts"));
+      const context = collectProjectPlanningContext(workspace);
+      const audit = auditProductCompleteness({ rootDirectory: workspace, context });
+      const titles = selectProductCompletionTasks(audit, context, 10).map((task) => task.title);
+
+      expect(audit.audits.find(({ id }) => id === "end-to-end-conversion")?.passed).toBe(false);
+      expect(titles).toEqual(expect.arrayContaining([
+        "Add end-to-end PNG sequence conversion smoke test",
+        "Add end-to-end spritesheet grid conversion smoke test",
+        "Add end-to-end spritesheet JSON conversion smoke test"
+      ]));
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("generates manual documentation work when the usage guide is missing", () => {
+    const workspace = createMountedMvpWorkspace();
+    try {
+      fs.rmSync(path.join(workspace, "docs/manual-usage.md"));
+      const context = collectProjectPlanningContext(workspace);
+      const audit = auditProductCompleteness({ rootDirectory: workspace, context });
+      const titles = selectProductCompletionTasks(audit, context, 10).map((task) => task.title);
+
+      expect(audit.checks.manualUsageGuide.passed).toBe(false);
+      expect(titles).toContain("Add manual usage guide");
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("generates deployment-readiness work when static deployment docs are missing", () => {
+    const workspace = createMountedMvpWorkspace();
+    try {
+      fs.rmSync(path.join(workspace, "docs/deployment.md"));
+      const context = collectProjectPlanningContext(workspace);
+      const audit = auditProductCompleteness({ rootDirectory: workspace, context });
+      const titles = selectProductCompletionTasks(audit, context, 10).map((task) => task.title);
+
+      expect(audit.audits.find(({ id }) => id === "deployment-readiness")?.passed).toBe(false);
+      expect(titles).toContain("Add static deployment guide");
+      expect(titles).toContain("Add production build verification notes");
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("generates a mounting task when the empty-backlog product is placeholder-only", () => {
+    const workspace = createPlanningWorkspace();
+    try {
+      markNormalRoadmapComplete(workspace);
+      writeWorkspaceFile(workspace, "package.json", JSON.stringify({ scripts: { dev: "vite" } }));
+      writeWorkspaceFile(workspace, "index.html", '<main><p>Automation framework installed.</p></main><script type="module" src="/src/index.ts"></script>');
+      writeWorkspaceFile(workspace, "src/index.ts", 'export const projectName = "sprite-to-aseprite";\n');
+      const context = collectProjectPlanningContext(workspace);
+      const audit = auditProductCompleteness({ rootDirectory: workspace, context });
+      const tasks = selectProductCompletionTasks(audit, context, 5);
+
+      expect(audit.passed).toBe(false);
+      expect(audit.checks.browserAppMounted.passed).toBe(false);
+      expect(tasks.map((task) => task.title)).toContain("Mount browser converter UI");
+      expect(tasks.find((task) => task.title === "Mount browser converter UI")?.id).toBe("022");
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("generates a Vite dev-script task when package.json lacks dev", () => {
+    const workspace = createMountedMvpWorkspace({ devScript: false });
+    try {
+      const context = collectProjectPlanningContext(workspace);
+      const audit = auditProductCompleteness({ rootDirectory: workspace, context });
+      const tasks = selectProductCompletionTasks(audit, context, 5);
+
+      expect(audit.checks.devScript.passed).toBe(false);
+      expect(tasks.map((task) => task.title)).toContain("Add Vite dev script");
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("generates export-download work when the exporter exists but the mounted UI has no download path", () => {
+    const workspace = createMountedMvpWorkspace({ devScript: false, download: false });
+    try {
+      const context = collectProjectPlanningContext(workspace);
+      const audit = auditProductCompleteness({ rootDirectory: workspace, context });
+      const tasks = selectProductCompletionTasks(audit, context, 10);
+
+      expect(audit.checks.asepriteDownloadUi.passed).toBe(false);
+      expect(tasks.map((task) => task.title)).toContain("Wire Aseprite export download into UI");
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("generates mode-selector wiring when implemented importers are not selectable", () => {
+    const workspace = createMountedMvpWorkspace({ modeSelector: false });
+    try {
+      const context = collectProjectPlanningContext(workspace);
+      const audit = auditProductCompleteness({ rootDirectory: workspace, context });
+      const tasks = selectProductCompletionTasks(audit, context, 10);
+
+      expect(audit.checks.modeSelector.passed).toBe(false);
+      expect(tasks.map((task) => task.title)).toContain("Add converter import mode selector");
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("does not duplicate product tasks from backlog, done, or failed", () => {
+    const workspace = createMountedMvpWorkspace({ devScript: false, download: false, modeSelector: false });
+    try {
+      writeWorkspaceFile(workspace, "tasks/backlog/019-dev.yaml", 'id: "019"\ntitle: Prepare local development\ngoal: Add the missing npm development command so the browser product can be run locally with Vite.\n');
+      writeWorkspaceFile(workspace, "tasks/done/020-export.yaml", 'id: "020"\ntitle: Wire Aseprite export download into UI\n');
+      writeWorkspaceFile(workspace, "tasks/failed/021-mode.yaml", 'id: "021"\ntitle: Add converter import mode selector\n');
+      const context = collectProjectPlanningContext(workspace);
+      const audit = auditProductCompleteness({ rootDirectory: workspace, context });
+      const tasks = selectProductCompletionTasks(audit, context, 10);
+
+      expect(tasks.map((task) => task.title)).not.toContain("Add Vite dev script");
+      expect(tasks.map((task) => task.title)).not.toContain("Wire Aseprite export download into UI");
+      expect(tasks.map((task) => task.title)).not.toContain("Add converter import mode selector");
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("uses safe UI scope and explicit local, dependency-free implementation rules", () => {
+    const workspace = createPlanningWorkspace();
+    try {
+      const context = collectProjectPlanningContext(workspace);
+      const audit = auditProductCompleteness({ rootDirectory: workspace, context });
+      const task = selectProductCompletionTasks(audit, context, 5).find((item) => item.title === "Mount browser converter UI");
+      const parsed = YAML.parse(buildTaskYaml(task));
+      const requirements = parsed.requirements.join("\n");
+
+      expect(parsed.scope.allowed_paths).toEqual(expect.arrayContaining(["index.html", "package.json", "src/index.ts", "src/app/**", "src/**/*.test.*", "docs/**"]));
+      expect(parsed.scope.forbidden_paths).toEqual(expect.arrayContaining([".github/workflows/**", ".env", ".env.*", "dist/**", "build/**"]));
+      expect(requirements).toContain("Use plain TypeScript and DOM APIs.");
+      expect(requirements).toContain("Do not add React, Vue, Svelte, or other dependencies.");
+      expect(requirements).toContain("Keep files processed browser-locally.");
+      expect(requirements).toContain("Do not upload user artwork.");
+      expect(requirements).toContain("Do not duplicate conversion logic.");
+      expect(requirements).toContain("Add focused tests.");
+      expect(parsed.non_goals.join("\n")).toContain("Do not upload user artwork");
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("distinguishes audit success, generated work, and unresolved audit failure stop reasons", () => {
+    expect(productCompletionStopReason({ passed: true }, 0)).toBe("No backlog tasks remain and product completeness audits passed");
+    expect(productCompletionStopReason({ passed: false }, 2)).toBe("Generated product-completion tasks; rerun automation to continue");
+    expect(productCompletionStopReason({ passed: false }, 0)).toContain("Product completeness audits failed");
+  });
+
+  it("does not report full completion when placeholder UI fails the audit", () => {
+    const workspace = createPlanningWorkspace();
+    try {
+      markNormalRoadmapComplete(workspace);
+      writeWorkspaceFile(workspace, "src/index.ts", 'export const projectName = "placeholder";\n');
+      const result = runPlanner(workspace, ["--dry-run", "--generate-tasks"]);
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("Running product completeness audits...");
+      for (const label of [
+        "UI audit:",
+        "Import coverage audit:",
+        "Export/download audit:",
+        "End-to-end conversion audit:",
+        "Documentation/manual usage audit:",
+        "Deployment readiness audit:",
+        "Error handling audit:",
+        "Performance/large-file readiness audit:"
+      ]) expect(result.stdout).toContain(label);
+      expect(result.stdout).toContain("Mount browser converter UI");
+      expect(result.stdout).not.toContain("product completeness audits passed");
+      expect(result.stdout).toContain("product-completion tasks: 022");
       expect(fs.readdirSync(path.join(workspace, "tasks", "backlog"))).toEqual([]);
     } finally {
       fs.rmSync(workspace, { recursive: true, force: true });
