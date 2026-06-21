@@ -86,14 +86,16 @@ const templatePath = path.join(root, "prompts", "templates", "implement-task.md"
 const template = fs.readFileSync(templatePath, "utf8");
 const isProductCompletionTask = task.task_origin === "product-completion"
   || /product-completeness audit/iu.test(String(task.context ?? ""));
+const isAuditGapTask = Boolean(task.audit_gap);
 const strictScopeWarning = isProductCompletionTask ? `
 
 ## Strict product-completion task scope
 
 - Do not edit files outside the Allowed paths listed above.
 - If verification fails because of existing automation tests or unrelated files, report the failure instead of modifying out-of-scope files.
-- Do not repair the automation system from a UI, docs, import, or export task.
-- Automation repairs must be separate tasks whose allowed paths explicitly include \`scripts/**\`.
+${isAuditGapTask
+    ? "- This is an explicit audit-gap task. Change the audit detector or mapping only when the product evidence shows it is stale or wrong, and only within the listed automation paths."
+    : "- Do not repair the automation system from a UI, docs, import, or export task.\n- Automation repairs must be separate tasks whose allowed paths explicitly include `scripts/**`."}
 ` : "";
 
 const prompt = template

@@ -635,6 +635,17 @@ const BROAD_UI_SUPPRESSED_AUDIT_KEYS = new Set([
   "statusAndErrors",
   "responsiveStyling"
 ]);
+const AUDIT_REPAIR_ALLOWED_PATHS = ["scripts/auto-dev-cycle.mjs", "scripts/auto-dev-cycle.test.mjs", "README_AUTOMATION.md"];
+const AUDIT_INVESTIGATION_PATHS = {
+  ui: ["index.html", "src/index.ts", "src/app/**", "src/**/*.test.*"],
+  "import-coverage": ["src/app/**", "src/core/importers/**", "src/**/*.test.*"],
+  "export-download": ["src/app/**", "src/core/exporters/**", "src/**/*.test.*"],
+  "end-to-end-conversion": ["src/core/**", "src/**/*.test.*", "tests/**"],
+  documentation: ["docs/**", "README.md"],
+  "deployment-readiness": ["docs/**", "README.md"],
+  "error-handling": ["src/app/**", "src/**/*.test.*", "docs/**"],
+  "performance-large-file": ["src/app/**", "src/**/*.test.*", "docs/**"]
+};
 const cliArgs = new Set(process.argv.slice(2));
 const dryRun = cliArgs.has("--dry-run");
 const mode = getMode();
@@ -859,7 +870,7 @@ function walkFiles(directory, rootDirectory = process.cwd()) {
 }
 
 function listOpenTaskBranchIds(rootDirectory = process.cwd()) {
-  const result = spawnSync("git", ["branch", "--all", "--format=%(refname:short)"], {
+  const result = spawnSync("git", ["branch", "--all", "--no-merged", "main", "--format=%(refname:short)"], {
     cwd: rootDirectory,
     encoding: "utf8",
     shell: false
@@ -1087,6 +1098,7 @@ function buildGeneratedTask(roadmapItem, id) {
     title: roadmapItem.title,
     status: "backlog",
     ...(roadmapItem.productCompletion ? { task_origin: "product-completion" } : {}),
+    ...(roadmapItem.auditGap ? { audit_gap: roadmapItem.auditGap } : {}),
     priority: "high",
     goal: roadmapItem.summary,
     context: roadmapItem.productCompletion ? productContext : "This task was generated deterministically from the repository roadmap, architecture, current source tree, and existing task history.",
@@ -1113,6 +1125,198 @@ function buildGeneratedTask(roadmapItem, id) {
       forbidden_paths: DEFAULT_FORBIDDEN_PATHS
     }
   };
+}
+
+function auditCategoryForKey(audit, key) {
+  const category = audit.audits?.find((item) => item.checks?.some((check) => check.key === key));
+  return category ? { id: category.id, label: category.label } : { id: "unmapped", label: "Unmapped product audit" };
+}
+
+function taskId(task) {
+  return String(task.data?.id ?? getTaskId(task.file));
+}
+
+function taskMatchesAuditGap(task, template, checkKeys) {
+  const titleMatches = normalizeTitle(task.data?.title ?? "") === normalizeTitle(template?.title ?? "");
+  const goalMatches = normalizeTitle(task.data?.goal ?? "") === normalizeTitle(template?.summary ?? "");
+  const recordedKeys = task.data?.audit_gap?.check_keys ?? [];
+  return titleMatches || goalMatches || recordedKeys.some((key) => checkKeys.includes(key));
+}
+
+function auditGapDuplicateReason(task, template, checkKeys) {
+  if (normalizeTitle(task.data?.title ?? "") === normalizeTitle(template?.title ?? "")) return "normalized title matches the mapped candidate";
+  if (normalizeTitle(task.data?.goal ?? "") === normalizeTitle(template?.summary ?? "")) return "normalized goal matches the mapped candidate";
+  const recordedKeys = task.data?.audit_gap?.check_keys ?? [];
+  const matchingKeys = recordedKeys.filter((key) => checkKeys.includes(key));
+  return `task audit_gap metadata covers ${matchingKeys.join(", ") || "the same check"}`;
+}
+
+function duplicatePriority(task, openTaskBranchIds) {
+  if (task.state !== "done" && openTaskBranchIds.has(taskId(task))) return 4;
+  if (task.state === "active" || task.state === "backlog") return 3;
+  if (task.state === "done") return 2;
+  if (task.state === "failed") return 1;
+  return 0;
+}
+
+function findAuditGapDuplicates(context, template, checkKeys) {
+  const openTaskBranchIds = new Set((context.openTaskBranchIds ?? []).map(String));
+  return context.tasks
+    .filter((task) => taskMatchesAuditGap(task, template, checkKeys))
+    .sort((left, right) => duplicatePriority(right, openTaskBranchIds) - duplicatePriority(left, openTaskBranchIds)
+      || Number(taskId(right)) - Number(taskId(left)));
+}
+
+function auditDuplicateLocation(task, context, template, checkKeys) {
+  if (!task) return null;
+  const branchOpen = task.state !== "done" && (context.openTaskBranchIds ?? []).map(String).includes(taskId(task));
+  return {
+    id: taskId(task),
+    title: task.data?.title ?? "Untitled task",
+    state: branchOpen ? "open-branch" : task.state,
+    taskState: task.state,
+    branchOpen,
+    location: branchOpen ? `codex/task-${taskId(task)}` : `tasks/${task.state}/${task.file}`,
+    reason: auditGapDuplicateReason(task, template, checkKeys)
+  };
+}
+
+function remediationSubject(title) {
+  return String(title).replace(/^(?:add|wire|mount|restore|document|implement|create|write)\s+/iu, "");
+}
+
+function buildAuditRemediationTemplate(template, duplicate, checks, category) {
+  const retry = duplicate.taskState === "failed";
+  const checkKeys = checks.map((check) => check.key);
+  const checkText = checks.map((check) => `${check.key}: ${check.message}`).join("; ");
+  const action = retry ? "Retry" : "Complete";
+  return {
+    ...template,
+    title: `${action} ${remediationSubject(template.title)} audit gap after task ${duplicate.id}`,
+    summary: `${action} the still-failing ${category.label} check(s) after ${duplicate.taskState} task ${duplicate.id} "${duplicate.title}": ${checkText}.`,
+    allowedPaths: [...new Set([...template.allowedPaths, ...AUDIT_REPAIR_ALLOWED_PATHS])],
+    requirements: [
+      `Reproduce and inspect the remaining ${category.label} check(s): ${checkText}.`,
+      `Review task ${duplicate.id} "${duplicate.title}" and its resulting changes before editing.`,
+      "Distinguish genuinely missing product work from an incomplete prior implementation and a stale or incorrect audit detector/mapping.",
+      "Apply the smallest safe product fix; if the product already satisfies the requirement, correct the audit detector or mapping and add a focused regression test.",
+      ...template.requirements
+    ],
+    productCompletion: true,
+    auditGap: {
+      kind: retry ? "retry" : "remediation",
+      category: category.id,
+      check_keys: checkKeys,
+      previous_task_id: duplicate.id,
+      previous_task_state: duplicate.taskState
+    }
+  };
+}
+
+function buildAuditInvestigationTemplate(check, category) {
+  const categoryPaths = AUDIT_INVESTIGATION_PATHS[category.id] ?? [];
+  return {
+    title: `Investigate unmapped product audit gap: ${check.key}`,
+    summary: `Investigate the unmapped ${category.label} check ${check.key}: ${check.message}.`,
+    auditKeys: [check.key],
+    allowedPaths: [...new Set([...categoryPaths, ...AUDIT_REPAIR_ALLOWED_PATHS])],
+    requirements: [
+      `Reproduce and inspect audit check ${check.key}: ${check.message}.`,
+      "Determine whether product work is genuinely missing, the detector is stale or incorrect, or the task mapping is missing.",
+      "Fix the audit mapping or detector when it is wrong and add a focused regression test.",
+      "Change product code only when the missing behavior is clear and safely contained by the allowed paths; otherwise document why the audit is invalid."
+    ],
+    autoMerge: false,
+    productCompletion: true,
+    auditGap: { kind: "investigation", category: category.id, check_keys: [check.key] }
+  };
+}
+
+function planProductCompletionTasks(audit, context, count = generatedTaskCount) {
+  const suppression = productTaskDependencySuppression(audit, context);
+  const missingByKey = new Map(audit.missing.map((check) => [check.key, check]));
+  const decisions = [];
+  const selected = [];
+  const handledKeys = new Set();
+  const coveredBySelected = new Map();
+
+  for (const template of PRODUCT_COMPLETION_TASKS) {
+    const mappedChecks = template.auditKeys.map((key) => missingByKey.get(key)).filter(Boolean);
+    const alreadyCoveredChecks = mappedChecks.filter((check) => coveredBySelected.has(check.key));
+    if (alreadyCoveredChecks.length > 0) {
+      decisions.push({
+        category: auditCategoryForKey(audit, alreadyCoveredChecks[0].key),
+        checks: alreadyCoveredChecks,
+        candidateTitle: template.title,
+        duplicate: null,
+        caseType: "genuinely missing product work covered by a broader generated task",
+        decision: `covered by generated broader candidate "${coveredBySelected.get(alreadyCoveredChecks[0].key)}"`,
+        taskTemplate: null
+      });
+      for (const check of alreadyCoveredChecks) handledKeys.add(check.key);
+    }
+    const checks = mappedChecks.filter((check) => !coveredBySelected.has(check.key));
+    if (checks.length === 0) continue;
+    const category = auditCategoryForKey(audit, checks[0].key);
+    const duplicates = findAuditGapDuplicates(context, template, checks.map((check) => check.key))
+      .map((task) => auditDuplicateLocation(task, context, template, checks.map((check) => check.key)));
+    const duplicate = duplicates[0] ?? null;
+    const suppressed = checks.every((check) => suppression.coveredKeys.has(check.key));
+    let taskTemplate = null;
+    let decision;
+    let caseType;
+
+    if (suppressed) {
+      caseType = "product work is still pending in a broader task";
+      decision = `blocked by pending broader task ${suppression.broadTask.id} "${suppression.broadTask.title}"`;
+    }
+    else if (!duplicate) {
+      taskTemplate = { ...template, productCompletion: true };
+      caseType = "product work is genuinely missing";
+      decision = "generate missing-work task";
+    } else if (duplicate.state === "backlog" || duplicate.state === "active" || duplicate.state === "open-branch") {
+      caseType = "product work is still pending";
+      decision = `blocked by identical ${duplicate.state} task`;
+    } else {
+      taskTemplate = buildAuditRemediationTemplate(template, duplicate, checks, category);
+      caseType = duplicate.taskState === "failed"
+        ? "a prior attempt failed"
+        : "a done task did not satisfy the audit, or the detector is stale/wrong";
+      decision = duplicate.taskState === "failed" ? "generate unique retry/remediation task" : "generate unique remediation task because a done task still fails the audit";
+    }
+
+    if (taskTemplate && selected.length < count) {
+      selected.push(taskTemplate);
+      for (const key of template.covers ?? template.auditKeys) coveredBySelected.set(key, taskTemplate.title);
+    }
+    else if (taskTemplate) decision = `deferred by generated task count limit (${count})`;
+    for (const check of checks) handledKeys.add(check.key);
+    decisions.push({ category, checks, candidateTitle: template.title, duplicate, duplicates, caseType, decision, taskTemplate });
+  }
+
+  for (const check of audit.missing.filter((item) => !handledKeys.has(item.key))) {
+    const category = auditCategoryForKey(audit, check.key);
+    const taskTemplate = buildAuditInvestigationTemplate(check, category);
+    let decision = "generate investigation task because no product-task mapping exists";
+    const duplicates = findAuditGapDuplicates(context, taskTemplate, [check.key])
+      .map((task) => auditDuplicateLocation(task, context, taskTemplate, [check.key]));
+    const duplicate = duplicates[0] ?? null;
+    if (duplicate && ["backlog", "active", "open-branch"].includes(duplicate.state)) decision = `blocked by identical ${duplicate.state} investigation`;
+    else if (selected.length < count) selected.push(duplicate ? buildAuditRemediationTemplate(taskTemplate, duplicate, [check], category) : taskTemplate);
+    else decision = `deferred by generated task count limit (${count})`;
+    decisions.push({
+      category,
+      checks: [check],
+      candidateTitle: null,
+      duplicate,
+      duplicates,
+      caseType: "the audit detector/mapping is stale, wrong, or missing",
+      decision,
+      taskTemplate
+    });
+  }
+
+  return { selected, decisions, dependencySuppression: suppression };
 }
 
 function selectRoadmapTasks(context, count = generatedTaskCount) {
@@ -1148,24 +1352,12 @@ function productTaskDependencySuppression(audit, context) {
 }
 
 function selectProductCompletionTasks(audit, context, count = generatedTaskCount) {
-  const existingTitles = new Set(context.tasks.map((task) => normalizeTitle(task.data?.title ?? "")));
-  const existingGoals = new Set(context.tasks.map((task) => normalizeTitle(task.data?.goal ?? "")));
-  const missingKeys = new Set(audit.missing.map((item) => item.key));
-  const suppression = productTaskDependencySuppression(audit, context);
-  const coveredKeys = new Set(suppression.coveredKeys);
-  const selected = [];
-
-  for (const template of PRODUCT_COMPLETION_TASKS) {
-    if (selected.length >= count) break;
-    const needsTask = template.auditKeys.some((key) => missingKeys.has(key) && !coveredKeys.has(key));
-    if (!needsTask || existingTitles.has(normalizeTitle(template.title)) || existingGoals.has(normalizeTitle(template.summary))) continue;
-    selected.push({ ...template, productCompletion: true });
-    for (const key of template.covers ?? template.auditKeys) coveredKeys.add(key);
-  }
+  const plan = planProductCompletionTasks(audit, context, count);
 
   const existingIds = listExistingTaskIds(context);
-  const tasks = selected.map((item, index) => buildGeneratedTask(item, getNextTaskId(existingIds, index)));
-  Object.defineProperty(tasks, "dependencySuppression", { value: suppression, enumerable: false });
+  const tasks = plan.selected.map((item, index) => buildGeneratedTask(item, getNextTaskId(existingIds, index)));
+  Object.defineProperty(tasks, "dependencySuppression", { value: plan.dependencySuppression, enumerable: false });
+  Object.defineProperty(tasks, "auditPlan", { value: plan, enumerable: false });
   return tasks;
 }
 
@@ -1190,6 +1382,7 @@ function writeGeneratedTaskFiles(tasks, options = {}) {
     return { task, fileName, filePath };
   });
   Object.defineProperty(generated, "dependencySuppression", { value: tasks.dependencySuppression, enumerable: false });
+  Object.defineProperty(generated, "auditPlan", { value: tasks.auditPlan, enumerable: false });
   return generated;
 }
 
@@ -1218,9 +1411,44 @@ function printProductAuditSummary(audit) {
   }
 }
 
-function productCompletionStopReason(audit, generatedCount) {
+function printProductAuditTaskDecisions(audit, plan) {
+  if (audit.passed || !plan) return;
+  console.log("Product audit task decisions:");
+  for (const entry of plan.decisions) {
+    for (const check of entry.checks) {
+      console.log(`- ${entry.category.label} / ${check.key}: ${check.message}`);
+      console.log(`  Candidate: ${entry.candidateTitle ?? "none (unmapped check)"}`);
+      if (entry.duplicate) {
+        for (const duplicate of entry.duplicates ?? [entry.duplicate]) {
+          console.log(`  Duplicate: ${duplicate.id} "${duplicate.title}" at ${duplicate.location} (${duplicate.state}); reason: ${duplicate.reason}`);
+        }
+        if ((entry.duplicates ?? [entry.duplicate]).some((duplicate) => duplicate.taskState === "done")) console.log("  Done-but-audit-still-fails: yes");
+      } else console.log("  Duplicate: none");
+      console.log(`  Case: ${entry.caseType}`);
+      console.log(`  Decision: ${entry.decision}`);
+    }
+  }
+}
+
+function printUnresolvedAuditGuidance(audit, plan, prefix = "") {
+  if (audit.passed || !plan || plan.selected.length > 0) return;
+  const blocked = plan.decisions.filter((entry) => /blocked/iu.test(entry.decision));
+  const doneDuplicates = [...new Map(plan.decisions
+    .flatMap((entry) => entry.duplicates ?? (entry.duplicate ? [entry.duplicate] : []))
+    .filter((duplicate) => duplicate.taskState === "done")
+    .map((duplicate) => [duplicate.id, duplicate])).values()];
+  console.log(`${prefix}All failing audit gaps blocked by pending duplicates: ${blocked.length === plan.decisions.length ? "yes" : "no"}`);
+  console.log(`${prefix}Done duplicates whose audits still fail: ${doneDuplicates.map((duplicate) => `${duplicate.id} ${duplicate.title}`).join(", ") || "none"}`);
+  console.log(`${prefix}Inspect without mutation: node scripts/auto-dev-cycle.mjs --dry-run --generate-tasks`);
+  console.log(`${prefix}Next action: create remediation/investigation tasks for unblocked gaps, finish any listed pending task/branch, or fix the audit mapping.`);
+}
+
+function productCompletionStopReason(audit, generatedCount, plan = null) {
   if (generatedCount > 0) return "Generated product-completion tasks; rerun automation to continue";
   if (audit.passed) return "No backlog tasks remain and product completeness audits passed";
+  if (plan?.decisions?.length > 0 && plan.decisions.every((entry) => /blocked/iu.test(entry.decision))) {
+    return "Product completeness audits failed; all candidate tasks are blocked by backlog, active, or open-branch duplicates";
+  }
   return "Product completeness audits failed and no non-duplicate product-completion tasks could be generated";
 }
 
@@ -1254,9 +1482,11 @@ function runGenerateTasksMode() {
       const audit = auditProductCompleteness({ context });
       printProductAuditSummary(audit);
       generated = generateProductCompletionTasks({ audit, context, dryRun: true });
+      printProductAuditTaskDecisions(audit, generated.auditPlan);
       console.log(`[dry-run] would generate product-completion tasks: ${generated.map(({ task }) => task.id).join(", ") || "none"}`);
       printGeneratedTaskSummary(generated, "[dry-run] product-completion");
-      stopReason = productCompletionStopReason(audit, generated.length);
+      printUnresolvedAuditGuidance(audit, generated.auditPlan, "[dry-run] ");
+      stopReason = productCompletionStopReason(audit, generated.length, generated.auditPlan);
     } else {
       printGeneratedTaskSummary(generated, "[dry-run] would generate");
     }
@@ -1277,8 +1507,10 @@ function runGenerateTasksMode() {
     const audit = auditProductCompleteness({ context });
     printProductAuditSummary(audit);
     generated = generateProductCompletionTasks({ audit, context });
+    printProductAuditTaskDecisions(audit, generated.auditPlan);
     console.log(`Generated product-completion tasks: ${generated.map(({ task }) => task.id).join(", ") || "none"}`);
-    stopReason = productCompletionStopReason(audit, generated.length);
+    printUnresolvedAuditGuidance(audit, generated.auditPlan);
+    stopReason = productCompletionStopReason(audit, generated.length, generated.auditPlan);
   }
   if (generated.length > 0) commitAndPushGeneratedTasks(generated);
   printGeneratedTaskSummary(generated);
@@ -2066,11 +2298,13 @@ function printDryRunPlan() {
       } else {
         generated = generateProductCompletionTasks({ audit, context, dryRun: true, count: generationPreviewCount });
       }
+      printProductAuditTaskDecisions(audit, generated.auditPlan);
       console.log(`[dry-run] would generate product-completion tasks: ${generated.map(({ task }) => task.id).join(", ") || "none"}`);
       printGeneratedTaskSummary(generated, "[dry-run] product-completion");
+      printUnresolvedAuditGuidance(audit, generated.auditPlan, "[dry-run] ");
       emptyBacklogStopReason = maxGenerationRounds === 0 && !audit.passed
         ? `Product completeness audits failed; task generation limit reached (${maxGenerationRounds})`
-        : productCompletionStopReason(audit, generated.length);
+        : productCompletionStopReason(audit, generated.length, generated.auditPlan);
       if (mode === "until-stop" && generateTasksWhenEmpty) {
         plannedTasks = generated.map(({ task, fileName }) => ({ task, fileName }));
       }
@@ -2088,7 +2322,7 @@ function printDryRunPlan() {
 }
 
 function buildLoopSummaryLines(summary, gitState = inspectGitState(), elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(1)) {
-  return [
+  const lines = [
     "Automation loop summary",
     `Mode: ${summary.mode}`,
     `Completed task IDs: ${summary.completedTaskIds.join(", ") || "None"}`,
@@ -2106,6 +2340,15 @@ function buildLoopSummaryLines(summary, gitState = inspectGitState(), elapsedSec
     `Task branch behind main: ${summary.branchBehindMain ? "yes" : "no"}`,
     `Generated tasks skipped because broader work covers them: ${summary.skippedCoveredTasks.join(", ") || "None"}`
   ];
+  if (summary.auditGenerationBlocked !== null && summary.auditGenerationBlocked !== undefined) {
+    lines.push(
+      `All failing audit gaps blocked by pending duplicates: ${summary.auditGenerationBlocked ? "yes" : "no"}`,
+      `Done duplicates whose audits still fail: ${summary.doneAuditDuplicates.join(", ") || "None"}`,
+      "Audit generation dry-run: node scripts/auto-dev-cycle.mjs --dry-run --generate-tasks",
+      "Next action: create remediation/investigation tasks for unblocked gaps, finish any listed pending task/branch, or fix the audit mapping."
+    );
+  }
+  return lines;
 }
 
 function printLoopSummary(summary) {
@@ -2125,7 +2368,9 @@ function runLoop() {
     localVerificationFailed: false,
     safetyValidationFailed: false,
     branchBehindMain: false,
-    skippedCoveredTasks: []
+    skippedCoveredTasks: [],
+    auditGenerationBlocked: null,
+    doneAuditDuplicates: []
   };
 
   if (dryRun) {
@@ -2186,9 +2431,16 @@ function runLoop() {
 
         const generated = generateProductCompletionTasks({ audit, context });
         summary.skippedCoveredTasks.push(...(generated.dependencySuppression?.skippedTitles ?? []));
+        printProductAuditTaskDecisions(audit, generated.auditPlan);
         console.log(`Generated product-completion tasks: ${generated.map(({ task }) => task.id).join(", ") || "none"}`);
         if (generated.length === 0) {
-          summary.stopReason = productCompletionStopReason(audit, 0);
+          summary.auditGenerationBlocked = generated.auditPlan.decisions.every((entry) => /blocked/iu.test(entry.decision));
+          summary.doneAuditDuplicates = [...new Set(generated.auditPlan.decisions
+            .flatMap((entry) => entry.duplicates ?? (entry.duplicate ? [entry.duplicate] : []))
+            .filter((duplicate) => duplicate.taskState === "done")
+            .map((duplicate) => `${duplicate.id} ${duplicate.title}`))];
+          printUnresolvedAuditGuidance(audit, generated.auditPlan);
+          summary.stopReason = productCompletionStopReason(audit, 0, generated.auditPlan);
           break;
         }
         commitAndPushGeneratedTasks(generated);
@@ -2196,7 +2448,7 @@ function runLoop() {
         summary.generatedTaskIds.push(...generated.map(({ task }) => task.id));
         generationRounds += 1;
         if (mode === "until-stop" && generateTasksWhenEmpty) continue;
-        summary.stopReason = productCompletionStopReason(audit, generated.length);
+        summary.stopReason = productCompletionStopReason(audit, generated.length, generated.auditPlan);
         break;
       }
       if (effectiveMaxTasks === null) effectiveMaxTasks = backlog.length;
@@ -2274,6 +2526,7 @@ export {
   listExistingTaskIds,
   npmCommand,
   normalizeTitle,
+  planProductCompletionTasks,
   productCompletionStopReason,
   prChecksFailurePolicy,
   policyFalseRecoveryOptions,
