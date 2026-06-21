@@ -975,7 +975,7 @@ function auditProductCompleteness(options = {}) {
   const hasPreviewHelper = sourceFileSet.has("src/app/previewTimeline.ts") || context.sourceFiles.some((file) => /(?:preview|timeline)/iu.test(file));
   const appRoot = /<(?:div|main|section)[^>]+id=["'](?:app|root)["'][^>]*>/iu.test(indexHtml);
   const callsMountFunction = /\b(?:mount|initialize|init|render|create)[A-Za-z0-9]*(?:App|Ui|Converter)?\s*\(/u.test(entrySource);
-  const locatesAppRoot = /(?:getElementById|querySelector)\s*\(/u.test(entrySource);
+  const locatesAppRoot = /(?:getElementById|querySelector)(?:\s*<[^;()\n]+>)?\s*\(/u.test(entrySource);
   const mutatesDom = /(?:createElement|append|replaceChildren|innerHTML)/u.test(entrySource);
   const importsAppModule = /(?:from\s+|import\s*)["']\.\/app(?:\/|["'])/u.test(entrySource);
   const browserAppMounted = appRoot && locatesAppRoot && (mutatesDom || (importsAppModule && callsMountFunction)) && !/placeholder|automation framework installed/iu.test(entrySource);
