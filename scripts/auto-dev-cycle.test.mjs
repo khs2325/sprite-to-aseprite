@@ -8,7 +8,10 @@ import YAML from "yaml";
 import {
   auditProductCompleteness,
   autoMergePolicyDecision,
+  branchBehindMainRecoveryGuidance,
+  buildExistingPrRecoverySummary,
   buildFailureLogContent,
+  buildLoopSummaryLines,
   buildTaskYaml,
   canContinueWithoutPrChecks,
   canMoveTaskToDone,
@@ -18,10 +21,13 @@ import {
   getNextTaskId,
   guardDirtyTaskStateOnTaskBranch,
   isRecoverableCodexSandboxVerificationFailure,
+  isBranchBehindOriginMain,
   npmCommand,
   productCompletionStopReason,
   policyFalseRecoveryOptions,
   prChecksFailurePolicy,
+  productTaskDependencySuppression,
+  scopeViolationRecoveryGuidance,
   selectRoadmapTasks,
   selectProductCompletionTasks,
   shouldContinueAfterCodexFailure,
@@ -70,7 +76,10 @@ function writeWorkspaceFile(workspace, relativePath, content) {
 }
 
 function markNormalRoadmapComplete(workspace) {
-  for (const file of fs.readdirSync(path.join(root, "tasks", "done")).filter((name) => name.endsWith(".yaml"))) {
+  for (const file of fs.readdirSync(path.join(root, "tasks", "done")).filter((name) => {
+    const taskId = Number.parseInt(name, 10);
+    return name.endsWith(".yaml") && Number.isInteger(taskId) && taskId <= 21;
+  })) {
     fs.copyFileSync(path.join(root, "tasks", "done", file), path.join(workspace, "tasks", "done", file));
   }
 }
@@ -331,6 +340,86 @@ describe("Windows sandbox recovery and task-state safety", () => {
     expect(() => guardDirtyTaskStateOnTaskBranch("codex/task-002", status)).toThrowError(/Remove-Item tasks\/failed\/002/u);
     expect(() => guardDirtyTaskStateOnTaskBranch("main", status)).not.toThrow();
   });
+
+  it("prints actionable scope-violation recovery without restoring files automatically", () => {
+    const guidance = scopeViolationRecoveryGuidance(
+      24,
+      ["scripts/auto-dev-cycle.test.mjs"],
+      ["index.html", "src/index.ts", "src/app/**", "src/**/*.test.*", "docs/**"]
+    );
+
+    expect(guidance).toContain("files are outside task scope");
+    expect(guidance).toContain("- scripts/auto-dev-cycle.test.mjs");
+    expect(guidance).toContain("Declared allowed paths:");
+    expect(guidance).toContain("- src/app/**");
+    expect(guidance).toContain("gh pr diff 24");
+    expect(guidance).toContain("git restore --source origin/main -- scripts/auto-dev-cycle.test.mjs");
+    expect(guidance).toContain("git commit -m \"Remove out-of-scope changes\"");
+    expect(guidance).toContain("git push");
+    expect(guidance).toContain("npm run auto-dev:until-stop");
+  });
+
+  it("classifies access-denied verification as sandbox-only but still requires outer checks", () => {
+    const output = "npm run test was blocked by the managed Windows sandbox: Access is denied before tests ran";
+    expect(isRecoverableCodexSandboxVerificationFailure(output)).toBe(true);
+    expect(shouldContinueAfterCodexFailure(output, ["src/app/converter.ts"], {
+      scope: { allowed_paths: ["src/app/**"] }
+    })).toBe(true);
+
+    let outerVerificationRuns = 0;
+    verifyRecoveredBranch("023", () => { outerVerificationRuns += 1; }, () => {});
+    expect(outerVerificationRuns).toBe(1);
+    expect(() => verifyRecoveredBranch("023", () => {
+      throw new Error("outer npm run test failed");
+    }, () => {})).toThrowError(/mandatory local verification in the outer automation/u);
+  });
+
+  it("summarizes existing PR recovery and suggests merging origin/main only when behind", () => {
+    expect(isBranchBehindOriginMain("codex/task-023", () => ({ stdout: "2\n" }))).toBe(true);
+    expect(isBranchBehindOriginMain("codex/task-023", () => ({ stdout: "0\n" }))).toBe(false);
+
+    const summary = buildExistingPrRecoverySummary({
+      branchName: "codex/task-023",
+      prUrl: "https://github.com/example/repo/pull/24",
+      implementationFailure: false,
+      branchBehindMain: true,
+      offendingPaths: [],
+      managedSandboxFailure: false,
+      localVerificationFailed: true,
+      safetyValidationFailed: false
+    });
+    expect(summary).toContain("Existing PR URL: https://github.com/example/repo/pull/24");
+    expect(summary).toContain("Stale branch needs origin/main: yes");
+    expect(summary).toContain("Outer local verification failed: yes");
+    expect(summary).toContain("git checkout codex/task-023");
+    expect(summary).toContain("git merge origin/main");
+    expect(branchBehindMainRecoveryGuidance("codex/task-023")).toContain("npm run build");
+  });
+
+  it("builds a concise loop summary with actionable recovery state", () => {
+    const lines = buildLoopSummaryLines({
+      mode: "until-stop",
+      completedTaskIds: [],
+      failedTaskId: "023",
+      stopReason: "Existing branch verification failed",
+      prUrls: ["https://github.com/example/repo/pull/24"],
+      mergedPrUrls: [],
+      generatedTaskIds: [],
+      existingPrUrl: "https://github.com/example/repo/pull/24",
+      localVerificationFailed: true,
+      safetyValidationFailed: true,
+      branchBehindMain: true,
+      skippedCoveredTasks: ["Add browser drag-and-drop import area"]
+    }, { branch: "codex/task-023", clean: true }, "12.3");
+
+    expect(lines).toContain("Current branch: codex/task-023");
+    expect(lines).toContain("Working tree clean: yes");
+    expect(lines).toContain("Existing PR URL: https://github.com/example/repo/pull/24");
+    expect(lines).toContain("Local verification failed: yes");
+    expect(lines).toContain("PR safety validation failed: yes");
+    expect(lines).toContain("Task branch behind main: yes");
+    expect(lines.join("\n")).toContain("Add browser drag-and-drop import area");
+  });
 });
 
 describe("backlog task generation", () => {
@@ -391,6 +480,35 @@ describe("backlog task generation", () => {
     }
   });
 
+  it("adds strict out-of-scope guardrails to product-completion prompts", () => {
+    const workspace = createPlanningWorkspace();
+    try {
+      const context = collectProjectPlanningContext(workspace);
+      const audit = auditProductCompleteness({ rootDirectory: workspace, context });
+      const task = selectProductCompletionTasks(audit, context, 5)
+        .find((candidate) => candidate.title === "Mount browser converter UI");
+      const taskFile = `${task.id}-mount-ui.yaml`;
+      fs.writeFileSync(path.join(workspace, "tasks", "backlog", taskFile), buildTaskYaml(task), "utf8");
+      fs.mkdirSync(path.join(workspace, "prompts", "templates"), { recursive: true });
+      fs.copyFileSync(path.join(root, "prompts", "templates", "implement-task.md"), path.join(workspace, "prompts", "templates", "implement-task.md"));
+
+      const result = spawnSync(process.execPath, [path.join(root, "scripts", "make-prompt.mjs"), task.id], {
+        cwd: workspace,
+        encoding: "utf8"
+      });
+      const prompt = fs.readFileSync(path.join(workspace, "prompts", "generated", `${task.id}.md`), "utf8");
+
+      expect(result.status).toBe(0);
+      expect(prompt).toContain("Strict product-completion task scope");
+      expect(prompt).toContain("Do not edit files outside the Allowed paths");
+      expect(prompt).toContain("report the failure instead of modifying out-of-scope files");
+      expect(prompt).toContain("Do not repair the automation system from a UI, docs, import, or export task");
+      expect(prompt).toContain("scripts/**");
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("previews generated files without writing them", () => {
     const workspace = createPlanningWorkspace();
     try {
@@ -437,6 +555,80 @@ describe("backlog task generation", () => {
 });
 
 describe("product completeness audits and task generation", () => {
+  it("advances product task IDs when 022 already exists in done", () => {
+    const audit = { missing: [{ key: "browserAppMounted", message: "browser UI mount missing" }] };
+    const context = {
+      docs: {},
+      sourceFiles: [],
+      testFiles: [],
+      openTaskBranchIds: [],
+      tasks: [{ state: "done", file: "022-add-vite-dev-script.yaml", data: { id: "022", title: "Add Vite dev script" } }]
+    };
+
+    const [task] = selectProductCompletionTasks(audit, context, 1);
+    expect(task).toMatchObject({ id: "023", title: "Mount browser converter UI" });
+  });
+
+  it("advances past numeric IDs across done, backlog, and failed states", () => {
+    const audit = { missing: [{ key: "modeSelector", message: "mode selector missing" }] };
+    const context = {
+      docs: {},
+      sourceFiles: [],
+      testFiles: [],
+      openTaskBranchIds: [],
+      tasks: [
+        { state: "done", file: "022-done.yaml", data: { id: "022", title: "Done work" } },
+        { state: "backlog", file: "023-backlog.yaml", data: { id: "023", title: "Pending work" } },
+        { state: "failed", file: "024-failed.yaml", data: { id: "024", title: "Failed work" } }
+      ]
+    };
+
+    const [task] = selectProductCompletionTasks(audit, context, 1);
+    expect(task).toMatchObject({ id: "025", title: "Add converter import mode selector" });
+  });
+
+  it("suppresses narrow UI tasks while the broad mount task is pending, then releases them after completion", () => {
+    const audit = {
+      missing: [
+        "fileImportUi",
+        "dragAndDrop",
+        "modeSelector",
+        "previewTimelineUi",
+        "asepriteDownloadUi",
+        "responsiveStyling"
+      ].map((key) => ({ key, message: `${key} missing` }))
+    };
+    const broadTask = { file: "023-mount-browser-converter-ui.yaml", data: { id: "023", title: "Mount browser converter UI" } };
+    const pendingContext = {
+      docs: {}, sourceFiles: [], testFiles: [], openTaskBranchIds: ["023"],
+      tasks: [{ ...broadTask, state: "backlog" }]
+    };
+
+    const pendingTasks = selectProductCompletionTasks(audit, pendingContext, 10);
+    expect(pendingTasks).toHaveLength(0);
+    expect(productTaskDependencySuppression(audit, pendingContext)).toMatchObject({
+      active: true,
+      broadTask: { id: "023", branchOpen: true }
+    });
+    expect(pendingTasks.dependencySuppression.skippedTitles).toEqual(expect.arrayContaining([
+      "Wire browser-local file import into UI",
+      "Add browser drag-and-drop import area",
+      "Add converter import mode selector",
+      "Wire browser preview timeline into converter UI",
+      "Wire Aseprite export download into UI",
+      "Add basic responsive styling"
+    ]));
+
+    const completedContext = { ...pendingContext, tasks: [{ ...broadTask, state: "done" }] };
+    const completedTitles = selectProductCompletionTasks(audit, completedContext, 10).map((task) => task.title);
+    expect(productTaskDependencySuppression(audit, completedContext).active).toBe(false);
+    expect(completedTitles).toEqual(expect.arrayContaining([
+      "Wire browser-local file import into UI",
+      "Add browser drag-and-drop import area",
+      "Add converter import mode selector"
+    ]));
+  });
+
   it("passes only when the mounted browser product exposes the complete audited flow", () => {
     const workspace = createMountedMvpWorkspace();
     try {

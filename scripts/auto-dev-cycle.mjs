@@ -620,6 +620,21 @@ const PRODUCT_AUDIT_DEFINITIONS = [
     checkKeys: ["largeFileWarning", "conversionProgress", "browserMemoryDocs"]
   }
 ];
+const BROAD_UI_TASK_TITLE = "Mount browser converter UI";
+const BROAD_UI_SUPPRESSED_AUDIT_KEYS = new Set([
+  "fileImportUi",
+  "dragAndDrop",
+  "modeSelector",
+  "pngSequenceUi",
+  "spritesheetGridUi",
+  "spritesheetJsonUi",
+  "previewTimelineUi",
+  "asepriteDownloadUi",
+  "exportFailureHandling",
+  "disabledExportState",
+  "statusAndErrors",
+  "responsiveStyling"
+]);
 const cliArgs = new Set(process.argv.slice(2));
 const dryRun = cliArgs.has("--dry-run");
 const mode = getMode();
@@ -843,6 +858,16 @@ function walkFiles(directory, rootDirectory = process.cwd()) {
   });
 }
 
+function listOpenTaskBranchIds(rootDirectory = process.cwd()) {
+  const result = spawnSync("git", ["branch", "--all", "--format=%(refname:short)"], {
+    cwd: rootDirectory,
+    encoding: "utf8",
+    shell: false
+  });
+  if (result.status !== 0) return [];
+  return [...new Set([...result.stdout.matchAll(/(?:^|\/)codex\/task-(\d+)$/gmu)].map((match) => match[1]))].sort();
+}
+
 function collectProjectPlanningContext(rootDirectory = process.cwd()) {
   const docPaths = ["AGENTS.md", "README.md", "docs/architecture.md", "docs/product-spec.md", "docs/roadmap.md"];
   const docs = Object.fromEntries(docPaths.filter((file) => fs.existsSync(path.join(rootDirectory, file))).map((file) => [file, fs.readFileSync(path.join(rootDirectory, file), "utf8")]));
@@ -855,7 +880,7 @@ function collectProjectPlanningContext(rootDirectory = process.cwd()) {
   ];
   const tasks = [];
 
-  for (const state of ["backlog", "done", "failed"]) {
+  for (const state of ["backlog", "active", "done", "failed"]) {
     const directory = path.join(rootDirectory, "tasks", state);
     if (!fs.existsSync(directory)) continue;
     for (const file of fs.readdirSync(directory).filter((name) => name.endsWith(".yaml")).sort()) {
@@ -868,7 +893,7 @@ function collectProjectPlanningContext(rootDirectory = process.cwd()) {
     }
   }
 
-  return { docs, sourceFiles, testFiles: [...new Set(testFiles)].sort(), tasks };
+  return { docs, sourceFiles, testFiles: [...new Set(testFiles)].sort(), tasks, openTaskBranchIds: listOpenTaskBranchIds(rootDirectory) };
 }
 
 function readTextFile(rootDirectory, relativePath) {
@@ -1061,6 +1086,7 @@ function buildGeneratedTask(roadmapItem, id) {
     id,
     title: roadmapItem.title,
     status: "backlog",
+    ...(roadmapItem.productCompletion ? { task_origin: "product-completion" } : {}),
     priority: "high",
     goal: roadmapItem.summary,
     context: roadmapItem.productCompletion ? productContext : "This task was generated deterministically from the repository roadmap, architecture, current source tree, and existing task history.",
@@ -1100,11 +1126,33 @@ function selectRoadmapTasks(context, count = generatedTaskCount) {
   return available.map((item, index) => buildGeneratedTask(item, getNextTaskId(existingIds, index)));
 }
 
+function productTaskDependencySuppression(audit, context) {
+  const broadTask = context.tasks.find((task) => normalizeTitle(task.data?.title ?? "") === normalizeTitle(BROAD_UI_TASK_TITLE));
+  const taskId = String(broadTask?.data?.id ?? "");
+  const branchOpen = (context.openTaskBranchIds ?? []).map(String).includes(taskId);
+  const pending = Boolean(broadTask) && broadTask.state !== "done" && broadTask.state !== "failed"
+    && (broadTask.state === "backlog" || broadTask.state === "active" || branchOpen);
+  if (!pending) return { active: false, broadTask: null, coveredKeys: new Set(), skippedTitles: [] };
+
+  const missingKeys = new Set(audit.missing.map((item) => item.key));
+  const skippedTitles = PRODUCT_COMPLETION_TASKS
+    .filter((template) => template.title !== BROAD_UI_TASK_TITLE)
+    .filter((template) => template.auditKeys.some((key) => missingKeys.has(key) && BROAD_UI_SUPPRESSED_AUDIT_KEYS.has(key)))
+    .map((template) => template.title);
+  return {
+    active: true,
+    broadTask: { id: taskId, title: broadTask.data?.title ?? BROAD_UI_TASK_TITLE, state: broadTask.state, branchOpen },
+    coveredKeys: new Set(BROAD_UI_SUPPRESSED_AUDIT_KEYS),
+    skippedTitles
+  };
+}
+
 function selectProductCompletionTasks(audit, context, count = generatedTaskCount) {
   const existingTitles = new Set(context.tasks.map((task) => normalizeTitle(task.data?.title ?? "")));
   const existingGoals = new Set(context.tasks.map((task) => normalizeTitle(task.data?.goal ?? "")));
   const missingKeys = new Set(audit.missing.map((item) => item.key));
-  const coveredKeys = new Set();
+  const suppression = productTaskDependencySuppression(audit, context);
+  const coveredKeys = new Set(suppression.coveredKeys);
   const selected = [];
 
   for (const template of PRODUCT_COMPLETION_TASKS) {
@@ -1116,7 +1164,9 @@ function selectProductCompletionTasks(audit, context, count = generatedTaskCount
   }
 
   const existingIds = listExistingTaskIds(context);
-  return selected.map((item, index) => buildGeneratedTask(item, getNextTaskId(existingIds, index)));
+  const tasks = selected.map((item, index) => buildGeneratedTask(item, getNextTaskId(existingIds, index)));
+  Object.defineProperty(tasks, "dependencySuppression", { value: suppression, enumerable: false });
+  return tasks;
 }
 
 function buildTaskYaml(task) {
@@ -1130,7 +1180,7 @@ function generatedTaskFileName(task) {
 function writeGeneratedTaskFiles(tasks, options = {}) {
   const backlogDir = path.resolve("tasks", "backlog");
   if (!options.dryRun) fs.mkdirSync(backlogDir, { recursive: true });
-  return tasks.map((task) => {
+  const generated = tasks.map((task) => {
     const fileName = generatedTaskFileName(task);
     const filePath = path.join(backlogDir, fileName);
     if (!options.dryRun) {
@@ -1139,6 +1189,8 @@ function writeGeneratedTaskFiles(tasks, options = {}) {
     }
     return { task, fileName, filePath };
   });
+  Object.defineProperty(generated, "dependencySuppression", { value: tasks.dependencySuppression, enumerable: false });
+  return generated;
 }
 
 function generateBacklogTasks(options = {}) {
@@ -1175,10 +1227,14 @@ function productCompletionStopReason(audit, generatedCount) {
 function printGeneratedTaskSummary(generated, prefix = "Generated") {
   if (generated.length === 0) {
     console.log(`${prefix} tasks: none`);
-    return;
+  } else {
+    console.log(`${prefix} tasks:`);
+    for (const { task, fileName } of generated) console.log(`- ${task.id}: ${task.title} (${fileName})`);
   }
-  console.log(`${prefix} tasks:`);
-  for (const { task, fileName } of generated) console.log(`- ${task.id}: ${task.title} (${fileName})`);
+  const suppression = generated.dependencySuppression;
+  if (suppression?.active && suppression.skippedTitles.length > 0) {
+    console.log(`Skipped ${suppression.skippedTitles.length} narrower product task(s) because ${suppression.broadTask.id}: ${suppression.broadTask.title} is still ${suppression.broadTask.state}.`);
+  }
 }
 
 function commitAndPushGeneratedTasks(generated) {
@@ -1270,7 +1326,7 @@ function isQuotaOrTokenFailure(output) {
 }
 
 function isRecoverableCodexSandboxVerificationFailure(output) {
-  return /(?:Cannot read directory ["']\.\.\/\.\.["']: Access is denied|Could not resolve|vite\.config\.ts|failed to load config|UnauthorizedAccessException|npm\.ps1|Test-Path\s*:\s*Access is denied)/iu.test(output);
+  return /(?:Cannot read directory ["']\.\.\/\.\.["']: Access is denied|Could not resolve|vite\.config\.ts|failed to load config|UnauthorizedAccessException|npm\.ps1|Test-Path\s*:\s*Access is denied|(?:npm run (?:test|build)|vitest|vite)[\s\S]{0,240}(?:access is denied|access denied|EACCES|EPERM|operation not permitted|sandbox)|(?:access is denied|access denied|EACCES|EPERM|operation not permitted)[\s\S]{0,240}(?:tests? (?:did not|never) run|before tests?|vitest|vite))/iu.test(output);
 }
 
 function changedPaths() {
@@ -1398,6 +1454,9 @@ Rules:
 - Do not refactor unrelated code.
 - Do not start a new feature.
 - Do not remove tests to make checks pass.
+- Do not edit files outside the task's declared allowed paths.
+- If unrelated automation tests fail, report that failure instead of editing scripts outside task scope.
+- Do not repair the automation system from a UI, docs, import, or export task.
 - Keep the diff small.
 - Stop after making the fix.
 `;
@@ -1421,7 +1480,9 @@ function verifyWithRepairs(taskId, task) {
     }
   }
   writeFailureLog(lastError, { taskId, phase: "verification" });
-  throw new AutomationStop("Local verification failed after all repair attempts.", "verification_failure", { cause: lastError });
+  const stop = new AutomationStop("Outer local verification failed after all repair attempts.", "verification_failure", { cause: lastError });
+  stop.localVerificationFailed = true;
+  throw stop;
 }
 
 function commitAndPush(taskId, branchName) {
@@ -1525,6 +1586,29 @@ function isWithinScope(file, scopePaths) {
   });
 }
 
+function scopeViolationRecoveryGuidance(prNumber, offendingPaths, scopePaths) {
+  const files = [...new Set(offendingPaths)].sort();
+  const fileArgs = files.map(quoteArg).join(" ");
+  return [
+    "PR safety validation rejected auto-merge because files are outside task scope:",
+    ...files.map((file) => `- ${file}`),
+    "",
+    "Declared allowed paths:",
+    ...(scopePaths.length > 0 ? scopePaths.map((allowedPath) => `- ${allowedPath}`) : ["- None"]),
+    "",
+    "Recovery:",
+    `  gh pr diff ${prNumber}`,
+    "  git fetch origin main",
+    `  git restore --source origin/main -- ${fileArgs}`,
+    `  git add ${fileArgs}`,
+    '  git commit -m "Remove out-of-scope changes"',
+    "  git push",
+    "  npm run auto-dev:until-stop",
+    "",
+    "Restore only the offending files, then commit and push the restore before rerunning automation."
+  ].join("\n");
+}
+
 function autoMergePolicyDecision({ taskPolicyAllowed, overrideEnabled, localVerificationPassed, safetyValidationPassed }) {
   if (!localVerificationPassed) return "block-verification";
   if (!safetyValidationPassed) return "block-safety";
@@ -1559,6 +1643,7 @@ function validatePrBeforeMerge(prNumber, branchName, taskFile, task) {
   }
 
   const reasons = [];
+  const outOfScopePaths = [];
   const files = pr.files ?? [];
   const changedPaths = files.map((file) => file.path.replaceAll("\\", "/"));
   const taskPolicy = task.auto_merge ?? {};
@@ -1585,11 +1670,21 @@ function validatePrBeforeMerge(prNumber, branchName, taskFile, task) {
     if (GENERATED_PREFIXES.some((prefix) => filePath.startsWith(prefix)) || filePath.endsWith(".log")) reasons.push(`generated artifact detected: ${filePath}`);
     if ((file.additions ?? 0) > 5_000) reasons.push(`huge file addition detected: ${filePath}`);
     if (forbiddenPaths.some((rule) => pathMatchesRule(filePath, rule))) reasons.push(`task policy forbids: ${filePath}`);
-    if (scopePaths.length > 0 && !isWithinScope(filePath, scopePaths)) reasons.push(`file is outside the declared task scope: ${filePath}`);
+    if (scopePaths.length > 0 && !isWithinScope(filePath, scopePaths)) {
+      reasons.push(`file is outside the declared task scope: ${filePath}`);
+      outOfScopePaths.push(filePath);
+    }
   }
 
   if (reasons.length > 0) {
-    throw new AutomationStop(`PR safety validation rejected auto-merge:\n- ${[...new Set(reasons)].join("\n- ")}`, "suspicious_changes");
+    const stop = new AutomationStop(`PR safety validation rejected auto-merge:\n- ${[...new Set(reasons)].join("\n- ")}`, "suspicious_changes");
+    stop.prUrl = pr.url;
+    stop.safetyValidationFailed = true;
+    stop.offendingPaths = [...new Set(outOfScopePaths)].sort();
+    if (stop.offendingPaths.length > 0) {
+      stop.suggestedRecovery = scopeViolationRecoveryGuidance(prNumber, stop.offendingPaths, scopePaths);
+    }
+    throw stop;
   }
 
   const policyDecision = autoMergePolicyDecision({
@@ -1734,12 +1829,50 @@ function checkoutExistingTaskBranch(branchName, hasLocalBranch, hasRemoteBranch)
   });
 }
 
+function isBranchBehindOriginMain(branchName, commandRunner = runQuiet) {
+  try {
+    return Number(commandRunner("git", ["rev-list", "--count", `${branchName}..origin/main`]).stdout.trim()) > 0;
+  } catch {
+    return false;
+  }
+}
+
+function branchBehindMainRecoveryGuidance(branchName) {
+  return [
+    "This branch may need the latest main changes:",
+    `  git checkout ${branchName}`,
+    "  git fetch origin main",
+    "  git merge origin/main",
+    "  npm run typecheck",
+    "  npm run test",
+    "  npm run build",
+    "  git push"
+  ].join("\n");
+}
+
+function buildExistingPrRecoverySummary(context) {
+  const lines = [
+    "Existing PR recovery summary:",
+    `- Existing PR URL: ${context.prUrl ?? "None"}`,
+    `- Implementation failure: ${context.implementationFailure ? "yes" : "no"}`,
+    `- Stale branch needs origin/main: ${context.branchBehindMain ? "yes" : "no"}`,
+    `- Out-of-scope file failure: ${context.offendingPaths?.length ? context.offendingPaths.join(", ") : "no"}`,
+    `- Managed Windows sandbox limitation: ${context.managedSandboxFailure ? "yes" : "no"}`,
+    `- Outer local verification failed: ${context.localVerificationFailed ? "yes" : "no"}`,
+    `- PR safety validation failed: ${context.safetyValidationFailed ? "yes" : "no"}`
+  ];
+  if (context.branchBehindMain) lines.push("", branchBehindMainRecoveryGuidance(context.branchName));
+  return lines.join("\n");
+}
+
 function verifyRecoveredBranch(taskId, checkRunner = runChecks, failureLogger = writeFailureLog) {
   try {
     checkRunner();
   } catch (error) {
     failureLogger(error, { taskId, phase: "existing-branch-verification", environmentOnly: false });
-    throw new AutomationStop("Existing task branch failed mandatory local verification; it was not merged.", "verification_failure", { cause: error });
+    const stop = new AutomationStop("Existing task branch failed mandatory local verification in the outer automation; it was not merged.", "verification_failure", { cause: error });
+    stop.localVerificationFailed = true;
+    throw stop;
   }
 }
 
@@ -1750,6 +1883,7 @@ function recoverExistingTask(taskId, taskFile, task, branchName) {
   const action = existingTaskRecoveryAction(pr, hasLocalBranch, hasRemoteBranch);
   if (action === "start") return null;
   let recoveredMerged = action === "complete-merged";
+  let branchBehindMain = false;
 
   try {
     console.log(`Existing task recovery: ${action} for ${branchName}${pr?.url ? ` (${pr.url})` : ""}`);
@@ -1766,6 +1900,7 @@ function recoverExistingTask(taskId, taskFile, task, branchName) {
     }
 
     checkoutExistingTaskBranch(branchName, hasLocalBranch, hasRemoteBranch);
+    branchBehindMain = isBranchBehindOriginMain(branchName);
     verifyRecoveredBranch(taskId);
     let recoveredPr = pr;
     if (action === "resume-branch") {
@@ -1783,6 +1918,26 @@ function recoverExistingTask(taskId, taskFile, task, branchName) {
   } catch (error) {
     error.prUrl = error.prUrl ?? pr?.url;
     error.prMerged = error.prMerged ?? recoveredMerged;
+    error.branchBehindMain = error.branchBehindMain ?? branchBehindMain;
+    error.localVerificationFailed = error.localVerificationFailed ?? error.code === "verification_failure";
+    error.safetyValidationFailed = error.safetyValidationFailed ?? error.code === "suspicious_changes";
+    error.managedSandboxFailure = error.managedSandboxFailure ?? error.environmentOnly === true;
+    error.implementationFailure = error.implementationFailure
+      ?? (error.localVerificationFailed && !error.branchBehindMain && !error.managedSandboxFailure);
+    const recoveryParts = [];
+    if (error.suggestedRecovery) recoveryParts.push(error.suggestedRecovery);
+    const recoverySummary = buildExistingPrRecoverySummary({
+      branchName,
+      prUrl: error.prUrl,
+      implementationFailure: error.implementationFailure,
+      branchBehindMain: error.branchBehindMain,
+      offendingPaths: error.offendingPaths,
+      managedSandboxFailure: error.managedSandboxFailure,
+      localVerificationFailed: error.localVerificationFailed,
+      safetyValidationFailed: error.safetyValidationFailed
+    });
+    error.message = `${error.message}${error.suggestedRecovery ? `\n\n${error.suggestedRecovery}` : ""}\n\n${recoverySummary}`;
+    error.suggestedRecovery = [...recoveryParts, recoverySummary].filter(Boolean).join("\n\n");
     throw error;
   }
 }
@@ -1794,6 +1949,7 @@ function runOneTask(taskFile) {
   let branchPushed = false;
   let merged = false;
   let pr = null;
+  let managedSandboxFailure = false;
 
   try {
     ensureCleanGit();
@@ -1802,7 +1958,8 @@ function runOneTask(taskFile) {
     if (recovered) return recovered;
     branchName = createTaskBranch(taskId);
     const prompt = generatePrompt(taskId);
-    runCodexWithPrompt(prompt, taskId, "implementation", task);
+    const codexResult = runCodexWithPrompt(prompt, taskId, "implementation", task);
+    managedSandboxFailure = codexResult?.recoverableEnvironmentFailure === true;
     const repairsUsed = verifyWithRepairs(taskId, task);
     commitAndPush(taskId, branchName);
     branchPushed = true;
@@ -1817,6 +1974,11 @@ function runOneTask(taskFile) {
     const stop = error instanceof AutomationStop
       ? error
       : new AutomationStop(error.message ?? String(error), "unexpected_failure", { cause: error, hardStop: stopOnFailure });
+    stop.localVerificationFailed = stop.localVerificationFailed ?? stop.code === "verification_failure";
+    stop.safetyValidationFailed = stop.safetyValidationFailed ?? stop.code === "suspicious_changes";
+    stop.managedSandboxFailure = stop.managedSandboxFailure ?? managedSandboxFailure;
+    stop.implementationFailure = stop.implementationFailure
+      ?? (stop.code === "codex_failure" || (stop.localVerificationFailed && !stop.managedSandboxFailure));
     stop.prUrl = stop.prUrl ?? error.prUrl ?? pr?.url;
     const recoveryMessage = stop.suggestedRecovery ?? failureTaskStatePolicy(branchPushed, Boolean(pr || stop.prUrl));
     stop.message += `\n${recoveryMessage}`;
@@ -1925,20 +2087,29 @@ function printDryRunPlan() {
   return emptyBacklogStopReason ?? "Dry-run plan completed without mutations";
 }
 
+function buildLoopSummaryLines(summary, gitState = inspectGitState(), elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(1)) {
+  return [
+    "Automation loop summary",
+    `Mode: ${summary.mode}`,
+    `Completed task IDs: ${summary.completedTaskIds.join(", ") || "None"}`,
+    `Failed task ID: ${summary.failedTaskId ?? "None"}`,
+    `Stop reason: ${summary.stopReason}`,
+    `Elapsed time: ${elapsedSeconds}s`,
+    `Current branch: ${gitState.branch}`,
+    `Working tree clean: ${gitState.clean ? "yes" : "no"}`,
+    `Existing PR URL: ${summary.existingPrUrl ?? "None"}`,
+    `PR URLs created: ${summary.prUrls.join(", ") || "None"}`,
+    `PRs merged: ${summary.mergedPrUrls.join(", ") || "None"}`,
+    `Generated task IDs: ${summary.generatedTaskIds.join(", ") || "None"}`,
+    `Local verification failed: ${summary.localVerificationFailed ? "yes" : "no"}`,
+    `PR safety validation failed: ${summary.safetyValidationFailed ? "yes" : "no"}`,
+    `Task branch behind main: ${summary.branchBehindMain ? "yes" : "no"}`,
+    `Generated tasks skipped because broader work covers them: ${summary.skippedCoveredTasks.join(", ") || "None"}`
+  ];
+}
+
 function printLoopSummary(summary) {
-  const gitState = inspectGitState();
-  const elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(1);
-  console.log("\nAutomation loop summary");
-  console.log(`Mode: ${summary.mode}`);
-  console.log(`Completed task IDs: ${summary.completedTaskIds.join(", ") || "None"}`);
-  console.log(`Failed task ID: ${summary.failedTaskId ?? "None"}`);
-  console.log(`Stop reason: ${summary.stopReason}`);
-  console.log(`Elapsed time: ${elapsedSeconds}s`);
-  console.log(`Current branch: ${gitState.branch}`);
-  console.log(`Working tree clean: ${gitState.clean ? "yes" : "no"}`);
-  console.log(`PR URLs created: ${summary.prUrls.join(", ") || "None"}`);
-  console.log(`PRs merged: ${summary.mergedPrUrls.join(", ") || "None"}`);
-  console.log(`Generated task IDs: ${summary.generatedTaskIds.join(", ") || "None"}`);
+  console.log(`\n${buildLoopSummaryLines(summary).join("\n")}`);
 }
 
 function runLoop() {
@@ -1949,7 +2120,12 @@ function runLoop() {
     stopReason: "Not started",
     prUrls: [],
     mergedPrUrls: [],
-    generatedTaskIds: []
+    generatedTaskIds: [],
+    existingPrUrl: null,
+    localVerificationFailed: false,
+    safetyValidationFailed: false,
+    branchBehindMain: false,
+    skippedCoveredTasks: []
   };
 
   if (dryRun) {
@@ -2009,6 +2185,7 @@ function runLoop() {
         }
 
         const generated = generateProductCompletionTasks({ audit, context });
+        summary.skippedCoveredTasks.push(...(generated.dependencySuppression?.skippedTitles ?? []));
         console.log(`Generated product-completion tasks: ${generated.map(({ task }) => task.id).join(", ") || "none"}`);
         if (generated.length === 0) {
           summary.stopReason = productCompletionStopReason(audit, 0);
@@ -2031,10 +2208,15 @@ function runLoop() {
         const result = runOneTask(taskFile);
         summary.completedTaskIds.push(result.taskId);
         summary.prUrls.push(result.prUrl);
+        if (result.recovered) summary.existingPrUrl = result.prUrl;
         if (result.merged) summary.mergedPrUrls.push(result.prUrl);
       } catch (error) {
         summary.failedTaskId = error.taskId ?? getTaskId(taskFile);
         summary.stopReason = error.message;
+        summary.existingPrUrl = error.prUrl ?? summary.existingPrUrl;
+        summary.localVerificationFailed = error.localVerificationFailed === true;
+        summary.safetyValidationFailed = error.safetyValidationFailed === true;
+        summary.branchBehindMain = error.branchBehindMain === true;
         if (error.prUrl) summary.prUrls.push(error.prUrl);
         if (error.prUrl && error.prMerged) summary.mergedPrUrls.push(error.prUrl);
         if (stopOnFailure || error.hardStop || mode === "all") process.exitCode = 1;
@@ -2070,7 +2252,10 @@ if (isMainModule) {
 
 export {
   auditProductCompleteness,
+  branchBehindMainRecoveryGuidance,
   buildFailureLogContent,
+  buildExistingPrRecoverySummary,
+  buildLoopSummaryLines,
   buildTaskYaml,
   autoMergePolicyDecision,
   canContinueWithoutPrChecks,
@@ -2084,6 +2269,7 @@ export {
   guardDirtyTaskStateOnTaskBranch,
   hasTaskRelevantChanges,
   isRecoverableCodexSandboxVerificationFailure,
+  isBranchBehindOriginMain,
   isNoPrChecksReported,
   listExistingTaskIds,
   npmCommand,
@@ -2091,6 +2277,8 @@ export {
   productCompletionStopReason,
   prChecksFailurePolicy,
   policyFalseRecoveryOptions,
+  productTaskDependencySuppression,
+  scopeViolationRecoveryGuidance,
   selectRoadmapTasks,
   selectProductCompletionTasks,
   shouldContinueAfterCodexFailure,
