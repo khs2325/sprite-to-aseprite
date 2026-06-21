@@ -3,13 +3,127 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sprite to Aseprite</title>
+    <meta
+      name="description"
+      content="Convert PNG sequences and spritesheets into editable Aseprite timelines in your browser."
+    />
+    <title>Sprite to Aseprite Converter</title>
+    <style>
+      :root {
+        color: #e8edf2;
+        background: #11151a;
+        font-family: system-ui, sans-serif;
+        line-height: 1.5;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
+      body {
+        margin: 0;
+      }
+
+      #app {
+        width: min(72rem, 100%);
+        margin: 0 auto;
+        padding: 2rem;
+      }
+
+      header,
+      .panel {
+        margin-bottom: 1rem;
+        padding: 1.25rem;
+        border: 1px solid #34404d;
+        border-radius: 0.75rem;
+        background: #1a2027;
+      }
+
+      h1,
+      h2 {
+        margin-top: 0;
+      }
+
+      .privacy-notice {
+        color: #9ddfb9;
+      }
+
+      label {
+        display: grid;
+        gap: 0.35rem;
+        font-weight: 600;
+      }
+
+      input,
+      select,
+      button {
+        min-height: 2.75rem;
+        padding: 0.55rem 0.75rem;
+        border: 1px solid #647386;
+        border-radius: 0.4rem;
+        color: inherit;
+        background: #11151a;
+        font: inherit;
+      }
+
+      button:not(:disabled) {
+        cursor: pointer;
+        background: #285f9f;
+      }
+
+      button:disabled {
+        opacity: 0.55;
+      }
+
+      .grid-options,
+      .workspace {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1rem;
+        margin-top: 1rem;
+      }
+
+      .grid-options legend {
+        grid-column: 1 / -1;
+      }
+
+      .drop-zone {
+        padding: 1.5rem;
+        border: 2px dashed #647386;
+        border-radius: 0.6rem;
+        text-align: center;
+      }
+
+      [role="alert"] {
+        color: #ffaaa5;
+      }
+
+      .download-area {
+        margin-top: 1rem;
+      }
+
+      ol {
+        padding-left: 1.5rem;
+      }
+
+      @media (max-width: 44rem) {
+        #app {
+          padding: 1rem;
+        }
+
+        .grid-options,
+        .workspace {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
   </head>
   <body>
-    <main>
-      <h1>Sprite to Aseprite</h1>
-      <p>Automation framework installed.</p>
-    </main>
+    <main id="app"></main>
     <script type="module" src="/src/index.ts"></script>
   </body>
 </html>
