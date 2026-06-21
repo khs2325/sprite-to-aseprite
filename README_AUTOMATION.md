@@ -113,7 +113,7 @@ The reachability checks follow local imports starting at `src/index.ts`; a helpe
 
 If checks fail, the generator maps missing check keys to small, deterministic product-completion cards. These can mount or wire UI controls, connect individual importers and export, add importer-specific E2E tests, improve error states, add usage/compatibility/deployment/performance documentation, or add large-file and progress UI. Generated cards use the next repository-wide numeric IDs, include verification and acceptance criteria, and preserve the default allowed/forbidden path policy. UI cards require plain TypeScript and DOM APIs, browser-local processing, reuse of existing helpers, no framework or other dependency additions, no server upload, no duplicated conversion logic, and focused tests.
 
-Duplicate prevention covers normalized titles and goals across `tasks/backlog`, `tasks/done`, and `tasks/failed`. If an existing task already describes the missing work, the framework does not create another copy and does not falsely report completion while that audit still fails.
+Duplicate prevention covers normalized titles and goals across `tasks/backlog`, `tasks/active`, `tasks/done`, and `tasks/failed`. If an existing task already describes the missing work, the framework does not create another copy and does not falsely report completion while that audit still fails.
 
 To add an audit later, add its evidence check to `auditProductCompleteness`, register the check key under a category in `PRODUCT_AUDIT_DEFINITIONS` (or add a new category), and map the missing key to one or more safe templates in `PRODUCT_COMPLETION_TASKS`. Add one passing fixture and one missing-work test for the new check.
 
@@ -160,7 +160,7 @@ The loop also resumes existing task work instead of recreating it: merged PRs wi
 | `AUTO_DEV_ALLOW_LOCKFILE_CHANGES` | `false` | Permit lockfile-only changes |
 | `AUTO_DEV_ALLOW_NO_PR_CHECKS` | `false` | Continue past GitHub's `no checks reported` response after mandatory local verification |
 | `AUTO_DEV_ALLOW_POLICY_FALSE_AUTOMERGE` | `false` | Override a task's explicit `auto_merge.allowed: false` policy after every other mandatory gate passes |
-| `AUTO_DEV_GENERATE_TASKS_WHEN_EMPTY` | `false` | Generate normal roadmap tasks and continue processing generated MVP-completion tasks when `--until-stop` finds an empty backlog |
+| `AUTO_DEV_GENERATE_TASKS_WHEN_EMPTY` | `false` | Generate normal roadmap tasks and continue processing generated product-completion tasks when `--until-stop` finds an empty backlog |
 | `AUTO_DEV_GENERATED_TASK_COUNT` | `5` | Number of tasks in each generated batch |
 | `AUTO_DEV_MAX_GENERATION_ROUNDS` | `1` | Maximum generated batches in one `--until-stop` process |
 
@@ -246,6 +246,56 @@ Use the override only when the local verification and PR safety validation are t
 - Rejects workflow changes by default, unsafe lockfile changes, generated artifacts, secrets, huge additions, and files outside explicit task scope.
 - Treats `no checks reported` as a failure unless `AUTO_DEV_ALLOW_NO_PR_CHECKS=true`; safety validation remains mandatory either way.
 - Generated prompts do not require `rg` and tell Codex to use PowerShell or Node filesystem fallbacks when it is unavailable.
+
+## Troubleshooting automation recovery
+
+### Generated task ID drift
+
+Generated IDs are repository-wide and always advance past task cards in `backlog`, `active`, `done`, and `failed`. A test must calculate the next ID from its fixture context or create an isolated task history; it must not assume that a number such as `022` stays available after more tasks are completed.
+
+### Out-of-scope changes
+
+PR safety validation prints the offending files, the task's declared allowed paths, and commands that restore only those files from `origin/main`. Inspect the PR first, restore only the rejected paths, then commit and push the restore before rerunning automation. The automation never restores out-of-scope files automatically.
+
+```bash
+gh pr diff <number>
+git fetch origin main
+git restore --source origin/main -- <offending-files>
+git add <offending-files>
+git commit -m "Remove out-of-scope changes"
+git push
+npm run auto-dev:until-stop
+```
+
+Do not repair automation from a UI, documentation, import, or export task branch. Create a separate automation task or branch whose allowed paths explicitly include `scripts/**`.
+
+### Existing PR branch recovery
+
+When an existing task PR fails local verification, check whether its branch is behind `origin/main`. Merge the latest main changes explicitly, rerun every mandatory check, and push the merge:
+
+```bash
+git checkout codex/task-<id>
+git fetch origin main
+git merge origin/main
+npm run typecheck
+npm run test
+npm run build
+git push
+```
+
+The automation reports whether the failure looks like an implementation problem, a branch behind main, an out-of-scope change, a managed sandbox limitation, or a failure from mandatory outer local verification. It does not force-merge `origin/main` into task branches.
+
+### Managed Windows sandbox verification
+
+Codex may be unable to start Vitest or Vite inside its managed Windows sandbox because of an access-denied, `EACCES`, or `EPERM` error before tests run. When task-relevant changes exist, this is classified as an environment limitation rather than an implementation failure. The outer automation still runs `typecheck`, `test`, and `build`; an outer verification failure remains final and cannot be bypassed.
+
+### Product-completion task dependencies
+
+While the broad `Mount browser converter UI` task remains in backlog/active work or has an open task branch, generation suppresses narrower file-input, drag/drop, mode-selector, importer wiring, preview, download, status, and responsive-style tasks that the broad task already covers. The summary lists skipped task titles. Once the broad task is in `done`, any audit gap that remains may generate the specific follow-up task.
+
+### `auto_merge.allowed=false`
+
+`AUTO_DEV_ALLOW_POLICY_FALSE_AUTOMERGE=true` overrides only the task policy flag. Mandatory local checks, PR checks, branch/base validation, allowed and forbidden paths, workflow protection, secret scanning, generated-file checks, lockfile rules, and diff-size limits must still pass.
 
 ## Recommended first command
 

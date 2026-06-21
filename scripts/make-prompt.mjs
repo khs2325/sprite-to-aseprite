@@ -84,6 +84,17 @@ for (const key of [
 
 const templatePath = path.join(root, "prompts", "templates", "implement-task.md");
 const template = fs.readFileSync(templatePath, "utf8");
+const isProductCompletionTask = task.task_origin === "product-completion"
+  || /product-completeness audit/iu.test(String(task.context ?? ""));
+const strictScopeWarning = isProductCompletionTask ? `
+
+## Strict product-completion task scope
+
+- Do not edit files outside the Allowed paths listed above.
+- If verification fails because of existing automation tests or unrelated files, report the failure instead of modifying out-of-scope files.
+- Do not repair the automation system from a UI, docs, import, or export task.
+- Automation repairs must be separate tasks whose allowed paths explicitly include \`scripts/**\`.
+` : "";
 
 const prompt = template
   .replaceAll("{{id}}", String(task.id))
@@ -95,6 +106,7 @@ const prompt = template
   .replaceAll("{{requirements}}", asList(task.requirements))
   .replaceAll("{{acceptance_criteria}}", asList(task.acceptance_criteria))
   .replaceAll("{{verification}}", asList(task.verification))
+  .concat(strictScopeWarning)
   .concat(`
 
 ## Managed Windows sandbox verification
