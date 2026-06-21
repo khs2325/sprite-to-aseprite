@@ -117,8 +117,49 @@ Under **Layer names**, enter a non-empty name and select **Rename layer** to
 change the generated layer name before downloading. Renaming this layer does
 not recover layers that were absent from a flat PNG source.
 
-## Download and open the result
+## Manually verify the result in Aseprite
 
 The **Download .aseprite** button appears after conversion succeeds. Select it
-after completing any timeline or layer-name edits. Open the downloaded file in
-Aseprite to continue editing and save it under a different name if desired.
+after completing any timeline or layer-name edits. Keep a note of the selected
+import mode, expected frame order, and expected duration of each frame so the
+download can be compared with the source.
+
+1. In Aseprite, select **File > Open** and choose the downloaded
+   `sprite-project.aseprite` file. Record the exact error message if Aseprite
+   cannot open it.
+2. In the timeline, confirm that the number and order of frames match the app's
+   preview. Select each frame and compare its visible pixels with the
+   corresponding PNG or spritesheet region.
+3. For each frame, open **Frame Properties** from the frame's timeline context
+   menu and compare its duration with the value shown in the app. Check every
+   duration when testing a small file; for a large file, check the first, last,
+   and every frame whose duration differs from the default.
+4. Play the animation once to catch unexpected ordering, blank frames, or
+   timing changes that are harder to notice one frame at a time.
+5. Confirm the expected canvas dimensions and layer name. PNG sequences and
+   spritesheets are flat sources, so one generated layer is expected; this
+   check must not be treated as recovery of layers that were absent from the
+   source.
+6. Make a small edit and use **File > Save As** to a new file. Reopen that copy
+   if editability is part of the compatibility check, leaving the downloaded
+   file unchanged for comparison.
+
+A successful check shows that this particular generated file opened and
+matched the inspected frame data in the tested Aseprite version. It does not
+prove lossless conversion or compatibility with every Aseprite version.
+
+### Report a compatibility problem
+
+Include the following in a problem report:
+
+- the converter revision or release, import mode, and conversion settings;
+- the Aseprite version, operating system, and whether the file opened;
+- source dimensions, expected frame count, and expected frame durations;
+- the exact error message, or the affected frame numbers and the expected and
+  observed result; and
+- the smallest reproducible source and generated file that are safe to share.
+
+Do not share private artwork to report a problem. A newly created minimal test
+sprite is sufficient when it reproduces the issue. File processing by the app
+remains browser-only; attaching a file to an external issue tracker is a
+separate action and should only be done deliberately.
