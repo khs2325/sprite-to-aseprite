@@ -4,6 +4,8 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 
+const AUTOMATION_MODULE_PATH = fileURLToPath(import.meta.url);
+const LOADED_AUTOMATION_SOURCE = fs.readFileSync(AUTOMATION_MODULE_PATH, "utf8");
 const CHECK_COMMANDS = [
   ["npm", ["run", "typecheck"]],
   ["npm", ["run", "test"]],
@@ -2244,6 +2246,14 @@ function inspectGitState() {
   }
 }
 
+function hasAutomationSourceChanged(filePath = AUTOMATION_MODULE_PATH, loadedSource = LOADED_AUTOMATION_SOURCE) {
+  try {
+    return fs.readFileSync(filePath, "utf8") !== loadedSource;
+  } catch {
+    return true;
+  }
+}
+
 function printDryRunTaskPlan(taskFile, task) {
     const taskId = getTaskId(taskFile);
     const branchName = `codex/task-${taskId}`;
@@ -2392,6 +2402,10 @@ function runLoop() {
       ensureCleanGit();
       ensureOnMain();
       pullMain();
+      if (hasAutomationSourceChanged()) {
+        summary.stopReason = "Automation source changed during this run; rerun automation before processing or generating more tasks";
+        break;
+      }
       const backlog = listBacklogTasks();
       if (effectiveMaxTasks !== null && summary.completedTaskIds.length >= effectiveMaxTasks) {
         summary.stopReason = `Max task limit reached (${effectiveMaxTasks})`;
@@ -2490,7 +2504,7 @@ function runLoop() {
   return summary;
 }
 
-const isMainModule = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const isMainModule = process.argv[1] && path.resolve(process.argv[1]) === AUTOMATION_MODULE_PATH;
 
 if (isMainModule) {
   try {
@@ -2519,6 +2533,7 @@ export {
   generateProductCompletionTasks,
   getNextTaskId,
   guardDirtyTaskStateOnTaskBranch,
+  hasAutomationSourceChanged,
   hasTaskRelevantChanges,
   isRecoverableCodexSandboxVerificationFailure,
   isBranchBehindOriginMain,
