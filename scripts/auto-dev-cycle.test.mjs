@@ -521,7 +521,7 @@ describe("product completeness audits and task generation", () => {
       expect(audit.passed).toBe(false);
       expect(audit.checks.browserAppMounted.passed).toBe(false);
       expect(tasks.map((task) => task.title)).toContain("Mount browser converter UI");
-      expect(tasks.find((task) => task.title === "Mount browser converter UI")?.id).toBe("022");
+      expect(tasks.find((task) => task.title === "Mount browser converter UI")?.id).toBe("023");
     } finally {
       fs.rmSync(workspace, { recursive: true, force: true });
     }
@@ -637,7 +637,7 @@ describe("product completeness audits and task generation", () => {
       ]) expect(result.stdout).toContain(label);
       expect(result.stdout).toContain("Mount browser converter UI");
       expect(result.stdout).not.toContain("product completeness audits passed");
-      expect(result.stdout).toContain("product-completion tasks: 022");
+      expect(result.stdout).toContain("product-completion tasks: 023");
       expect(fs.readdirSync(path.join(workspace, "tasks", "backlog"))).toEqual([]);
     } finally {
       fs.rmSync(workspace, { recursive: true, force: true });

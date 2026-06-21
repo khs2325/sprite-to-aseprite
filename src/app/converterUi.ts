@@ -1,0 +1,357 @@
+import type { SpriteProject } from "../core/SpriteProject";
+import { importPngSequence } from "../core/importers/pngSequence";
+import {
+  importSpritesheetGrid,
+  type SpritesheetGridImportOptions,
+} from "../core/importers/spritesheetGrid";
+import { importSpritesheetJson } from "../core/importers/spritesheetJson";
+import { mountExportDownloadUi } from "./exportDownload";
+import {
+  bindFileImportControl,
+  SUPPORTED_SOURCE_ACCEPT,
+  type BrowserSourceFile,
+  type FileImportDependencies,
+  type FileImportFormat,
+} from "./fileImport";
+import { mountLayerNamingUi } from "./layerNaming";
+import { mountPreviewTimelineUi } from "./previewTimeline";
+
+type ConverterImporters = {
+  importPngSequence: typeof importPngSequence;
+  importSpritesheetGrid: typeof importSpritesheetGrid;
+  importSpritesheetJson: typeof importSpritesheetJson;
+};
+
+export type ConverterUi = {
+  destroy(): void;
+};
+
+const DEFAULT_IMPORTERS: ConverterImporters = {
+  importPngSequence,
+  importSpritesheetGrid,
+  importSpritesheetJson,
+};
+
+const MODE_LABELS: Record<FileImportFormat, string> = {
+  "png-sequence": "PNG sequence",
+  "spritesheet-grid": "Spritesheet grid",
+  "spritesheet-json": "Spritesheet PNG + JSON",
+};
+
+export function getSourceSelectionError(
+  mode: FileImportFormat,
+  files: readonly BrowserSourceFile[],
+): string | null {
+  const pngCount = files.filter((file) => file.kind === "png").length;
+  const jsonCount = files.length - pngCount;
+
+  if (mode === "png-sequence") {
+    return pngCount > 0 && jsonCount === 0
+      ? null
+      : "PNG sequence mode requires one or more PNG files and no JSON file.";
+  }
+  if (mode === "spritesheet-grid") {
+    return pngCount === 1 && files.length === 1
+      ? null
+      : "Spritesheet grid mode requires exactly one PNG file.";
+  }
+  return pngCount === 1 && jsonCount === 1 && files.length === 2
+    ? null
+    : "Spritesheet PNG + JSON mode requires exactly one PNG and one JSON file.";
+}
+
+export async function convertSourceFiles(
+  mode: FileImportFormat,
+  files: readonly BrowserSourceFile[],
+  gridOptions: SpritesheetGridImportOptions,
+  importers: ConverterImporters = DEFAULT_IMPORTERS,
+): Promise<SpriteProject> {
+  const selectionError = getSourceSelectionError(mode, files);
+  if (selectionError !== null) {
+    throw new Error(selectionError);
+  }
+
+  const pngFiles = files
+    .filter((file) => file.kind === "png")
+    .map((file) => file.file);
+
+  if (mode === "png-sequence") {
+    return importers.importPngSequence(pngFiles);
+  }
+  if (mode === "spritesheet-grid") {
+    return importers.importSpritesheetGrid(pngFiles[0], gridOptions);
+  }
+
+  const jsonFile = files.find((file) => file.kind === "json");
+  if (jsonFile === undefined) {
+    throw new Error("Spritesheet JSON metadata is missing.");
+  }
+  return importers.importSpritesheetJson(pngFiles[0], jsonFile.file);
+}
+
+function createNumberInput(
+  document: Document,
+  labelText: string,
+  value: string,
+): { label: HTMLLabelElement; input: HTMLInputElement } {
+  const label = document.createElement("label");
+  const input = document.createElement("input");
+  label.textContent = labelText;
+  input.type = "number";
+  input.min = "1";
+  input.step = "1";
+  input.required = true;
+  input.value = value;
+  label.append(input);
+  return { label, input };
+}
+
+export function mountConverterUi(root: HTMLElement): ConverterUi {
+  const document = root.ownerDocument;
+  root.replaceChildren();
+
+  const header = document.createElement("header");
+  const title = document.createElement("h1");
+  const introduction = document.createElement("p");
+  const privacy = document.createElement("p");
+  title.textContent = "Sprite to Aseprite Converter";
+  introduction.textContent =
+    "Convert frames into an editable Aseprite timeline from PNG sequences and spritesheets.";
+  privacy.textContent =
+    "Files are processed browser-locally. Your artwork is never uploaded.";
+  privacy.className = "privacy-notice";
+  header.append(title, introduction, privacy);
+
+  const controls = document.createElement("section");
+  const controlsHeading = document.createElement("h2");
+  const modeLabel = document.createElement("label");
+  const modeSelect = document.createElement("select");
+  controls.className = "panel";
+  controlsHeading.textContent = "1. Choose an import mode";
+  modeLabel.textContent = "Import mode";
+  for (const [value, label] of Object.entries(MODE_LABELS)) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    modeSelect.append(option);
+  }
+  modeLabel.append(modeSelect);
+
+  const gridFields = document.createElement("fieldset");
+  const gridLegend = document.createElement("legend");
+  const frameWidth = createNumberInput(document, "Frame width", "32");
+  const frameHeight = createNumberInput(document, "Frame height", "32");
+  const rows = createNumberInput(document, "Rows", "1");
+  const columns = createNumberInput(document, "Columns", "1");
+  const frameOrderLabel = document.createElement("label");
+  const frameOrder = document.createElement("select");
+  const rowMajor = document.createElement("option");
+  const columnMajor = document.createElement("option");
+  gridFields.className = "grid-options";
+  gridLegend.textContent = "Grid settings";
+  frameOrderLabel.textContent = "Frame order";
+  rowMajor.value = "row-major";
+  rowMajor.textContent = "Rows first";
+  columnMajor.value = "column-major";
+  columnMajor.textContent = "Columns first";
+  frameOrder.append(rowMajor, columnMajor);
+  frameOrderLabel.append(frameOrder);
+  gridFields.append(
+    gridLegend,
+    frameWidth.label,
+    frameHeight.label,
+    rows.label,
+    columns.label,
+    frameOrderLabel,
+  );
+  controls.append(controlsHeading, modeLabel, gridFields);
+
+  const importPanel = document.createElement("section");
+  const importHeading = document.createElement("h2");
+  const dropZone = document.createElement("div");
+  const dropInstructions = document.createElement("p");
+  const fileInput = document.createElement("input");
+  const sourceError = document.createElement("p");
+  const sourceStatus = document.createElement("p");
+  importPanel.className = "panel";
+  importHeading.textContent = "2. Add source files";
+  dropZone.className = "drop-zone";
+  dropInstructions.textContent =
+    "Drag and drop PNG or JSON files here, or choose files below.";
+  fileInput.type = "file";
+  fileInput.multiple = true;
+  fileInput.accept = SUPPORTED_SOURCE_ACCEPT;
+  fileInput.setAttribute("aria-label", "Choose PNG or JSON sprite source files");
+  sourceError.setAttribute("role", "alert");
+  sourceError.setAttribute("aria-live", "assertive");
+  sourceStatus.setAttribute("role", "status");
+  sourceStatus.setAttribute("aria-live", "polite");
+  dropZone.append(dropInstructions, fileInput);
+  importPanel.append(importHeading, dropZone, sourceError, sourceStatus);
+
+  const convertPanel = document.createElement("section");
+  const convertHeading = document.createElement("h2");
+  const convertButton = document.createElement("button");
+  const conversionStatus = document.createElement("p");
+  const conversionError = document.createElement("p");
+  convertPanel.className = "panel";
+  convertHeading.textContent = "3. Convert and download";
+  convertButton.type = "button";
+  convertButton.textContent = "Convert to .aseprite";
+  convertButton.disabled = true;
+  conversionStatus.setAttribute("role", "status");
+  conversionStatus.setAttribute("aria-live", "polite");
+  conversionStatus.textContent = "Choose source files to begin.";
+  conversionError.setAttribute("role", "alert");
+  conversionError.setAttribute("aria-live", "assertive");
+  conversionError.hidden = true;
+  convertPanel.append(
+    convertHeading,
+    convertButton,
+    conversionStatus,
+    conversionError,
+  );
+
+  const workspace = document.createElement("div");
+  const previewContainer = document.createElement("div");
+  const layerContainer = document.createElement("div");
+  const exportContainer = document.createElement("div");
+  workspace.className = "workspace";
+  previewContainer.className = "panel";
+  layerContainer.className = "panel";
+  exportContainer.className = "download-area";
+  workspace.append(previewContainer, layerContainer);
+  convertPanel.append(exportContainer);
+  root.append(header, controls, importPanel, convertPanel, workspace);
+
+  let mode: FileImportFormat = "png-sequence";
+  let selectedFiles: readonly BrowserSourceFile[] = [];
+  let conversionRequest = 0;
+
+  const exportUi = mountExportDownloadUi(exportContainer);
+  exportUi.element.hidden = true;
+
+  const syncProject = (project: SpriteProject | null): void => {
+    previewUi.setProject(project);
+    layerUi.setProject(project);
+    exportUi.setProject(project);
+    exportUi.element.hidden = project === null;
+  };
+
+  const previewUi = mountPreviewTimelineUi(previewContainer, {
+    onProjectChange(project): void {
+      layerUi.setProject(project);
+      exportUi.setProject(project);
+    },
+  });
+  const layerUi = mountLayerNamingUi(layerContainer, {
+    onProjectChange(project): void {
+      previewUi.setProject(project);
+      exportUi.setProject(project);
+    },
+  });
+
+  const clearConversion = (): void => {
+    conversionRequest += 1;
+    selectedFiles = [];
+    convertButton.disabled = true;
+    conversionStatus.textContent = "Choose source files to begin.";
+    conversionError.hidden = true;
+    conversionError.textContent = "";
+    syncProject(null);
+  };
+
+  const fileImportDependencies: FileImportDependencies = {
+    format: mode,
+    onFilesImported(files): void {
+      clearConversion();
+      const selectionError = getSourceSelectionError(mode, files);
+      if (selectionError !== null) {
+        throw new Error(selectionError);
+      }
+      selectedFiles = files;
+      convertButton.disabled = false;
+      conversionStatus.textContent = "Source files are ready to convert.";
+    },
+  };
+  const fileImportControl = bindFileImportControl(
+    fileInput,
+    sourceError,
+    sourceStatus,
+    fileImportDependencies,
+    dropZone,
+  );
+
+  const readGridOptions = (): SpritesheetGridImportOptions => ({
+    frameWidth: Number(frameWidth.input.value),
+    frameHeight: Number(frameHeight.input.value),
+    rows: Number(rows.input.value),
+    columns: Number(columns.input.value),
+    frameOrder: frameOrder.value as "row-major" | "column-major",
+  });
+
+  const handleModeChange = (): void => {
+    mode = modeSelect.value as FileImportFormat;
+    fileImportDependencies.format = mode;
+    gridFields.hidden = mode !== "spritesheet-grid";
+    fileInput.multiple = mode !== "spritesheet-grid";
+    fileInput.value = "";
+    void fileImportControl.selectFiles([]);
+    clearConversion();
+  };
+
+  const handleConvert = async (): Promise<void> => {
+    const request = ++conversionRequest;
+    convertButton.disabled = true;
+    conversionError.hidden = true;
+    conversionError.textContent = "";
+    conversionStatus.textContent = "Converting files browser-locally…";
+
+    try {
+      const project = await convertSourceFiles(
+        mode,
+        selectedFiles,
+        readGridOptions(),
+      );
+      if (request !== conversionRequest) {
+        return;
+      }
+      syncProject(project);
+      conversionStatus.textContent =
+        `Converted ${project.frames.length} frame${project.frames.length === 1 ? "" : "s"} ` +
+        "into an editable Aseprite timeline. Ready to download.";
+    } catch (error) {
+      if (request !== conversionRequest) {
+        return;
+      }
+      syncProject(null);
+      conversionStatus.textContent = "Conversion did not complete.";
+      conversionError.textContent =
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : "Could not convert the selected files.";
+      conversionError.hidden = false;
+    } finally {
+      if (request === conversionRequest) {
+        convertButton.disabled = selectedFiles.length === 0;
+      }
+    }
+  };
+
+  modeSelect.addEventListener("change", handleModeChange);
+  convertButton.addEventListener("click", handleConvert);
+  handleModeChange();
+
+  return {
+    destroy(): void {
+      conversionRequest += 1;
+      modeSelect.removeEventListener("change", handleModeChange);
+      convertButton.removeEventListener("click", handleConvert);
+      fileImportControl.destroy();
+      previewUi.destroy();
+      layerUi.destroy();
+      exportUi.destroy();
+      root.replaceChildren();
+    },
+  };
+}
