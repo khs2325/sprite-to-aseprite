@@ -1,0 +1,35 @@
+id: "028"
+title: Document browser memory limits
+status: backlog
+task_origin: product-completion
+priority: high
+goal: Document practical large-file and browser-memory constraints for local conversion.
+context: This task was generated deterministically because a product-completeness audit found missing product work in the repository.
+scope:
+  summary: Document practical large-file and browser-memory constraints for local conversion.
+  allowed_paths:
+    - docs/**
+  forbidden_paths: &a1
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+non_goals:
+  - Do not implement unrelated roadmap features.
+  - Do not upload user artwork or use external processing services.
+  - Do not change dependencies, lockfiles, or GitHub workflows.
+requirements:
+  - Explain that decoded RGBA frames can use substantially more memory than compressed source files and recommend practical mitigations.
+acceptance_criteria:
+  - Document practical large-file and browser-memory constraints for local conversion.
+  - Focused tests cover the behavior introduced by this task.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *a1
