@@ -40,6 +40,45 @@ Changing the import mode or selecting new source files clears the previous
 conversion. If conversion fails, correct the reported source or settings issue
 and select the files again.
 
+## Large files and browser memory
+
+Conversion runs entirely in the browser, so the available memory depends on
+the browser, operating system, device, and other open tabs. There is no single
+file-size limit that is safe on every device. The app shows an advisory warning
+when selected source files total at least 64 MiB or a PNG sequence contains 100
+or more files. The warning does not block conversion, and staying below either
+threshold does not guarantee that a conversion will fit in memory.
+
+Compressed source size is not a reliable measure of working memory. A decoded
+RGBA image needs approximately `width x height x 4` bytes. For example:
+
+- one 1,024 x 1,024 frame needs about 4 MiB when decoded, so 100 such frames
+  need about 400 MiB for frame pixels alone;
+- 60 decoded 2,048 x 2,048 frames need about 960 MiB for frame pixels alone;
+  and
+- one decoded 8,192 x 8,192 spritesheet needs about 256 MiB even if its PNG
+  file is much smaller.
+
+Peak usage can be substantially higher than these estimates. The browser may
+simultaneously retain compressed input files, decoded source images, canvas or
+frame copies, the `SpriteProject` cel data, and the generated `.aseprite` blob.
+A tab that runs out of memory may slow down, fail conversion, reload, or crash.
+
+For large conversions:
+
+- use an up-to-date 64-bit desktop browser and close other memory-heavy tabs or
+  applications;
+- reduce canvas dimensions, crop unused transparent space, or remove
+  unnecessary frames before importing;
+- split a long sequence into smaller projects or smaller batches when one
+  conversion approaches the device's memory limit;
+- avoid combining many animations into one very large spritesheet; and
+- keep the original files and retry with a smaller input if conversion becomes
+  unusually slow or the tab reloads.
+
+All of these operations remain browser-local. The app does not upload artwork
+or use an external processing service to work around memory limits.
+
 ## PNG sequence
 
 Use this mode when each animation frame is a separate PNG.
