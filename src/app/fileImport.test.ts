@@ -11,6 +11,10 @@ type InputStub = {
   value: string;
 };
 
+type DropTargetStub = {
+  listeners: Partial<Record<"dragover" | "drop", EventListener>>;
+};
+
 function createInput(): HTMLInputElement & InputStub {
   const input: InputStub = { files: [], value: "selected" };
   return Object.assign(input, {
@@ -27,6 +31,42 @@ function createInput(): HTMLInputElement & InputStub {
 
 function createOutput(): HTMLElement {
   return { hidden: false, textContent: "stale message" } as HTMLElement;
+}
+
+function createDropTarget(): HTMLElement & DropTargetStub {
+  const target: DropTargetStub = { listeners: {} };
+  return Object.assign(target, {
+    addEventListener(type: "dragover" | "drop", listener: EventListener): void {
+      target.listeners[type] = listener;
+    },
+    removeEventListener(
+      type: "dragover" | "drop",
+      listener: EventListener,
+    ): void {
+      if (target.listeners[type] === listener) {
+        delete target.listeners[type];
+      }
+    },
+  }) as unknown as HTMLElement & DropTargetStub;
+}
+
+function dropFiles(target: DropTargetStub, files: File[]): void {
+  const event = {
+    dataTransfer: { files },
+    preventDefault: vi.fn(),
+  } as unknown as DragEvent;
+  target.listeners.drop?.(event);
+  expect(event.preventDefault).toHaveBeenCalledOnce();
+}
+
+function dragFilesOver(target: DropTargetStub): void {
+  const event = {
+    dataTransfer: { dropEffect: "none" },
+    preventDefault: vi.fn(),
+  } as unknown as DragEvent;
+  target.listeners.dragover?.(event);
+  expect(event.preventDefault).toHaveBeenCalledOnce();
+  expect(event.dataTransfer?.dropEffect).toBe("copy");
 }
 
 describe("bindFileImportControl", () => {
@@ -204,5 +244,75 @@ describe("bindFileImportControl", () => {
 
     control.destroy();
     expect(input.listener).toBeUndefined();
+  });
+
+  it("imports an accepted drop through the existing browser-local pipeline", async () => {
+    const dropTarget = createDropTarget();
+    const onFilesImported = vi.fn();
+    const control = bindFileImportControl(
+      createInput(),
+      createOutput(),
+      createOutput(),
+      { onFilesImported },
+      dropTarget,
+    );
+    const png = new File(["png"], "sprite.png", { type: "image/png" });
+
+    dragFilesOver(dropTarget);
+    dropFiles(dropTarget, [png]);
+
+    await vi.waitFor(() => expect(onFilesImported).toHaveBeenCalledOnce());
+    expect(onFilesImported.mock.calls[0][0][0]).toMatchObject({
+      file: png,
+      kind: "png",
+    });
+
+    control.destroy();
+    expect(dropTarget.listeners).toEqual({});
+  });
+
+  it("rejects an unsupported drop", async () => {
+    const dropTarget = createDropTarget();
+    const errorOutput = createOutput();
+    const onFilesImported = vi.fn();
+    bindFileImportControl(
+      createInput(),
+      errorOutput,
+      createOutput(),
+      { onFilesImported },
+      dropTarget,
+    );
+
+    dropFiles(dropTarget, [new File(["gif"], "sprite.gif")]);
+
+    await vi.waitFor(() => expect(errorOutput.hidden).toBe(false));
+    expect(errorOutput.textContent).toBe(
+      'Unsupported file "sprite.gif". Choose PNG or JSON files only.',
+    );
+    expect(onFilesImported).not.toHaveBeenCalled();
+  });
+
+  it("rejects a mixed drop before reading any accepted files", async () => {
+    const dropTarget = createDropTarget();
+    const errorOutput = createOutput();
+    const onFilesImported = vi.fn();
+    bindFileImportControl(
+      createInput(),
+      errorOutput,
+      createOutput(),
+      { onFilesImported },
+      dropTarget,
+    );
+    const png = new File(["png"], "sprite.png");
+    const readPng = vi.spyOn(png, "arrayBuffer");
+
+    dropFiles(dropTarget, [png, new File(["text"], "notes.txt")]);
+
+    await vi.waitFor(() => expect(errorOutput.hidden).toBe(false));
+    expect(errorOutput.textContent).toBe(
+      'Unsupported file "notes.txt". Choose PNG or JSON files only.',
+    );
+    expect(readPng).not.toHaveBeenCalled();
+    expect(onFilesImported).not.toHaveBeenCalled();
   });
 });

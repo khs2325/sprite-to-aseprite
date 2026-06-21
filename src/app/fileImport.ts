@@ -113,6 +113,7 @@ export function bindFileImportControl(
   errorOutput: HTMLElement,
   statusOutput: HTMLElement,
   dependencies: FileImportDependencies = {},
+  dropTarget?: HTMLElement,
 ): FileImportControl {
   const clearMessages = (): void => {
     errorOutput.hidden = true;
@@ -205,12 +206,28 @@ export function bindFileImportControl(
     void selectFiles(input.files ?? []);
   };
 
+  const handleDragOver = (event: DragEvent): void => {
+    event.preventDefault();
+    if (event.dataTransfer !== null) {
+      event.dataTransfer.dropEffect = "copy";
+    }
+  };
+
+  const handleDrop = (event: DragEvent): void => {
+    event.preventDefault();
+    void selectFiles(event.dataTransfer?.files ?? []);
+  };
+
   clearMessages();
   input.addEventListener("change", handleChange);
+  dropTarget?.addEventListener("dragover", handleDragOver);
+  dropTarget?.addEventListener("drop", handleDrop);
 
   return {
     destroy(): void {
       input.removeEventListener("change", handleChange);
+      dropTarget?.removeEventListener("dragover", handleDragOver);
+      dropTarget?.removeEventListener("drop", handleDrop);
     },
     selectFiles,
   };
@@ -223,6 +240,7 @@ export function mountFileImportUi(
   const document = container.ownerDocument;
   const element = document.createElement("section");
   const heading = document.createElement("h2");
+  const dropInstructions = document.createElement("p");
   const supportedTypes = document.createElement("p");
   const privacyNotice = document.createElement("p");
   const input = document.createElement("input");
@@ -230,7 +248,9 @@ export function mountFileImportUi(
   const statusOutput = document.createElement("p");
 
   element.setAttribute("aria-label", "Sprite source import");
-  heading.textContent = "Choose sprite source files";
+  heading.textContent = "Import sprite source files";
+  dropInstructions.textContent =
+    "Drag and drop files here, or choose files with the control below.";
   supportedTypes.textContent =
     "Supported files: PNG images (.png) and JSON metadata (.json).";
   privacyNotice.textContent =
@@ -245,6 +265,7 @@ export function mountFileImportUi(
   statusOutput.setAttribute("aria-live", "polite");
   element.append(
     heading,
+    dropInstructions,
     supportedTypes,
     privacyNotice,
     input,
@@ -258,6 +279,7 @@ export function mountFileImportUi(
     errorOutput,
     statusOutput,
     dependencies,
+    element,
   );
 
   return { ...control, element };
