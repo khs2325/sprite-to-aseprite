@@ -20,6 +20,7 @@ import {
   failureTaskStatePolicy,
   getNextTaskId,
   guardDirtyTaskStateOnTaskBranch,
+  hasAutomationSourceChanged,
   isRecoverableCodexSandboxVerificationFailure,
   isBranchBehindOriginMain,
   npmCommand,
@@ -178,6 +179,23 @@ describe("auto-dev dry run", () => {
     expect(git("status", "--porcelain")).toBe(statusBefore);
     expect(taskSnapshot()).toEqual(tasksBefore);
     expect(generatedSnapshot()).toEqual(generatedBefore);
+  });
+});
+
+describe("automation source freshness", () => {
+  it("requires a restart after the running automation module changes on disk", () => {
+    const workspace = createPlanningWorkspace();
+    const automationPath = path.join(workspace, "scripts", "auto-dev-cycle.mjs");
+    try {
+      const loadedSource = "export const detector = 'old';\n";
+      fs.writeFileSync(automationPath, loadedSource, "utf8");
+      expect(hasAutomationSourceChanged(automationPath, loadedSource)).toBe(false);
+
+      fs.writeFileSync(automationPath, "export const detector = 'fixed';\n", "utf8");
+      expect(hasAutomationSourceChanged(automationPath, loadedSource)).toBe(true);
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
   });
 });
 
