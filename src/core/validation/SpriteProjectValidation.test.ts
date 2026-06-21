@@ -118,6 +118,17 @@ describe("validateSpriteProject", () => {
     );
   });
 
+  it.each(["", "   "])("rejects an empty layer name %j", (name) => {
+    const project = createValidProject();
+    project.layers[0].name = name;
+
+    expect(validateSpriteProject(project)).toContainEqual({
+      code: "invalid_layer_name",
+      path: "layers[0].name",
+      message: "Layer name must contain at least one non-whitespace character.",
+    });
+  });
+
   it("rejects a cel that references a missing frame", () => {
     const project = createValidProject();
     project.layers[0].cels[0].frameIndex = 8;

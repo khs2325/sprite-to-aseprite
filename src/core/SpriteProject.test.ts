@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  LAYER_NAME_REQUIRED_MESSAGE,
   MAX_FRAME_DURATION_MS,
   MIN_FRAME_DURATION_MS,
+  renameLayer,
   updateFrameDuration,
   type SpriteProject,
 } from "./SpriteProject";
@@ -134,6 +136,68 @@ describe("SpriteProject", () => {
 
     expect(() => updateFrameDuration(project, 3, 100)).toThrow(
       "Frame index 3 does not exist.",
+    );
+  });
+
+  it("renames only the selected layer without changing layer order", () => {
+    const project: SpriteProject = {
+      width: 1,
+      height: 1,
+      colorMode: "rgba",
+      frames: [{ index: 0, durationMs: 100 }],
+      layers: [
+        { id: "line", name: "Line", visible: true, opacity: 255, cels: [] },
+        { id: "color", name: "Color", visible: true, opacity: 255, cels: [] },
+        { id: "shade", name: "Shade", visible: true, opacity: 255, cels: [] },
+      ],
+    };
+
+    const updated = renameLayer(project, "color", "Base color");
+
+    expect(updated.layers.map((layer) => [layer.id, layer.name])).toEqual([
+      ["line", "Line"],
+      ["color", "Base color"],
+      ["shade", "Shade"],
+    ]);
+    expect(updated.layers[0]).toBe(project.layers[0]);
+    expect(updated.layers[1]).not.toBe(project.layers[1]);
+    expect(updated.layers[2]).toBe(project.layers[2]);
+    expect(project.layers[1].name).toBe("Color");
+    expect(updated.frames).toBe(project.frames);
+  });
+
+  it.each(["", "   ", "\t\n"])(
+    "rejects an empty layer name %j",
+    (name) => {
+      const project: SpriteProject = {
+        width: 1,
+        height: 1,
+        colorMode: "rgba",
+        frames: [{ index: 0, durationMs: 100 }],
+        layers: [
+          { id: "main", name: "Main", visible: true, opacity: 255, cels: [] },
+        ],
+      };
+
+      expect(() => renameLayer(project, "main", name)).toThrow(
+        LAYER_NAME_REQUIRED_MESSAGE,
+      );
+    },
+  );
+
+  it("rejects a layer id that is not in the project", () => {
+    const project: SpriteProject = {
+      width: 1,
+      height: 1,
+      colorMode: "rgba",
+      frames: [{ index: 0, durationMs: 100 }],
+      layers: [
+        { id: "main", name: "Main", visible: true, opacity: 255, cels: [] },
+      ],
+    };
+
+    expect(() => renameLayer(project, "missing", "New name")).toThrow(
+      'Layer id "missing" does not exist.',
     );
   });
 });

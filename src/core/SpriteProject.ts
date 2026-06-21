@@ -30,6 +30,32 @@ export type SpriteCel = {
 export const MIN_FRAME_DURATION_MS = 1;
 export const MAX_FRAME_DURATION_MS = 65_535;
 
+export const LAYER_NAME_REQUIRED_MESSAGE =
+  "Layer name must contain at least one non-whitespace character.";
+
+export function isValidLayerName(name: unknown): name is string {
+  return typeof name === "string" && name.trim().length > 0;
+}
+
+export function renameLayer(
+  project: SpriteProject,
+  layerId: string,
+  name: string,
+): SpriteProject {
+  if (!isValidLayerName(name)) {
+    throw new RangeError(LAYER_NAME_REQUIRED_MESSAGE);
+  }
+
+  const layerPosition = project.layers.findIndex((layer) => layer.id === layerId);
+  if (layerPosition === -1) {
+    throw new RangeError(`Layer id "${layerId}" does not exist.`);
+  }
+
+  const layers = project.layers.slice();
+  layers[layerPosition] = { ...layers[layerPosition], name };
+  return { ...project, layers };
+}
+
 export function isValidFrameDuration(durationMs: number): boolean {
   return (
     Number.isFinite(durationMs) &&

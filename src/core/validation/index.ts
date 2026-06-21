@@ -1,7 +1,9 @@
 import {
+  LAYER_NAME_REQUIRED_MESSAGE,
   MAX_FRAME_DURATION_MS,
   MIN_FRAME_DURATION_MS,
   isValidFrameDuration,
+  isValidLayerName,
   type SpriteProject,
 } from "../SpriteProject";
 
@@ -153,12 +155,12 @@ export function validateSpriteProject(
       layerIds.add(layer.id);
     }
 
-    if (typeof layer.name !== "string") {
+    if (!isValidLayerName(layer.name)) {
       addError(
         errors,
         "invalid_layer_name",
         `${layerPath}.name`,
-        "Layer name must be a string.",
+        LAYER_NAME_REQUIRED_MESSAGE,
       );
     }
     if (typeof layer.visible !== "boolean") {
