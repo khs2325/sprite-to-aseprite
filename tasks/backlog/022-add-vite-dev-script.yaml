@@ -1,0 +1,35 @@
+id: "022"
+title: Add Vite dev script
+status: backlog
+priority: high
+goal: Add the missing npm development command so the browser product can be run locally with Vite.
+context: This task was generated deterministically because a product-completeness audit found missing product work in the repository.
+scope:
+  summary: Add the missing npm development command so the browser product can be run locally with Vite.
+  allowed_paths:
+    - package.json
+  forbidden_paths: &a1
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+non_goals:
+  - Do not implement unrelated roadmap features.
+  - Do not upload user artwork or use external processing services.
+  - Do not change dependencies, lockfiles, or GitHub workflows.
+requirements:
+  - Add exactly a dev script that runs vite.
+  - Use the existing Vite development dependency and do not change dependencies or lockfiles.
+acceptance_criteria:
+  - Add the missing npm development command so the browser product can be run locally with Vite.
+  - Focused tests cover the behavior introduced by this task.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *a1

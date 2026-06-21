@@ -1,0 +1,34 @@
+id: "025"
+title: Document how to test output in Aseprite
+status: backlog
+priority: high
+goal: Document a manual verification path for opening generated files in Aseprite.
+context: This task was generated deterministically because a product-completeness audit found missing product work in the repository.
+scope:
+  summary: Document a manual verification path for opening generated files in Aseprite.
+  allowed_paths:
+    - docs/**
+  forbidden_paths: &a1
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+non_goals:
+  - Do not implement unrelated roadmap features.
+  - Do not upload user artwork or use external processing services.
+  - Do not change dependencies, lockfiles, or GitHub workflows.
+requirements:
+  - Explain how to open a generated file, inspect frames and durations, and report compatibility problems without overstating fidelity.
+acceptance_criteria:
+  - Document a manual verification path for opening generated files in Aseprite.
+  - Focused tests cover the behavior introduced by this task.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *a1

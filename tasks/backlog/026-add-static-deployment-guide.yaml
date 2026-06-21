@@ -1,0 +1,35 @@
+id: "026"
+title: Add static deployment guide
+status: backlog
+priority: high
+goal: Document how to deploy the Vite production output as a static browser-only site.
+context: This task was generated deterministically because a product-completeness audit found missing product work in the repository.
+scope:
+  summary: Document how to deploy the Vite production output as a static browser-only site.
+  allowed_paths:
+    - docs/**
+  forbidden_paths: &a1
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+non_goals:
+  - Do not implement unrelated roadmap features.
+  - Do not upload user artwork or use external processing services.
+  - Do not change dependencies, lockfiles, or GitHub workflows.
+requirements:
+  - Document a provider-neutral static deployment process and browser-only privacy constraints.
+  - Do not add or change GitHub Actions workflows.
+acceptance_criteria:
+  - Document how to deploy the Vite production output as a static browser-only site.
+  - Focused tests cover the behavior introduced by this task.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *a1
