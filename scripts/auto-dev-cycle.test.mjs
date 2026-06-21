@@ -75,6 +75,10 @@ function markNormalRoadmapComplete(workspace) {
   }
 }
 
+function nextTaskIdForContext(context) {
+  return getNextTaskId(context.tasks.map((task) => String(task.data?.id ?? "")));
+}
+
 function createMountedMvpWorkspace(options = {}) {
   const workspace = createPlanningWorkspace();
   writeWorkspaceFile(workspace, "package.json", JSON.stringify({ scripts: options.devScript === false ? {} : { dev: "vite" } }));
@@ -515,13 +519,14 @@ describe("product completeness audits and task generation", () => {
       writeWorkspaceFile(workspace, "index.html", '<main><p>Automation framework installed.</p></main><script type="module" src="/src/index.ts"></script>');
       writeWorkspaceFile(workspace, "src/index.ts", 'export const projectName = "sprite-to-aseprite";\n');
       const context = collectProjectPlanningContext(workspace);
+      const expectedTaskId = nextTaskIdForContext(context);
       const audit = auditProductCompleteness({ rootDirectory: workspace, context });
       const tasks = selectProductCompletionTasks(audit, context, 5);
 
       expect(audit.passed).toBe(false);
       expect(audit.checks.browserAppMounted.passed).toBe(false);
       expect(tasks.map((task) => task.title)).toContain("Mount browser converter UI");
-      expect(tasks.find((task) => task.title === "Mount browser converter UI")?.id).toBe("022");
+      expect(tasks.find((task) => task.title === "Mount browser converter UI")?.id).toBe(expectedTaskId);
     } finally {
       fs.rmSync(workspace, { recursive: true, force: true });
     }
@@ -621,6 +626,7 @@ describe("product completeness audits and task generation", () => {
     try {
       markNormalRoadmapComplete(workspace);
       writeWorkspaceFile(workspace, "src/index.ts", 'export const projectName = "placeholder";\n');
+      const expectedTaskId = nextTaskIdForContext(collectProjectPlanningContext(workspace));
       const result = runPlanner(workspace, ["--dry-run", "--generate-tasks"]);
 
       expect(result.status).toBe(0);
@@ -637,7 +643,7 @@ describe("product completeness audits and task generation", () => {
       ]) expect(result.stdout).toContain(label);
       expect(result.stdout).toContain("Mount browser converter UI");
       expect(result.stdout).not.toContain("product completeness audits passed");
-      expect(result.stdout).toContain("product-completion tasks: 022");
+      expect(result.stdout).toContain(`product-completion tasks: ${expectedTaskId}`);
       expect(fs.readdirSync(path.join(workspace, "tasks", "backlog"))).toEqual([]);
     } finally {
       fs.rmSync(workspace, { recursive: true, force: true });
