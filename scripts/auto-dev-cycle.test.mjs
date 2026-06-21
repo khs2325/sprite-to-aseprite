@@ -71,11 +71,7 @@ function writeWorkspaceFile(workspace, relativePath, content) {
 
 function markNormalRoadmapComplete(workspace) {
   for (const file of fs.readdirSync(path.join(root, "tasks", "done")).filter((name) => name.endsWith(".yaml"))) {
-    const source = path.join(root, "tasks", "done", file);
-    const task = YAML.parse(fs.readFileSync(source, "utf8"));
-    if (!String(task.context ?? "").includes("product-completeness audit")) {
-      fs.copyFileSync(source, path.join(workspace, "tasks", "done", file));
-    }
+    fs.copyFileSync(path.join(root, "tasks", "done", file), path.join(workspace, "tasks", "done", file));
   }
 }
 
