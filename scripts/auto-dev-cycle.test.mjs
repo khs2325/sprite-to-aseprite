@@ -23,6 +23,7 @@ import {
   isRecoverableCodexSandboxVerificationFailure,
   isBranchBehindOriginMain,
   npmCommand,
+  normalizeTitle,
   productCompletionStopReason,
   policyFalseRecoveryOptions,
   prChecksFailurePolicy,
@@ -766,7 +767,7 @@ describe("product completeness audits and task generation", () => {
     }
   });
 
-  it("does not duplicate product tasks from backlog, done, or failed", () => {
+  it("blocks pending duplicates but remediates done and failed audit gaps", () => {
     const workspace = createMountedMvpWorkspace({ devScript: false, download: false, modeSelector: false });
     try {
       writeWorkspaceFile(workspace, "tasks/backlog/019-dev.yaml", 'id: "019"\ntitle: Prepare local development\ngoal: Add the missing npm development command so the browser product can be run locally with Vite.\n');
@@ -777,8 +778,118 @@ describe("product completeness audits and task generation", () => {
       const tasks = selectProductCompletionTasks(audit, context, 10);
 
       expect(tasks.map((task) => task.title)).not.toContain("Add Vite dev script");
-      expect(tasks.map((task) => task.title)).not.toContain("Wire Aseprite export download into UI");
-      expect(tasks.map((task) => task.title)).not.toContain("Add converter import mode selector");
+      expect(tasks.map((task) => task.title)).toContain("Complete Aseprite export download into UI audit gap after task 020");
+      expect(tasks.map((task) => task.title)).toContain("Retry converter import mode selector audit gap after task 021");
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("creates a focused remediation when a done candidate still fails its audit", () => {
+    const audit = {
+      missing: [{ key: "asepriteDownloadUi", message: ".aseprite download is not reachable" }],
+      audits: [{ id: "export-download", label: "Export/download audit", checks: [{ key: "asepriteDownloadUi" }] }]
+    };
+    const context = {
+      docs: {}, sourceFiles: [], testFiles: [], openTaskBranchIds: [],
+      tasks: [{
+        state: "done",
+        file: "028-export.yaml",
+        data: {
+          id: "028",
+          title: "Wire Aseprite export download into UI",
+          goal: "Make the implemented .aseprite exporter and browser download control reachable after conversion."
+        }
+      }]
+    };
+
+    const [task] = selectProductCompletionTasks(audit, context, 5);
+
+    expect(task.title).toBe("Complete Aseprite export download into UI audit gap after task 028");
+    expect(task.goal).toContain('done task 028 "Wire Aseprite export download into UI"');
+    expect(normalizeTitle(task.title)).not.toBe(normalizeTitle(context.tasks[0].data.title));
+    expect(normalizeTitle(task.goal)).not.toBe(normalizeTitle(context.tasks[0].data.goal));
+    expect(task.audit_gap).toMatchObject({ kind: "remediation", category: "export-download", check_keys: ["asepriteDownloadUi"], previous_task_id: "028" });
+    expect(task.scope.allowed_paths).toEqual(expect.arrayContaining(["src/app/**", "scripts/auto-dev-cycle.mjs", "scripts/auto-dev-cycle.test.mjs"]));
+    expect(task.verification).toEqual(["npm run typecheck", "npm run test", "npm run build"]);
+  });
+
+  it("blocks an identical active task", () => {
+    const audit = { missing: [{ key: "modeSelector", message: "mode selector missing" }] };
+    const context = {
+      docs: {}, sourceFiles: [], testFiles: [], openTaskBranchIds: [],
+      tasks: [{ state: "active", file: "029-mode.yaml", data: { id: "029", title: "Add converter import mode selector" } }]
+    };
+
+    const tasks = selectProductCompletionTasks(audit, context, 5);
+
+    expect(tasks).toHaveLength(0);
+    expect(tasks.auditPlan.decisions[0]).toMatchObject({ decision: "blocked by identical active task" });
+  });
+
+  it("blocks an identical task with an open task branch", () => {
+    const audit = { missing: [{ key: "modeSelector", message: "mode selector missing" }] };
+    const context = {
+      docs: {}, sourceFiles: [], testFiles: [], openTaskBranchIds: ["029"],
+      tasks: [{ state: "failed", file: "029-mode.yaml", data: { id: "029", title: "Add converter import mode selector" } }]
+    };
+
+    const tasks = selectProductCompletionTasks(audit, context, 5);
+
+    expect(tasks).toHaveLength(0);
+    expect(tasks.auditPlan.decisions[0].duplicate).toMatchObject({ state: "open-branch", location: "codex/task-029" });
+    expect(tasks.auditPlan.decisions[0].decision).toBe("blocked by identical open-branch task");
+  });
+
+  it("creates a unique retry/remediation after a failed duplicate", () => {
+    const audit = { missing: [{ key: "modeSelector", message: "mode selector missing" }] };
+    const context = {
+      docs: {}, sourceFiles: [], testFiles: [], openTaskBranchIds: [],
+      tasks: [{ state: "failed", file: "029-mode.yaml", data: { id: "029", title: "Add converter import mode selector" } }]
+    };
+
+    const [task] = selectProductCompletionTasks(audit, context, 5);
+
+    expect(task.title).toBe("Retry converter import mode selector audit gap after task 029");
+    expect(task.audit_gap).toMatchObject({ kind: "retry", previous_task_id: "029", previous_task_state: "failed" });
+  });
+
+  it("creates an investigation task for an unmapped failing audit check", () => {
+    const audit = {
+      missing: [{ key: "newUnknownCheck", message: "new product evidence is absent" }],
+      audits: [{ id: "new-category", label: "New category audit", checks: [{ key: "newUnknownCheck" }] }]
+    };
+    const context = { docs: {}, sourceFiles: [], testFiles: [], openTaskBranchIds: [], tasks: [] };
+
+    const [task] = selectProductCompletionTasks(audit, context, 5);
+
+    expect(task.title).toBe("Investigate unmapped product audit gap: newUnknownCheck");
+    expect(task.goal).toContain("newUnknownCheck");
+    expect(task.audit_gap).toMatchObject({ kind: "investigation", category: "new-category", check_keys: ["newUnknownCheck"] });
+    expect(task.requirements.join("\n")).toContain("task mapping is missing");
+  });
+
+  it("prints dry-run audit diagnostics and remediation decisions without writing tasks", () => {
+    const workspace = createPlanningWorkspace();
+    try {
+      markNormalRoadmapComplete(workspace);
+      writeWorkspaceFile(workspace, "tasks/done/023-mount.yaml", 'id: "023"\ntitle: Mount browser converter UI\n');
+      writeWorkspaceFile(workspace, "package.json", JSON.stringify({ scripts: { dev: "vite" } }));
+      writeWorkspaceFile(workspace, "index.html", '<main id="app">placeholder</main><script type="module" src="/src/index.ts"></script>');
+      writeWorkspaceFile(workspace, "src/index.ts", 'export const product = "placeholder";\n');
+
+      const result = runPlanner(workspace, ["--dry-run", "--generate-tasks"]);
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("Product audit task decisions:");
+      expect(result.stdout).toContain("UI audit / browserAppMounted");
+      expect(result.stdout).toContain("Candidate: Mount browser converter UI");
+      expect(result.stdout).toContain("tasks/done/023-mount.yaml (done)");
+      expect(result.stdout).toContain("Done-but-audit-still-fails: yes");
+      expect(result.stdout).toContain("generate unique remediation task");
+      expect(result.stdout).toContain("Complete browser converter UI audit gap after task 023");
+      expect(result.stdout).not.toContain("no non-duplicate product-completion tasks");
+      expect(fs.readdirSync(path.join(workspace, "tasks", "backlog"))).toEqual([]);
     } finally {
       fs.rmSync(workspace, { recursive: true, force: true });
     }
@@ -811,6 +922,29 @@ describe("product completeness audits and task generation", () => {
     expect(productCompletionStopReason({ passed: true }, 0)).toBe("No backlog tasks remain and product completeness audits passed");
     expect(productCompletionStopReason({ passed: false }, 2)).toBe("Generated product-completion tasks; rerun automation to continue");
     expect(productCompletionStopReason({ passed: false }, 0)).toContain("Product completeness audits failed");
+  });
+
+  it("does not claim completion when pending duplicates block every failing audit gap", () => {
+    const audit = { passed: false, missing: [{ key: "modeSelector", message: "mode selector missing" }] };
+    const context = {
+      docs: {}, sourceFiles: [], testFiles: [], openTaskBranchIds: [],
+      tasks: [{ state: "backlog", file: "029-mode.yaml", data: { id: "029", title: "Add converter import mode selector" } }]
+    };
+    const tasks = selectProductCompletionTasks(audit, context, 5);
+    const reason = productCompletionStopReason(audit, tasks.length, tasks.auditPlan);
+
+    expect(reason).toContain("all candidate tasks are blocked");
+    expect(reason).not.toContain("audits passed");
+    const lines = buildLoopSummaryLines({
+      mode: "until-stop", completedTaskIds: [], failedTaskId: null, stopReason: reason,
+      prUrls: [], mergedPrUrls: [], generatedTaskIds: [], existingPrUrl: null,
+      localVerificationFailed: false, safetyValidationFailed: false, branchBehindMain: false,
+      skippedCoveredTasks: [], auditGenerationBlocked: true, doneAuditDuplicates: ["023 Mount browser converter UI"]
+    }, { branch: "main", clean: true }, "1.0");
+    expect(lines).toContain("All failing audit gaps blocked by pending duplicates: yes");
+    expect(lines).toContain("Done duplicates whose audits still fail: 023 Mount browser converter UI");
+    expect(lines).toContain("Audit generation dry-run: node scripts/auto-dev-cycle.mjs --dry-run --generate-tasks");
+    expect(lines.join("\n")).toContain("Next action:");
   });
 
   it("does not report full completion when placeholder UI fails the audit", () => {

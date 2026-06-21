@@ -94,7 +94,7 @@ Generate the next deterministic batch of backlog tasks:
 npm run auto-dev:generate-tasks
 ```
 
-The generator inspects project documentation, current source/test paths, and task files in `backlog`, `done`, and `failed`. It selects the next small roadmap items, skips normalized duplicate titles and work with known completion paths, assigns the next numeric IDs, writes only `tasks/backlog/*.yaml`, and commits/pushes those files on `main`. The default batch size is five; override it with `AUTO_DEV_GENERATED_TASK_COUNT`.
+The generator inspects project documentation, current source/test paths, and task files in `backlog`, `active`, `done`, and `failed`, plus detectable unmerged `codex/task-*` branches. It selects the next small roadmap items, applies state-aware duplicate handling, assigns the next numeric IDs, writes only `tasks/backlog/*.yaml`, and commits/pushes those files on `main`. The default batch size is five; override it with `AUTO_DEV_GENERATED_TASK_COUNT`.
 
 Backlog exhaustion is not the same as product completion. When no normal roadmap task remains, the automation runs a deterministic product-completeness audit framework before it can report the product complete. A placeholder entry such as a constant export from `src/index.ts` or an `index.html` page that only says the automation is installed fails even when all core helpers and unit tests exist.
 
@@ -113,7 +113,14 @@ The reachability checks follow local imports starting at `src/index.ts`; a helpe
 
 If checks fail, the generator maps missing check keys to small, deterministic product-completion cards. These can mount or wire UI controls, connect individual importers and export, add importer-specific E2E tests, improve error states, add usage/compatibility/deployment/performance documentation, or add large-file and progress UI. Generated cards use the next repository-wide numeric IDs, include verification and acceptance criteria, and preserve the default allowed/forbidden path policy. UI cards require plain TypeScript and DOM APIs, browser-local processing, reuse of existing helpers, no framework or other dependency additions, no server upload, no duplicated conversion logic, and focused tests.
 
-Duplicate prevention covers normalized titles and goals across `tasks/backlog`, `tasks/active`, `tasks/done`, and `tasks/failed`. If an existing task already describes the missing work, the framework does not create another copy and does not falsely report completion while that audit still fails.
+Duplicate handling is state-aware rather than a single global skip:
+
+- An identical backlog, active, or open-branch task blocks another copy because the work is still pending.
+- A failed duplicate produces a uniquely named retry/remediation task that references the failed task and remaining check.
+- A done duplicate does not count as proof that the product is complete when its audit is still red. It produces a uniquely named remediation task that identifies the audit category/check and prior task, and asks Codex to distinguish missing work, an incomplete implementation, and a stale detector or mapping.
+- A failing check with no task mapping produces a focused investigation task. That task may repair the mapping/detector with a regression test, make a safely scoped product fix, or document why the audit is invalid.
+
+Every product-audit generation pass prints the failing category and check, mapped candidate title, duplicate ID/location/state, whether a done task still fails, and the generation/blocking decision. If every candidate is blocked, the loop prints the exact non-mutating inspection command and the next recovery action instead of calling the product complete.
 
 To add an audit later, add its evidence check to `auditProductCompleteness`, register the check key under a category in `PRODUCT_AUDIT_DEFINITIONS` (or add a new category), and map the missing key to one or more safe templates in `PRODUCT_COMPLETION_TASKS`. Add one passing fixture and one missing-work test for the new check.
 
@@ -130,6 +137,12 @@ Preview generation without pulling, writing, committing, or pushing:
 ```bash
 node scripts/auto-dev-cycle.mjs --dry-run --generate-tasks
 ```
+
+This dry run is the preferred first diagnostic for an audit dead-end. It shows which checks remain red and whether the next work item will be normal missing work, done-task remediation, failed-task retry, unmapped-check investigation, or a pending-duplicate block. It never writes or moves task files.
+
+### Troubleshooting audit-generation dead ends
+
+The older stop reason `Product completeness audits failed and no non-duplicate product-completion tasks could be generated` meant task history and product evidence disagreed: a card could be marked done even though its detector remained red, or the detector/mapping itself could be stale. It never meant that the product was complete. Current automation reports the conflicting task and creates remediation or investigation work whenever it can do so safely. If every candidate is genuinely still pending in backlog, active state, or an open branch, the diagnostic names those blockers and recommends the dry-run command above instead of generating backlog spam.
 
 Each real task cycle:
 
