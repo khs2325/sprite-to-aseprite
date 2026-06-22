@@ -7,6 +7,7 @@ import {
   getConversionErrorMessage,
   getConversionSuccessStatus,
   getSourceSelectionError,
+  renderConversionState,
 } from "./converterUi";
 import type { BrowserSourceFile } from "./fileImport";
 
@@ -57,6 +58,79 @@ function piskel(name: string): BrowserSourceFile {
     text: "{}",
   };
 }
+
+function elementStub(): HTMLElement {
+  const attributes = new Map<string, string>();
+  return {
+    hidden: false,
+    inert: false,
+    textContent: "",
+    setAttribute(name: string, value: string): void {
+      attributes.set(name, value);
+    },
+    getAttribute(name: string): string | null {
+      return attributes.get(name) ?? null;
+    },
+  } as unknown as HTMLElement;
+}
+
+describe("renderConversionState", () => {
+  it("exposes an accessible working state and locks conversion controls", () => {
+    const activityControl = elementStub();
+    const progress = elementStub();
+    const status = elementStub();
+    const error = elementStub();
+    const dropZone = elementStub();
+    const modeSelect = { disabled: false } as HTMLSelectElement;
+    const fileInput = { disabled: false } as HTMLInputElement;
+    const convertButton = { disabled: false } as HTMLButtonElement;
+    const elements = {
+      activityControl,
+      progress,
+      status,
+      error,
+      sourceControls: [modeSelect, fileInput],
+      dropZone,
+      convertButton,
+    };
+
+    renderConversionState(elements, {
+      isWorking: true,
+      canConvert: true,
+      status: "Converting files browser-locally. This may take a while.",
+    });
+
+    expect(activityControl.getAttribute("aria-busy")).toBe("true");
+    expect(progress.hidden).toBe(false);
+    expect(status.textContent).toContain("browser-locally");
+    expect(error).toMatchObject({ hidden: true, textContent: "" });
+    expect(convertButton.disabled).toBe(true);
+    expect(modeSelect.disabled).toBe(true);
+    expect(fileInput.disabled).toBe(true);
+    expect(dropZone.inert).toBe(true);
+    expect(dropZone.getAttribute("aria-disabled")).toBe("true");
+
+    renderConversionState(elements, {
+      isWorking: false,
+      canConvert: true,
+      status: "Conversion did not complete.",
+      error: "The spritesheet grid is invalid.",
+    });
+
+    expect(activityControl.getAttribute("aria-busy")).toBe("false");
+    expect(progress.hidden).toBe(true);
+    expect(status.textContent).toBe("Conversion did not complete.");
+    expect(error).toMatchObject({
+      hidden: false,
+      textContent: "The spritesheet grid is invalid.",
+    });
+    expect(convertButton.disabled).toBe(false);
+    expect(modeSelect.disabled).toBe(false);
+    expect(fileInput.disabled).toBe(false);
+    expect(dropZone.inert).toBe(false);
+    expect(dropZone.getAttribute("aria-disabled")).toBe("false");
+  });
+});
 
 describe("getSourceSelectionError", () => {
   it("accepts the required file combination for each import mode", () => {
