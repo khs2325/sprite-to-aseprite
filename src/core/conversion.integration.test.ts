@@ -1,9 +1,11 @@
+import { readFileSync } from "node:fs";
 import { inflateSync } from "node:zlib";
 
 import { describe, expect, it } from "vitest";
 
 import type { SpriteProject } from "./SpriteProject";
 import { exportAseprite } from "./exporters/aseprite";
+import { importPiskel } from "./importers/piskel";
 import { importPngSequence } from "./importers/pngSequence";
 import { importSpritesheetGrid } from "./importers/spritesheetGrid";
 import { importSpritesheetJson } from "./importers/spritesheetJson";
@@ -44,6 +46,62 @@ function createImageData(redValues: number[]): ImageData {
     height: 1,
     width: redValues.length,
   };
+}
+
+function readUint32BigEndian(bytes: Uint8Array, offset: number): number {
+  return (
+    bytes[offset] * 0x1000000 +
+    bytes[offset + 1] * 0x10000 +
+    bytes[offset + 2] * 0x100 +
+    bytes[offset + 3]
+  );
+}
+
+function decodeFixturePng(bytes: Uint8Array): ImageData {
+  let offset = PNG_SIGNATURE.length;
+  let width = 0;
+  let height = 0;
+  const compressed: Uint8Array[] = [];
+
+  while (offset < bytes.length) {
+    const length = readUint32BigEndian(bytes, offset);
+    const type = String.fromCharCode(...bytes.subarray(offset + 4, offset + 8));
+    const data = bytes.subarray(offset + 8, offset + 8 + length);
+    offset += length + 12;
+
+    if (type === "IHDR") {
+      width = readUint32BigEndian(data, 0);
+      height = readUint32BigEndian(data, 4);
+    } else if (type === "IDAT") {
+      compressed.push(data);
+    } else if (type === "IEND") {
+      break;
+    }
+  }
+
+  const rows = inflateSync(
+    Buffer.concat(compressed.map((part) => Buffer.from(part))),
+  );
+  const data = new Uint8ClampedArray(width * height * 4);
+  const rowLength = width * 4;
+
+  for (let row = 0; row < height; row += 1) {
+    const sourceOffset = row * (rowLength + 1);
+    if (rows[sourceOffset] !== 0) {
+      throw new Error("Test decoder only supports unfiltered fixture rows.");
+    }
+    data.set(
+      rows.subarray(sourceOffset + 1, sourceOffset + 1 + rowLength),
+      row * rowLength,
+    );
+  }
+
+  return { colorSpace: "srgb", data, height, width };
+}
+
+function pixel(image: ImageData, x: number, y: number): number[] {
+  const offset = (y * image.width + x) * 4;
+  return [...image.data.slice(offset, offset + 4)];
 }
 
 function parseFrames(bytes: Uint8Array): ParsedFrame[] {
@@ -202,5 +260,184 @@ describe("importer to Aseprite export integration", () => {
     );
 
     expectTwoFrameAseprite(project, [90, 120], [60, 50]);
+  });
+
+  it("preserves supported Piskel layers and timing in Aseprite chunks", async () => {
+    const contents = readFileSync(
+      new URL("../../tests/fixtures/piskel/multi-layer.piskel", import.meta.url),
+      "utf8",
+    );
+    const file = createFile(
+      "multi-layer.piskel",
+      contents,
+      "application/json",
+    );
+    const project = await importPiskel(file, {
+      decodePng: async (bytes) => decodeFixturePng(bytes),
+    });
+
+    expect(project).toMatchObject({
+      colorMode: "rgba",
+      frames: [
+        { index: 0, durationMs: 50 },
+        { index: 1, durationMs: 50 },
+      ],
+      height: 2,
+      layers: [
+        {
+          cels: [
+            { frameIndex: 0, x: 0, y: 0 },
+            { frameIndex: 1, x: 0, y: 0 },
+          ],
+          name: "Background",
+          opacity: 128,
+          visible: true,
+        },
+        {
+          cels: [
+            { frameIndex: 0, x: 0, y: 0 },
+            { frameIndex: 1, x: 0, y: 0 },
+          ],
+          name: "Accent",
+          opacity: 255,
+          visible: true,
+        },
+      ],
+      width: 2,
+    });
+    expect(pixel(project.layers[0].cels[0].imageData, 0, 0)).toEqual([
+      69, 123, 157, 255,
+    ]);
+    expect(pixel(project.layers[0].cels[1].imageData, 0, 0)).toEqual([
+      0, 0, 0, 0,
+    ]);
+    expect(pixel(project.layers[1].cels[0].imageData, 0, 0)).toEqual([
+      230, 57, 70, 255,
+    ]);
+    expect(pixel(project.layers[1].cels[1].imageData, 1, 0)).toEqual([
+      42, 157, 143, 255,
+    ]);
+
+    const bytes = exportAseprite(project);
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const frames = parseFrames(bytes);
+    expect(exportAseprite(project)).toEqual(bytes);
+    expect({
+      colorDepth: view.getUint16(12, true),
+      declaredSize: view.getUint32(0, true),
+      frameCount: view.getUint16(6, true),
+      height: view.getUint16(10, true),
+      magic: view.getUint16(4, true),
+      width: view.getUint16(8, true),
+    }).toEqual({
+      colorDepth: 32,
+      declaredSize: bytes.length,
+      frameCount: 2,
+      height: 2,
+      magic: 0xa5e0,
+      width: 2,
+    });
+    expect(frames.map(({ durationMs, magic }) => ({ durationMs, magic }))).toEqual([
+      { durationMs: 50, magic: 0xf1fa },
+      { durationMs: 50, magic: 0xf1fa },
+    ]);
+    expect(frames.map(({ chunks }) => chunks.map(({ type }) => type))).toEqual([
+      [0x2004, 0x2004, 0x2005, 0x2005],
+      [0x2005, 0x2005],
+    ]);
+
+    const layerChunks = frames[0].chunks.filter(({ type }) => type === 0x2004);
+    expect(
+      layerChunks.map(({ bytes: layerBytes }) => {
+        const layerView = new DataView(
+          layerBytes.buffer,
+          layerBytes.byteOffset,
+          layerBytes.byteLength,
+        );
+        const nameLength = layerView.getUint16(22, true);
+        return {
+          name: new TextDecoder().decode(layerBytes.slice(24, 24 + nameLength)),
+          opacity: layerView.getUint8(18),
+          visible: (layerView.getUint16(6, true) & 1) !== 0,
+        };
+      }),
+    ).toEqual([
+      { name: "Background", opacity: 128, visible: true },
+      { name: "Accent", opacity: 255, visible: true },
+    ]);
+
+    const celChunks = frames.flatMap(({ chunks }) =>
+      chunks.filter(({ type }) => type === 0x2005),
+    );
+    expect(
+      celChunks.map(({ bytes: celBytes }) => {
+        const celView = new DataView(
+          celBytes.buffer,
+          celBytes.byteOffset,
+          celBytes.byteLength,
+        );
+        return {
+          height: celView.getUint16(24, true),
+          layerIndex: celView.getUint16(6, true),
+          pixels: Array.from(inflateSync(celBytes.slice(26))),
+          width: celView.getUint16(22, true),
+          x: celView.getInt16(8, true),
+          y: celView.getInt16(10, true),
+        };
+      }),
+    ).toEqual([
+      {
+        height: 2,
+        layerIndex: 0,
+        pixels: [
+          69, 123, 157, 255, 69, 123, 157, 255, 0, 0, 0, 0, 0, 0, 0, 0,
+        ],
+        width: 2,
+        x: 0,
+        y: 0,
+      },
+      {
+        height: 2,
+        layerIndex: 1,
+        pixels: [
+          230, 57, 70, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ],
+        width: 2,
+        x: 0,
+        y: 0,
+      },
+      {
+        height: 2,
+        layerIndex: 0,
+        pixels: [
+          0, 0, 0, 0, 0, 0, 0, 0, 69, 123, 157, 255, 69, 123, 157, 255,
+        ],
+        width: 2,
+        x: 0,
+        y: 0,
+      },
+      {
+        height: 2,
+        layerIndex: 1,
+        pixels: [
+          0, 0, 0, 0, 42, 157, 143, 255, 0, 0, 0, 0, 0, 0, 0, 0,
+        ],
+        width: 2,
+        x: 0,
+        y: 0,
+      },
+    ]);
+  });
+
+  it("rejects malformed Piskel input at the conversion boundary", async () => {
+    const file = createFile(
+      "malformed.piskel",
+      '{"modelVersion":2,"piskel":',
+      "application/json",
+    );
+
+    await expect(importPiskel(file)).rejects.toThrow(
+      "Piskel file is not valid JSON.",
+    );
   });
 });
