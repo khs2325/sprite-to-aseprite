@@ -25,6 +25,25 @@ The tool should help users rebuild an editable Aseprite timeline from assets suc
 - Full `.aseprite` feature parity
 - Auto-merge of AI-generated code
 
+## Planned post-MVP Piskel support
+
+Piskel (`.piskel`) support is planned as a browser-local import path through
+the canonical `SpriteProject` model and the existing Aseprite exporter. The
+work is split into fixtures/format notes, a core importer, conversion
+integration tests, browser UI wiring, and user documentation.
+
+The supported subset must be explicit about model versions, nested layer
+records, embedded PNG chunks/layouts, and global FPS-to-frame-duration
+conversion. It should preserve layer names, order, opacity/visibility, frames,
+timing, and cel pixels when those values are represented by the supported
+`.piskel` source. It must reject malformed or unsupported data clearly rather
+than silently inventing or dropping source structure.
+
+This plan does not make `.piskel` a currently supported input. Documentation
+may advertise support only after the importer, integration path, and browser UI
+are implemented and verified. Artwork must never be uploaded or remotely
+processed.
+
 ## Core user promise
 
 User files stay in the browser whenever the web app processes artwork.

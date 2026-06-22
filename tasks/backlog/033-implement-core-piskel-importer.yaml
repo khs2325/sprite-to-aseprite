@@ -1,0 +1,48 @@
+id: "033"
+title: Implement core Piskel importer
+status: backlog
+priority: high
+goal: Parse the documented .piskel subset into a validated SpriteProject while preserving source layer and animation data.
+context: This task follows the Piskel format notes and fixtures from task 032. All decoding and conversion must run locally in the browser.
+scope:
+  summary: Add a dependency-free Piskel parser/importer and focused unit tests under the core importer boundary.
+  allowed_paths:
+    - src/core/importers/piskel/**
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/app/**
+    - src/core/exporters/**
+non_goals:
+  - Do not wire the importer into the browser UI.
+  - Do not modify the Aseprite exporter or canonical SpriteProject model.
+  - Do not add GIF, APNG, Pixelorama, or unrelated importer support.
+  - Do not add server processing, uploads, or production dependencies.
+requirements:
+  - Parse .piskel JSON and explicitly validate the supported model version, piskel object, positive dimensions, bounded FPS, non-empty layers, and required layer fields.
+  - Safely parse string-encoded layer records and validate frame counts, chunk layouts, frame indexes, embedded PNG data URLs, and decoded dimensions before allocating or copying pixel buffers.
+  - Decode supported embedded PNG layer sheets through browser-local APIs behind injectable test dependencies; never evaluate source text or fetch remote URLs.
+  - Map chunk layouts into SpriteProject cels with deterministic frame indexes and reject duplicate, missing, out-of-range, or inconsistent frame mappings.
+  - Preserve layer names, source order, opacity, visibility when explicitly represented by the supported source subset, frame count, RGBA cel pixels, and animation timing.
+  - Convert the source global FPS to a valid whole-millisecond duration for every frame using one documented deterministic rule.
+  - Default only fields that the format notes explicitly permit; reject malformed or unsupported data with clear errors that do not expose file contents.
+  - Preserve layers only because .piskel contains layer data; do not describe this as recovering layers from flat PNG files.
+  - Add focused tests for multi-frame, multi-layer, transparency, timing, chunk layouts, malformed JSON, unsupported versions, invalid data URLs, invalid dimensions, and incomplete frame coverage.
+acceptance_criteria:
+  - A supported synthetic .piskel file imports into the canonical SpriteProject with correct dimensions, frames, durations, layers, names, order, opacity/visibility, and cel pixels.
+  - Malformed and unsupported files fail deterministically with actionable, content-safe messages.
+  - The importer has no UI coupling, network behavior, external upload, or new production dependency.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: false
+  max_changed_files: 6
+  forbidden_paths: *forbidden
