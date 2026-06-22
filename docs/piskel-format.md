@@ -1,10 +1,9 @@
 # Supported Piskel subset
 
-This note defines the `.piskel` subset for the planned browser-only Piskel
-importer. It is a parser contract, not an importer implementation. User artwork
-must remain browser-local and must never be uploaded for conversion. The
-converter will preserve layers only when the `.piskel` source contains layer
-data; it will not infer or invent layers.
+This note defines the `.piskel` subset implemented by the browser-only Piskel
+importer. User artwork remains browser-local and is never uploaded for
+conversion. The converter preserves layers only when the supported `.piskel`
+source contains layer data; it does not infer or invent layers.
 
 ## Accepted document shape
 
@@ -110,3 +109,23 @@ The parser must reject malformed JSON, wrong types, unsupported versions,
 unsupported legacy layers, inconsistent layer frame counts, invalid layouts,
 invalid PNG data URLs, and decoded size mismatches with a specific error. It
 must not silently skip bad layers, chunks, or frames.
+
+## Preserved, defaulted, and unsupported data
+
+For the supported subset, source layer names and array order, opacity,
+explicit visibility, frame indexes, global-FPS timing, transparency, and
+decoded RGBA pixels are mapped to the generated Aseprite file. Opacity is
+quantized to the Aseprite-compatible integer range from `0` through `255`, so
+this is not a claim of universal or lossless Piskel conversion.
+
+The following values are defaulted or generated because `SpriteProject` needs
+them: missing layer `visible` becomes `true`; layer ids become
+`piskel-layer-0`, `piskel-layer-1`, and so on; and every full-canvas cel is
+placed at `(0, 0)`. The Piskel project `name` and optional `description` are
+validated but are not represented in the output. Per-frame durations are not
+accepted; every frame receives the duration derived from the one project FPS.
+
+Unsupported model versions, unknown fields, non-empty `hiddenFrames`, legacy
+top-level layer `base64PNG`, external image URLs, incomplete or ambiguous frame
+coverage, and invalid PNG data are rejected. Features outside the accepted
+document fields are not silently defaulted or advertised as preserved.
