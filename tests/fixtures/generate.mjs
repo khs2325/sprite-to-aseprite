@@ -1,14 +1,10 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deflateSync } from "node:zlib";
 
 const fixtureDirectory = dirname(fileURLToPath(import.meta.url));
-const sequenceDirectory = join(fixtureDirectory, "png-sequence");
-const spritesheetDirectory = join(fixtureDirectory, "spritesheet");
-
-mkdirSync(sequenceDirectory, { recursive: true });
-mkdirSync(spritesheetDirectory, { recursive: true });
+const outputs = new Map();
 
 const transparent = [0, 0, 0, 0];
 const coral = [239, 71, 111, 255];
@@ -74,12 +70,103 @@ function encodePng(width, height, pixels) {
   ]);
 }
 
+function pngDataUrl(width, height, pixels) {
+  return `data:image/png;base64,${encodePng(width, height, pixels).toString("base64")}`;
+}
+
+function piskelLayer(name, opacity, frames, chunks) {
+  return JSON.stringify({
+    name,
+    opacity,
+    frameCount: frames.length,
+    chunks: chunks.map(({ frameIndexes }) => {
+      const pixels = [];
+      for (let y = 0; y < 2; y += 1) {
+        for (const frameIndex of frameIndexes) {
+          pixels.push(...frames[frameIndex].slice(y * 2, y * 2 + 2));
+        }
+      }
+      return {
+        layout: frameIndexes.map((frameIndex) => [frameIndex]),
+        base64PNG: pngDataUrl(frameIndexes.length * 2, 2, pixels),
+      };
+    }),
+  });
+}
+
+function piskelFile(name, fps, layers) {
+  return `${JSON.stringify({
+    modelVersion: 2,
+    piskel: {
+      name,
+      description: "Synthetic test fixture",
+      fps,
+      height: 2,
+      width: 2,
+      layers,
+      hiddenFrames: [],
+    },
+  }, null, 2)}\n`;
+}
+
 const spritesheet = [];
 for (let y = 0; y < 4; y += 1) {
   spritesheet.push(...frameOne.slice(y * 4, y * 4 + 4));
   spritesheet.push(...frameTwo.slice(y * 4, y * 4 + 4));
 }
 
-writeFileSync(join(sequenceDirectory, "spark-01.png"), encodePng(4, 4, frameOne));
-writeFileSync(join(sequenceDirectory, "spark-02.png"), encodePng(4, 4, frameTwo));
-writeFileSync(join(spritesheetDirectory, "spark-sheet.png"), encodePng(8, 4, spritesheet));
+outputs.set("png-sequence/spark-01.png", encodePng(4, 4, frameOne));
+outputs.set("png-sequence/spark-02.png", encodePng(4, 4, frameTwo));
+outputs.set("spritesheet/spark-sheet.png", encodePng(8, 4, spritesheet));
+
+const red = [230, 57, 70, 255];
+const green = [42, 157, 143, 255];
+const blue = [69, 123, 157, 255];
+const white = [255, 255, 255, 255];
+
+const motionFrames = [
+  [red, transparent, transparent, yellow],
+  [transparent, green, yellow, transparent],
+  [transparent, white, blue, transparent],
+];
+outputs.set(
+  "piskel/multi-frame.piskel",
+  piskelFile("Synthetic motion", 12, [
+    piskelLayer("Motion", 1, motionFrames, [
+      { frameIndexes: [0, 1] },
+      { frameIndexes: [2] },
+    ]),
+  ]),
+);
+
+const backgroundFrames = [
+  [blue, blue, transparent, transparent],
+  [transparent, transparent, blue, blue],
+];
+const accentFrames = [
+  [red, transparent, transparent, transparent],
+  [transparent, green, transparent, transparent],
+];
+outputs.set(
+  "piskel/multi-layer.piskel",
+  piskelFile("Synthetic layers", 20, [
+    piskelLayer("Background", 0.5, backgroundFrames, [
+      { frameIndexes: [0, 1] },
+    ]),
+    piskelLayer("Accent", 1, accentFrames, [{ frameIndexes: [0, 1] }]),
+  ]),
+);
+
+for (const [relativePath, content] of outputs) {
+  const outputPath = join(fixtureDirectory, relativePath);
+  if (process.argv.includes("--check")) {
+    const actual = readFileSync(outputPath);
+    const expected = Buffer.isBuffer(content) ? content : Buffer.from(content);
+    if (!actual.equals(expected)) {
+      throw new Error(`${relativePath} is not deterministically generated.`);
+    }
+  } else {
+    mkdirSync(dirname(outputPath), { recursive: true });
+    writeFileSync(outputPath, content);
+  }
+}

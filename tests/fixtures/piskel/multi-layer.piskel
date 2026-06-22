@@ -1,0 +1,15 @@
+{
+  "modelVersion": 2,
+  "piskel": {
+    "name": "Synthetic layers",
+    "description": "Synthetic test fixture",
+    "fps": 20,
+    "height": 2,
+    "width": 2,
+    "layers": [
+      "{\"name\":\"Background\",\"opacity\":0.5,\"frameCount\":2,\"chunks\":[{\"layout\":[[0],[1]],\"base64PNG\":\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAYAAAB/qH1jAAAAE0lEQVR42mNwrZ77H4QZ0AFMAgCb8glxm1CA7gAAAABJRU5ErkJggg==\"}]}",
+      "{\"name\":\"Accent\",\"opacity\":1,\"frameCount\":2,\"chunks\":[{\"layout\":[[0],[1]],\"base64PNG\":\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAYAAAB/qH1jAAAAFklEQVR42mN4Zun2nwEKtOb2w9lwAAB3hQS6MnPv5wAAAABJRU5ErkJggg==\"}]}"
+    ],
+    "hiddenFrames": []
+  }
+}
