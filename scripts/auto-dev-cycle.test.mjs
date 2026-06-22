@@ -116,14 +116,21 @@ function createMountedMvpWorkspace(options = {}) {
       ${options.modeSelector === false ? "" : 'const select = document.createElement("select"); select.textContent = "PNG sequence spritesheet grid spritesheet JSON";'}
       const statusOutput = document.createElement("p");
       const errorOutput = document.createElement("p");
+      const conversionProgress = document.createElement("progress");
+      const conversionState = {
+        isWorking: true,
+        status: "Converting files browser-locally. This may take a while."
+      };
       statusOutput.setAttribute("aria-live", "polite");
-      statusOutput.textContent = "Processing conversion progress";
+      conversionProgress.hidden = !conversionState.isWorking;
+      statusOutput.textContent = conversionState.status;
+      input.disabled = conversionState.isWorking;
       errorOutput.textContent = "Unsupported format or invalid grid settings";
       const warning = document.createElement("p");
       warning.textContent = "Large files may exceed browser memory limits";
       root.addEventListener("dragover", (event) => event.dataTransfer);
       root.addEventListener("drop", (event) => event.dataTransfer);
-      root.append(input, ${options.modeSelector === false ? "" : "select,"} statusOutput, errorOutput, warning);
+      root.append(input, ${options.modeSelector === false ? "" : "select,"} conversionProgress, statusOutput, errorOutput, warning);
       ${options.download === false ? "" : 'const button = document.createElement("button"); button.textContent = "Download .aseprite"; button.disabled = true; try { /* enable only for a valid SpriteProject */ } catch (error) { errorOutput.textContent = "Could not export"; } root.append(button);'}
     }
   `);
@@ -667,6 +674,28 @@ describe("product completeness audits and task generation", () => {
         "performance-large-file"
       ]);
       expect(selectProductCompletionTasks(audit, context, 5)).toEqual([]);
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("recognizes conversion progress when working state and control locking are rendered through state", () => {
+    const workspace = createMountedMvpWorkspace();
+    try {
+      const context = collectProjectPlanningContext(workspace);
+      const audit = auditProductCompleteness({ rootDirectory: workspace, context });
+
+      expect(audit.checks.conversionProgress.passed).toBe(true);
+
+      const converterPath = path.join(workspace, "src", "app", "converter.ts");
+      const converterSource = fs.readFileSync(converterPath, "utf8");
+      fs.writeFileSync(
+        converterPath,
+        converterSource.replace('document.createElement("progress")', 'document.createElement("span")'),
+        "utf8"
+      );
+
+      expect(auditProductCompleteness({ rootDirectory: workspace, context }).checks.conversionProgress.passed).toBe(false);
     } finally {
       fs.rmSync(workspace, { recursive: true, force: true });
     }
