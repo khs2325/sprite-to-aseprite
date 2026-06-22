@@ -1,0 +1,47 @@
+id: "036"
+title: Document Piskel conversion support
+status: backlog
+priority: high
+goal: Explain the supported .piskel conversion workflow, preserved source data, limitations, and Aseprite verification steps.
+context: This task follows the Piskel importer, integration coverage, and browser UI wiring from tasks 033 through 035.
+scope:
+  summary: Update user-facing documentation only after the implemented Piskel behavior is verified.
+  allowed_paths:
+    - README.md
+    - docs/manual-usage-guide.md
+    - docs/piskel-format.md
+    - docs/product-spec.md
+    - docs/roadmap.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+non_goals:
+  - Do not implement or change importer, UI, or exporter behavior.
+  - Do not document GIF, APNG, Pixelorama, or unsupported Piskel variants as available.
+  - Do not claim universal, perfect, or lossless conversion.
+requirements:
+  - Add .piskel to supported inputs only after the importer and UI are present and tested.
+  - Explain how to select Piskel mode, choose one .piskel file, convert browser-locally, preview the result, and download .aseprite output.
+  - State accurately that layer names, order, opacity/visibility, frames, timing, and pixels are preserved only when represented by the supported .piskel source subset.
+  - Explain supported model versions, embedded PNG/chunk expectations, timing conversion, and explicit unsupported or defaulted fields.
+  - Reiterate that flat PNG layers cannot be recovered and that no artwork is uploaded.
+  - Add a Piskel-specific Aseprite verification checklist covering dimensions, frame order/count, duration, layer names/order, opacity/visibility, transparency, and representative pixels.
+acceptance_criteria:
+  - Documentation matches the tested implementation without overstating compatibility or layer preservation.
+  - Users can follow one complete browser-local .piskel to .aseprite workflow and verify the result in Aseprite.
+  - Current PNG-based guidance and limitations remain accurate.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 5
+  forbidden_paths: *forbidden

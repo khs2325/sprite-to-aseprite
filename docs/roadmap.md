@@ -48,6 +48,11 @@
 
 ## Phase 6 — More formats
 
-- Piskel
+- Piskel:
+  1. synthetic fixtures and supported-format notes
+  2. core `.piskel` parser/importer to `SpriteProject`
+  3. `.piskel` to `.aseprite` integration coverage
+  4. browser UI import-mode wiring
+  5. user documentation and Aseprite verification guidance
 - GIF/APNG
 - Pixelorama `.pxo`

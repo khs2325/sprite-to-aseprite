@@ -1,0 +1,47 @@
+id: "032"
+title: Add Piskel fixtures and supported-format notes
+status: backlog
+priority: high
+goal: Define a small, testable .piskel subset and add synthetic fixtures for multi-frame and multi-layer projects.
+context: This is the first task in the planned browser-only .piskel to SpriteProject to .aseprite conversion sequence.
+scope:
+  summary: Add deterministic Piskel format notes and tiny synthetic fixtures without implementing the importer.
+  allowed_paths:
+    - tests/fixtures/piskel/**
+    - tests/fixtures/README.md
+    - tests/fixtures/fixtures.test.ts
+    - tests/fixtures/generate.mjs
+    - docs/piskel-format.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - src/**
+    - package.json
+    - package-lock.json
+non_goals:
+  - Do not implement the Piskel importer or browser UI.
+  - Do not add GIF, APNG, Pixelorama, or other format fixtures.
+  - Do not include user artwork, copyrighted sprites, or remote fixture downloads.
+requirements:
+  - Document the supported outer .piskel JSON fields, nested string-encoded layer records, model version, dimensions, global FPS, layer ordering, names, opacity, frame count, chunk layouts, and embedded PNG data URLs.
+  - State how global FPS will map to bounded whole-millisecond SpriteProject frame durations and how absent optional visibility data will be handled without inventing source layers.
+  - Add at least one tiny multi-frame fixture and one tiny multi-layer fixture, using synthetic pixels only.
+  - Cover chunked layer data and clearly identify any legacy single-base64PNG form that is intentionally supported or rejected.
+  - Validate fixture shape and deterministic regeneration in focused tests without adding a production dependency.
+  - State that artwork remains browser-local and layers are preserved only when the .piskel source contains layer data.
+acceptance_criteria:
+  - The documented subset is precise enough for a parser to accept supported files and reject unsupported variants deterministically.
+  - Synthetic fixtures cover multiple frames and multiple layers, including names, order, opacity, and distinct pixel data.
+  - Fixture tests pass without network access or production dependency changes.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *forbidden

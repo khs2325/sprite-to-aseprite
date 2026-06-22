@@ -1,0 +1,45 @@
+id: "035"
+title: Wire Piskel import mode into browser UI
+status: backlog
+priority: high
+goal: Let users select one .piskel file and convert it through the existing browser-local converter flow.
+context: This task follows the tested core Piskel importer and must reuse it without duplicating parsing or conversion logic in the UI.
+scope:
+  summary: Add the Piskel file type, mode selection, routing, status, errors, and focused UI tests.
+  allowed_paths:
+    - src/app/**
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/core/importers/**
+    - src/core/exporters/**
+non_goals:
+  - Do not duplicate or modify Piskel parsing logic in the UI.
+  - Do not change the Aseprite exporter or add other import formats.
+  - Do not add framework, server, upload, or remote-processing behavior.
+requirements:
+  - Add .piskel to the browser file accept list and classify it by extension even when browsers provide an empty or generic MIME type.
+  - Add a Piskel option to the import mode selector and require exactly one .piskel file for that mode.
+  - Read the file with browser File APIs and route it to the core Piskel importer through the existing converter orchestration.
+  - Keep selected artwork and embedded layer images browser-local and never display source contents in errors.
+  - Show clear Piskel-specific selection, conversion, validation, and unsupported-format messages.
+  - Preserve the existing PNG sequence, grid, and JSON mode behavior.
+  - Add focused tests for accept metadata, file classification, mode/file mismatch, importer delegation, success status, safe errors, and drag-and-drop.
+acceptance_criteria:
+  - A user can choose Piskel mode, select or drop exactly one .piskel file, convert it, preview its SpriteProject timeline/layers, and use the existing Aseprite download action.
+  - Invalid selections and importer failures produce actionable messages without exposing file contents.
+  - Existing import modes and browser-local privacy behavior remain covered and passing.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 6
+  forbidden_paths: *forbidden
