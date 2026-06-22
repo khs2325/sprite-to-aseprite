@@ -1,9 +1,9 @@
 # Manual usage guide
 
 Sprite to Aseprite Converter rebuilds an editable Aseprite timeline from PNG
-frames or spritesheets. Your artwork stays in the browser. The app does not
-upload source files to a server or send them to an external processing
-service.
+frames, spritesheets, or a supported Piskel project. Your artwork stays in the
+browser. The app does not upload source files to a server or send them to an
+external processing service.
 
 PNG sequences and spritesheets are flat images. They do not contain the
 original layer structure, so the converter cannot recover original layers
@@ -29,7 +29,8 @@ the server with `Ctrl+C`.
 
 1. Under **Choose an import mode**, select the mode matching the source files.
 2. Under **Add source files**, drag the required files onto the drop area or
-   use the file picker. Only `.png` and `.json` files are accepted.
+   use the file picker. The app accepts `.png`, `.json`, and `.piskel` files;
+   each mode validates its required file combination.
 3. Check that the app reports the source files are ready, then select
    **Convert to .aseprite**. Conversion happens browser-locally.
 4. Review the rebuilt timeline and make any timing or layer-name changes.
@@ -140,6 +141,40 @@ Array entries use array order; object-map entries use JSON property order.
 Missing durations default to 100 milliseconds. All rectangles must fit inside
 the PNG and have the same dimensions. Rotated or trimmed frames are rejected.
 
+## Piskel project
+
+Use this mode for one `.piskel` file that matches the
+[supported Piskel subset](piskel-format.md).
+
+1. Select **Piskel project** under **Choose an import mode**.
+2. Add exactly one `.piskel` file. Do not add PNG or JSON files separately;
+   supported Piskel files contain their layer images as embedded PNG data.
+3. Confirm that the app reports the Piskel file is ready, then select
+   **Convert to .aseprite**. Reading, validation, PNG decoding, and conversion
+   happen browser-locally; no artwork is uploaded.
+4. Review the frame count, order, and durations in **Preview timeline** and the
+   preserved source layers under **Layer names**. The timeline preview is not a
+   pixel-image viewer.
+5. Select **Download .aseprite** to download `sprite-project.aseprite`, then use
+   the Piskel-specific Aseprite checklist below.
+
+The importer supports UTF-8 JSON files with integer `modelVersion: 2` and the
+documented string-encoded layer and embedded PNG chunk structure. It preserves
+layer names and order, opacity/visibility, frames, timing, transparency, and
+decoded RGBA pixels only when those values are represented by that supported
+source subset. Each layer must cover the same complete frame range. The single
+project FPS becomes one duration for every frame, calculated as
+`clamp(round(1000 / fps), 1, 65535)` milliseconds; per-frame source durations
+are not supported. Opacity from `0` through `1` is rounded to Aseprite's 8-bit
+range. Missing layer visibility defaults to visible.
+
+Other model versions, unknown fields, non-empty `hiddenFrames`, legacy layers
+with one top-level `base64PNG`, external PNG URLs, malformed or incomplete
+chunk layouts, and invalid or incorrectly sized embedded PNGs are rejected.
+The project name and description are validated metadata but are not exported;
+internal layer ids are generated. These boundaries mean Piskel conversion is
+not claimed to be universal, perfect, or lossless.
+
 ## Preview and edit the rebuilt timeline
 
 After a successful conversion, **Preview timeline** lists every imported frame
@@ -175,10 +210,10 @@ download can be compared with the source.
    and every frame whose duration differs from the default.
 4. Play the animation once to catch unexpected ordering, blank frames, or
    timing changes that are harder to notice one frame at a time.
-5. Confirm the expected canvas dimensions and layer name. PNG sequences and
+5. Confirm the expected canvas dimensions and layer names. PNG sequences and
    spritesheets are flat sources, so one generated layer is expected; this
    check must not be treated as recovery of layers that were absent from the
-   source.
+   source. Supported Piskel sources may contain multiple preserved layers.
 6. Make a small edit and use **File > Save As** to a new file. Reopen that copy
    if editability is part of the compatibility check, leaving the downloaded
    file unchanged for comparison.
@@ -186,6 +221,23 @@ download can be compared with the source.
 A successful check shows that this particular generated file opened and
 matched the inspected frame data in the tested Aseprite version. It does not
 prove lossless conversion or compatibility with every Aseprite version.
+
+### Piskel-specific Aseprite checklist
+
+For a Piskel conversion, compare the downloaded file with the source project:
+
+- confirm the canvas width and height;
+- confirm the frame count and zero-based source frame order;
+- confirm representative or all frame durations equal the rounded and clamped
+  global-FPS conversion described above;
+- confirm layer names and source array order, plus each layer's opacity and
+  visible/hidden state (a missing source `visible` field defaults to visible);
+- inspect transparent and partially transparent areas for correct alpha; and
+- compare representative pixels in each layer and across the first, last, and
+  any chunk-boundary frames.
+
+Passing this checklist verifies the inspected supported source data, not
+unsupported Piskel fields or variants.
 
 ### Report a compatibility problem
 

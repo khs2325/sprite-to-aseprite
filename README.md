@@ -19,10 +19,15 @@ The current conversion core supports:
   `x`, `y`, `w`, and `h` rectangle. Per-frame durations are supported and
   default to 100 ms when omitted. Frames must be unrotated, untrimmed, the same
   size, and contained within the PNG.
+- **Piskel project:** accepts exactly one model-version-2 `.piskel` file in the
+  [documented supported subset](docs/piskel-format.md). It converts embedded
+  PNG chunk frames and preserves supported source layer names and order,
+  opacity/visibility, global-FPS timing, transparency, and decoded RGBA pixels.
 
-These inputs rebuild a timeline from the extracted frames. Piskel (`.piskel`),
-GIF, APNG, Pixelorama (`.pxo`), PSD, and other JSON schemas are not currently
-supported.
+These inputs rebuild a timeline from the extracted frames. Piskel support is
+limited to the documented subset and is not described as universal, perfect,
+or lossless conversion. GIF, APNG, Pixelorama (`.pxo`), PSD, and other JSON
+schemas are not currently supported.
 
 ## Browser-only processing
 
