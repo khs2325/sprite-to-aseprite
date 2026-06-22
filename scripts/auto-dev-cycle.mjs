@@ -1018,7 +1018,11 @@ function auditProductCompleteness(options = {}) {
   const staticDeploymentReadiness = /(?:static deployment|deploy[^\n]{0,80}(?:static|github pages|netlify|vercel)|github pages)/iu.test(docsText) || /(?:static deployment|github pages deployment)/iu.test(taskHistoryText);
   const productionBuildNotes = /npm run build/iu.test(docsText) && /(?:serve|preview|deploy)[^\n]{0,80}(?:dist|built|production)|(?:dist|built|production)[^\n]{0,80}(?:serve|preview|deploy)/iu.test(docsText);
   const largeFileWarning = /(?:large|long)[^\n]{0,80}(?:file|sprite|sequence)[^\n]{0,80}(?:memory|slow|limit|warning)|browser memory/iu.test(indexHtml + reachableText);
-  const conversionProgress = /(?:converting|processing|working|progress)[^\n]{0,80}(?:status|aria-live|disabled)|(?:status|aria-live)[^\n]{0,80}(?:converting|processing|working|progress)/iu.test(reachableText);
+  const conversionProgress =
+    /(?:converting|processing|working|progress)/iu.test(reachableText) &&
+    /(?:setAttribute\(\s*["']role["']\s*,\s*["']status["']|setAttribute\(\s*["']aria-live["']|role\s*=\s*["']status["']|aria-live\s*=)/iu.test(reachableText) &&
+    /(?:createElement\(\s*["']progress["']\s*\)|aria-busy)/iu.test(reachableText) &&
+    /disabled\s*=\s*[^;\n]{0,80}(?:isWorking|isConverting|processing|converting)/iu.test(reachableText);
   const browserMemoryDocs = /browser[^\n]{0,60}memory|memory[^\n]{0,60}(?:browser|rgba|decoded|large file)/iu.test(docsText);
 
   const checks = {
