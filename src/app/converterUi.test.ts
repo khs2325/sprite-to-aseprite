@@ -4,6 +4,8 @@ import type { SpriteProject } from "../core/SpriteProject";
 import type { SpritesheetGridImportOptions } from "../core/importers/spritesheetGrid";
 import {
   convertSourceFiles,
+  getConversionErrorMessage,
+  getConversionSuccessStatus,
   getSourceSelectionError,
 } from "./converterUi";
 import type { BrowserSourceFile } from "./fileImport";
@@ -48,6 +50,14 @@ function json(name: string): BrowserSourceFile {
   };
 }
 
+function piskel(name: string): BrowserSourceFile {
+  return {
+    file: new File(["{}"], name, { type: "application/octet-stream" }),
+    kind: "piskel",
+    text: "{}",
+  };
+}
+
 describe("getSourceSelectionError", () => {
   it("accepts the required file combination for each import mode", () => {
     expect(getSourceSelectionError("png-sequence", [png("1.png"), png("2.png")]))
@@ -60,6 +70,8 @@ describe("getSourceSelectionError", () => {
         json("sheet.json"),
       ]),
     ).toBeNull();
+    expect(getSourceSelectionError("piskel", [piskel("sprite.piskel")]))
+      .toBeNull();
   });
 
   it("rejects mode/file mismatches before conversion", () => {
@@ -73,22 +85,33 @@ describe("getSourceSelectionError", () => {
     ).toContain("exactly one PNG file");
     expect(getSourceSelectionError("spritesheet-json", [png("sheet.png")]))
       .toContain("one PNG and one JSON file");
+    expect(getSourceSelectionError("piskel", [png("sprite.png")]))
+      .toContain("exactly one .piskel file");
+    expect(
+      getSourceSelectionError("piskel", [
+        piskel("one.piskel"),
+        piskel("two.piskel"),
+      ]),
+    ).toContain("exactly one .piskel file");
   });
 });
 
 describe("convertSourceFiles", () => {
   it("delegates every mode to the existing importer with the selected files", async () => {
     const importPngSequence = vi.fn(async () => project);
+    const importPiskel = vi.fn(async () => project);
     const importSpritesheetGrid = vi.fn(async () => project);
     const importSpritesheetJson = vi.fn(async () => project);
     const importers = {
       importPngSequence,
+      importPiskel,
       importSpritesheetGrid,
       importSpritesheetJson,
     };
     const firstPng = png("walk-01.png");
     const secondPng = png("walk-02.png");
     const metadata = json("walk.json");
+    const piskelProject = piskel("walk.piskel");
 
     await expect(
       convertSourceFiles(
@@ -124,11 +147,20 @@ describe("convertSourceFiles", () => {
       firstPng.file,
       metadata.file,
     );
+
+    await convertSourceFiles(
+      "piskel",
+      [piskelProject],
+      gridOptions,
+      importers,
+    );
+    expect(importPiskel).toHaveBeenCalledWith(piskelProject.file);
   });
 
   it("does not call an importer for an invalid selection", async () => {
     const importers = {
       importPngSequence: vi.fn(async () => project),
+      importPiskel: vi.fn(async () => project),
       importSpritesheetGrid: vi.fn(async () => project),
       importSpritesheetJson: vi.fn(async () => project),
     };
@@ -142,7 +174,34 @@ describe("convertSourceFiles", () => {
       ),
     ).rejects.toThrow("exactly one PNG and one JSON file");
     expect(importers.importPngSequence).not.toHaveBeenCalled();
+    expect(importers.importPiskel).not.toHaveBeenCalled();
     expect(importers.importSpritesheetGrid).not.toHaveBeenCalled();
     expect(importers.importSpritesheetJson).not.toHaveBeenCalled();
+  });
+});
+
+describe("Piskel conversion messages", () => {
+  it("reports converted frames and preserved source layers", () => {
+    expect(getConversionSuccessStatus("piskel", project)).toBe(
+      "Converted 1 Piskel frame and preserved 1 layer in an editable Aseprite timeline. Ready to download.",
+    );
+  });
+
+  it("maps validation and unsupported-format failures to safe actionable errors", () => {
+    const privateContents = '{"private pixels":"do not display"}';
+
+    const validationMessage = getConversionErrorMessage(
+      "piskel",
+      new Error(`Piskel object.width must be valid. ${privateContents}`),
+    );
+    expect(validationMessage).toContain("failed validation");
+    expect(validationMessage).not.toContain(privateContents);
+
+    const unsupportedMessage = getConversionErrorMessage(
+      "piskel",
+      new Error(`Unsupported Piskel field. ${privateContents}`),
+    );
+    expect(unsupportedMessage).toContain("unsupported format or feature");
+    expect(unsupportedMessage).not.toContain(privateContents);
   });
 });

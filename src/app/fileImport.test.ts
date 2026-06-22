@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   bindFileImportControl,
+  getSourceKind,
+  SUPPORTED_SOURCE_ACCEPT,
   type BrowserSourceFile,
 } from "./fileImport";
 
@@ -70,6 +72,19 @@ function dragFilesOver(target: DropTargetStub): void {
 }
 
 describe("bindFileImportControl", () => {
+  it("advertises and classifies .piskel files by extension for generic MIME types", () => {
+    expect(SUPPORTED_SOURCE_ACCEPT.split(",")).toContain(".piskel");
+    expect(
+      getSourceKind({ name: "character.PISKEL", type: "" }),
+    ).toBe("piskel");
+    expect(
+      getSourceKind({
+        name: "character.piskel",
+        type: "application/octet-stream",
+      }),
+    ).toBe("piskel");
+  });
+
   it("reads PNG and JSON files locally with browser File APIs", async () => {
     const input = createInput();
     const errorOutput = createOutput();
@@ -108,6 +123,34 @@ describe("bindFileImportControl", () => {
     });
   });
 
+  it("reads one Piskel file locally and shows a Piskel selection status", async () => {
+    const input = createInput();
+    const errorOutput = createOutput();
+    const statusOutput = createOutput();
+    const onFilesImported = vi.fn<(files: readonly BrowserSourceFile[]) => void>();
+    const control = bindFileImportControl(input, errorOutput, statusOutput, {
+      format: "piskel",
+      onFilesImported,
+    });
+    const contents = '{"modelVersion":2,"piskel":{}}';
+    const file = new File([contents], "sprite.piskel", {
+      type: "application/octet-stream",
+    });
+
+    expect(await control.selectFiles([file])).toBe(true);
+
+    expect(onFilesImported).toHaveBeenCalledOnce();
+    expect(onFilesImported.mock.calls[0][0][0]).toMatchObject({
+      file,
+      kind: "piskel",
+      text: contents,
+    });
+    expect(statusOutput).toMatchObject({
+      hidden: false,
+      textContent: "Selected 1 Piskel file. Ready to convert browser-locally.",
+    });
+  });
+
   it("rejects an unsupported file before reading or importing any selection", async () => {
     const input = createInput();
     const errorOutput = createOutput();
@@ -128,7 +171,7 @@ describe("bindFileImportControl", () => {
     expect(errorOutput).toMatchObject({
       hidden: false,
       textContent:
-        'Unsupported file "sprite.gif". Choose PNG or JSON files only.',
+        'Unsupported file "sprite.gif". Choose PNG, JSON, or Piskel files only.',
     });
     expect(statusOutput.hidden).toBe(true);
   });
@@ -227,6 +270,34 @@ describe("bindFileImportControl", () => {
     expect(errorOutput.textContent).not.toContain("private bytes");
   });
 
+  it("does not expose Piskel source contents from selection errors", async () => {
+    const errorOutput = createOutput();
+    const privateContents = '{"private pixels":"do not display"}';
+    const control = bindFileImportControl(
+      createInput(),
+      errorOutput,
+      createOutput(),
+      {
+        format: "piskel",
+        onFilesImported: () => {
+          throw new Error(privateContents);
+        },
+      },
+    );
+
+    expect(
+      await control.selectFiles([
+        new File([privateContents], "sprite.piskel", { type: "" }),
+      ]),
+    ).toBe(false);
+
+    expect(errorOutput.textContent).toBe(
+      "Piskel import failed. " +
+        "Check that the file is a supported model-version-2 .piskel file.",
+    );
+    expect(errorOutput.textContent).not.toContain(privateContents);
+  });
+
   it("uses files from the browser input change event and removes its handler", async () => {
     const input = createInput();
     const onFilesImported = vi.fn();
@@ -271,6 +342,30 @@ describe("bindFileImportControl", () => {
     expect(dropTarget.listeners).toEqual({});
   });
 
+  it("imports a dropped .piskel file through the browser-local pipeline", async () => {
+    const dropTarget = createDropTarget();
+    const statusOutput = createOutput();
+    const onFilesImported = vi.fn();
+    bindFileImportControl(
+      createInput(),
+      createOutput(),
+      statusOutput,
+      { format: "piskel", onFilesImported },
+      dropTarget,
+    );
+    const piskel = new File(["{}"], "sprite.piskel", { type: "" });
+
+    dropFiles(dropTarget, [piskel]);
+
+    await vi.waitFor(() => expect(onFilesImported).toHaveBeenCalledOnce());
+    expect(onFilesImported.mock.calls[0][0][0]).toMatchObject({
+      file: piskel,
+      kind: "piskel",
+      text: "{}",
+    });
+    expect(statusOutput.textContent).toContain("Selected 1 Piskel file");
+  });
+
   it("rejects an unsupported drop", async () => {
     const dropTarget = createDropTarget();
     const errorOutput = createOutput();
@@ -287,7 +382,7 @@ describe("bindFileImportControl", () => {
 
     await vi.waitFor(() => expect(errorOutput.hidden).toBe(false));
     expect(errorOutput.textContent).toBe(
-      'Unsupported file "sprite.gif". Choose PNG or JSON files only.',
+      'Unsupported file "sprite.gif". Choose PNG, JSON, or Piskel files only.',
     );
     expect(onFilesImported).not.toHaveBeenCalled();
   });
@@ -310,7 +405,7 @@ describe("bindFileImportControl", () => {
 
     await vi.waitFor(() => expect(errorOutput.hidden).toBe(false));
     expect(errorOutput.textContent).toBe(
-      'Unsupported file "notes.txt". Choose PNG or JSON files only.',
+      'Unsupported file "notes.txt". Choose PNG, JSON, or Piskel files only.',
     );
     expect(readPng).not.toHaveBeenCalled();
     expect(onFilesImported).not.toHaveBeenCalled();
