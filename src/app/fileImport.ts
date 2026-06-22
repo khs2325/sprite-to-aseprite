@@ -1,12 +1,13 @@
 import { validateSpriteProject } from "../core/validation";
 
 export const SUPPORTED_SOURCE_ACCEPT =
-  ".png,.json,image/png,application/json";
+  ".png,.json,.piskel,image/png,application/json";
 
 export type FileImportFormat =
   | "png-sequence"
   | "spritesheet-grid"
-  | "spritesheet-json";
+  | "spritesheet-json"
+  | "piskel";
 
 export type BrowserSourceFile =
   | {
@@ -17,6 +18,11 @@ export type BrowserSourceFile =
   | {
       file: File;
       kind: "json";
+      text: string;
+    }
+  | {
+      file: File;
+      kind: "piskel";
       text: string;
     };
 
@@ -36,7 +42,9 @@ export type FileImportUi = FileImportControl & {
   element: HTMLElement;
 };
 
-function getSourceKind(file: File): BrowserSourceFile["kind"] | null {
+export function getSourceKind(
+  file: Pick<File, "name" | "type">,
+): BrowserSourceFile["kind"] | null {
   const extension = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
 
   if (extension === ".png") {
@@ -44,6 +52,9 @@ function getSourceKind(file: File): BrowserSourceFile["kind"] | null {
   }
   if (extension === ".json") {
     return "json";
+  }
+  if (extension === ".piskel") {
+    return "piskel";
   }
   return null;
 }
@@ -79,6 +90,11 @@ const FORMAT_HELP: Record<FileImportFormat, FormatHelp> = {
     suggestion:
       "Check that the JSON frame data is valid and fits inside the PNG.",
   },
+  piskel: {
+    label: "Piskel",
+    suggestion:
+      "Check that the file is a supported model-version-2 .piskel file.",
+  },
 };
 
 function getFormatHelp(
@@ -87,6 +103,9 @@ function getFormatHelp(
 ): FormatHelp {
   if (format !== undefined) {
     return FORMAT_HELP[format];
+  }
+  if (files.some((file) => file.kind === "piskel")) {
+    return FORMAT_HELP.piskel;
   }
   if (files.some((file) => file.kind === "json")) {
     return FORMAT_HELP["spritesheet-json"];
@@ -100,12 +119,31 @@ function getFormatHelp(
   };
 }
 
-function getImporterMessage(error: unknown): string | null {
+function getImporterMessage(
+  error: unknown,
+  format: FileImportFormat | undefined,
+): string | null {
   if (!(error instanceof Error)) {
     return null;
   }
   const message = error.message.replace(/\s+/g, " ").trim();
+  if (format === "piskel") {
+    return message === "Piskel mode requires exactly one .piskel file."
+      ? message
+      : null;
+  }
   return message.length > 0 ? message : null;
+}
+
+function getSelectionStatus(
+  format: FileImportFormat | undefined,
+  fileCount: number,
+): string {
+  if (format === "piskel") {
+    return "Selected 1 Piskel file. Ready to convert browser-locally.";
+  }
+  const noun = fileCount === 1 ? "file" : "files";
+  return `Selected ${fileCount} supported ${noun}.`;
 }
 
 export function bindFileImportControl(
@@ -144,7 +182,7 @@ export function bindFileImportControl(
       if (kind === null) {
         input.value = "";
         showError(
-          `Unsupported file "${file.name}". Choose PNG or JSON files only.`,
+          `Unsupported file "${file.name}". Choose PNG, JSON, or Piskel files only.`,
         );
         return false;
       }
@@ -168,7 +206,7 @@ export function bindFileImportControl(
       project = await dependencies.onFilesImported?.(importedFiles);
     } catch (error) {
       input.value = "";
-      const detail = getImporterMessage(error);
+      const detail = getImporterMessage(error, dependencies.format);
       showError(
         [
           `${formatHelp.label} import failed.`,
@@ -196,8 +234,10 @@ export function bindFileImportControl(
       }
     }
 
-    const noun = importedFiles.length === 1 ? "file" : "files";
-    statusOutput.textContent = `Selected ${importedFiles.length} supported ${noun}.`;
+    statusOutput.textContent = getSelectionStatus(
+      dependencies.format,
+      importedFiles.length,
+    );
     statusOutput.hidden = false;
     return true;
   };
@@ -252,13 +292,16 @@ export function mountFileImportUi(
   dropInstructions.textContent =
     "Drag and drop files here, or choose files with the control below.";
   supportedTypes.textContent =
-    "Supported files: PNG images (.png) and JSON metadata (.json).";
+    "Supported files: PNG images (.png), JSON metadata (.json), and Piskel projects (.piskel).";
   privacyNotice.textContent =
     "Your files stay in this browser and are never uploaded.";
   input.type = "file";
   input.multiple = true;
   input.accept = SUPPORTED_SOURCE_ACCEPT;
-  input.setAttribute("aria-label", "Choose PNG or JSON sprite source files");
+  input.setAttribute(
+    "aria-label",
+    "Choose PNG, JSON, or Piskel sprite source files",
+  );
   errorOutput.setAttribute("role", "alert");
   errorOutput.setAttribute("aria-live", "assertive");
   statusOutput.setAttribute("role", "status");

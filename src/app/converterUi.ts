@@ -1,5 +1,6 @@
 import type { SpriteProject } from "../core/SpriteProject";
 import { importPngSequence } from "../core/importers/pngSequence";
+import { importPiskel } from "../core/importers/piskel";
 import {
   importSpritesheetGrid,
   type SpritesheetGridImportOptions,
@@ -19,6 +20,7 @@ import { mountPreviewTimelineUi } from "./previewTimeline";
 
 type ConverterImporters = {
   importPngSequence: typeof importPngSequence;
+  importPiskel: typeof importPiskel;
   importSpritesheetGrid: typeof importSpritesheetGrid;
   importSpritesheetJson: typeof importSpritesheetJson;
 };
@@ -29,6 +31,7 @@ export type ConverterUi = {
 
 const DEFAULT_IMPORTERS: ConverterImporters = {
   importPngSequence,
+  importPiskel,
   importSpritesheetGrid,
   importSpritesheetJson,
 };
@@ -37,6 +40,7 @@ const MODE_LABELS: Record<FileImportFormat, string> = {
   "png-sequence": "PNG sequence",
   "spritesheet-grid": "Spritesheet grid",
   "spritesheet-json": "Spritesheet PNG + JSON",
+  piskel: "Piskel project",
 };
 
 export function getSourceSelectionError(
@@ -44,10 +48,11 @@ export function getSourceSelectionError(
   files: readonly BrowserSourceFile[],
 ): string | null {
   const pngCount = files.filter((file) => file.kind === "png").length;
-  const jsonCount = files.length - pngCount;
+  const jsonCount = files.filter((file) => file.kind === "json").length;
+  const piskelCount = files.filter((file) => file.kind === "piskel").length;
 
   if (mode === "png-sequence") {
-    return pngCount > 0 && jsonCount === 0
+    return pngCount > 0 && jsonCount === 0 && piskelCount === 0
       ? null
       : "PNG sequence mode requires one or more PNG files and no JSON file.";
   }
@@ -56,9 +61,14 @@ export function getSourceSelectionError(
       ? null
       : "Spritesheet grid mode requires exactly one PNG file.";
   }
-  return pngCount === 1 && jsonCount === 1 && files.length === 2
+  if (mode === "spritesheet-json") {
+    return pngCount === 1 && jsonCount === 1 && files.length === 2
+      ? null
+      : "Spritesheet PNG + JSON mode requires exactly one PNG and one JSON file.";
+  }
+  return piskelCount === 1 && files.length === 1
     ? null
-    : "Spritesheet PNG + JSON mode requires exactly one PNG and one JSON file.";
+    : "Piskel mode requires exactly one .piskel file.";
 }
 
 export async function convertSourceFiles(
@@ -82,12 +92,79 @@ export async function convertSourceFiles(
   if (mode === "spritesheet-grid") {
     return importers.importSpritesheetGrid(pngFiles[0], gridOptions);
   }
+  if (mode === "piskel") {
+    const piskelFile = files.find((file) => file.kind === "piskel");
+    if (piskelFile === undefined) {
+      throw new Error("Piskel source file is missing.");
+    }
+    return importers.importPiskel(piskelFile.file);
+  }
 
   const jsonFile = files.find((file) => file.kind === "json");
   if (jsonFile === undefined) {
     throw new Error("Spritesheet JSON metadata is missing.");
   }
   return importers.importSpritesheetJson(pngFiles[0], jsonFile.file);
+}
+
+export function getConversionSuccessStatus(
+  mode: FileImportFormat,
+  project: Pick<SpriteProject, "frames" | "layers">,
+): string {
+  const frameCount = project.frames.length;
+  const frameNoun = frameCount === 1 ? "frame" : "frames";
+  if (mode === "piskel") {
+    const layerCount = project.layers.length;
+    const layerNoun = layerCount === 1 ? "layer" : "layers";
+    return (
+      `Converted ${frameCount} Piskel ${frameNoun} and preserved ${layerCount} ${layerNoun} ` +
+      "in an editable Aseprite timeline. Ready to download."
+    );
+  }
+  return (
+    `Converted ${frameCount} ${frameNoun} ` +
+    "into an editable Aseprite timeline. Ready to download."
+  );
+}
+
+export function getConversionErrorMessage(
+  mode: FileImportFormat,
+  error: unknown,
+): string {
+  if (mode !== "piskel") {
+    return error instanceof Error && error.message.trim().length > 0
+      ? error.message
+      : "Could not convert the selected files.";
+  }
+
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  if (message.includes("unsupported")) {
+    return (
+      "This Piskel file uses an unsupported format or feature. " +
+      "Use a model-version-2 .piskel file with no hidden frames."
+    );
+  }
+  if (message.includes("decode png") || message.includes("canvas context")) {
+    return (
+      "Could not decode an embedded Piskel layer image in this browser. " +
+      "Check that the .piskel file is complete and try again."
+    );
+  }
+  if (
+    message.includes("not valid json") ||
+    message.includes("must") ||
+    message.includes("required") ||
+    message.includes("invalid")
+  ) {
+    return (
+      "The Piskel file failed validation. " +
+      "Check that it is a valid model-version-2 .piskel file."
+    );
+  }
+  return (
+    "Could not convert the Piskel file. " +
+    "Check that it is a supported model-version-2 .piskel file."
+  );
 }
 
 function createNumberInput(
@@ -117,7 +194,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   const privacy = document.createElement("p");
   title.textContent = "Sprite to Aseprite Converter";
   introduction.textContent =
-    "Convert frames into an editable Aseprite timeline from PNG sequences and spritesheets.";
+    "Convert frames into an editable Aseprite timeline from PNG sequences, spritesheets, and Piskel projects.";
   privacy.textContent =
     "Files are processed browser-locally. Your artwork is never uploaded.";
   privacy.className = "privacy-notice";
@@ -179,11 +256,14 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   importHeading.textContent = "2. Add source files";
   dropZone.className = "drop-zone";
   dropInstructions.textContent =
-    "Drag and drop PNG or JSON files here, or choose files below.";
+    "Drag and drop PNG, JSON, or Piskel files here, or choose files below.";
   fileInput.type = "file";
   fileInput.multiple = true;
   fileInput.accept = SUPPORTED_SOURCE_ACCEPT;
-  fileInput.setAttribute("aria-label", "Choose PNG or JSON sprite source files");
+  fileInput.setAttribute(
+    "aria-label",
+    "Choose PNG, JSON, or Piskel sprite source files",
+  );
   sourceError.setAttribute("role", "alert");
   sourceError.setAttribute("aria-live", "assertive");
   sourceStatus.setAttribute("role", "status");
@@ -313,7 +393,12 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
     mode = modeSelect.value as FileImportFormat;
     fileImportDependencies.format = mode;
     gridFields.hidden = mode !== "spritesheet-grid";
-    fileInput.multiple = mode !== "spritesheet-grid";
+    fileInput.multiple =
+      mode === "png-sequence" || mode === "spritesheet-json";
+    dropInstructions.textContent =
+      mode === "piskel"
+        ? "Drop exactly one .piskel file here, or choose one below."
+        : "Drag and drop PNG, JSON, or Piskel files here, or choose files below.";
     fileInput.value = "";
     void fileImportControl.selectFiles([]);
     clearConversion();
@@ -324,7 +409,10 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
     convertButton.disabled = true;
     conversionError.hidden = true;
     conversionError.textContent = "";
-    conversionStatus.textContent = "Converting files browser-locally…";
+    conversionStatus.textContent =
+      mode === "piskel"
+        ? "Converting the Piskel project browser-locally."
+        : "Converting files browser-locally.";
 
     try {
       const project = await convertSourceFiles(
@@ -336,19 +424,17 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
         return;
       }
       syncProject(project);
-      conversionStatus.textContent =
-        `Converted ${project.frames.length} frame${project.frames.length === 1 ? "" : "s"} ` +
-        "into an editable Aseprite timeline. Ready to download.";
+      conversionStatus.textContent = getConversionSuccessStatus(mode, project);
     } catch (error) {
       if (request !== conversionRequest) {
         return;
       }
       syncProject(null);
-      conversionStatus.textContent = "Conversion did not complete.";
-      conversionError.textContent =
-        error instanceof Error && error.message.trim().length > 0
-          ? error.message
-          : "Could not convert the selected files.";
+      conversionStatus.textContent =
+        mode === "piskel"
+          ? "Piskel conversion did not complete."
+          : "Conversion did not complete.";
+      conversionError.textContent = getConversionErrorMessage(mode, error);
       conversionError.hidden = false;
     } finally {
       if (request === conversionRequest) {
