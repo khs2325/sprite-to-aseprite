@@ -1,0 +1,14 @@
+{
+  "modelVersion": 2,
+  "piskel": {
+    "name": "Synthetic motion",
+    "description": "Synthetic test fixture",
+    "fps": 12,
+    "height": 2,
+    "width": 2,
+    "layers": [
+      "{\"name\":\"Motion\",\"opacity\":1,\"frameCount\":3,\"chunks\":[{\"layout\":[[0],[1]],\"base64PNG\":\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAYAAAB/qH1jAAAAHElEQVR42mN4Zun2nwEKtOb2Q9j/L6b9B2EQGwCudQsk4qGpRwAAAABJRU5ErkJggg==\"},{\"layout\":[[2]],\"base64PNG\":\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAGElEQVR42mNgYGBg+P///38G1+q5/0EcADwSBlni0tJTAAAAAElFTkSuQmCC\"}]}"
+    ],
+    "hiddenFrames": []
+  }
+}
