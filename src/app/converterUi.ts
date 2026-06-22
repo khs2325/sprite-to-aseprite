@@ -29,6 +29,23 @@ export type ConverterUi = {
   destroy(): void;
 };
 
+type ConversionUiElements = {
+  activityControl: HTMLElement;
+  progress: HTMLElement;
+  status: HTMLElement;
+  error: HTMLElement;
+  sourceControls: readonly (HTMLInputElement | HTMLSelectElement)[];
+  dropZone: HTMLElement;
+  convertButton: HTMLButtonElement;
+};
+
+export type ConversionUiState = {
+  isWorking: boolean;
+  canConvert: boolean;
+  status: string;
+  error?: string;
+};
+
 const DEFAULT_IMPORTERS: ConverterImporters = {
   importPngSequence,
   importPiskel,
@@ -42,6 +59,23 @@ const MODE_LABELS: Record<FileImportFormat, string> = {
   "spritesheet-json": "Spritesheet PNG + JSON",
   piskel: "Piskel project",
 };
+
+export function renderConversionState(
+  elements: ConversionUiElements,
+  state: ConversionUiState,
+): void {
+  elements.activityControl.setAttribute("aria-busy", String(state.isWorking));
+  elements.progress.hidden = !state.isWorking;
+  elements.status.textContent = state.status;
+  elements.error.textContent = state.error ?? "";
+  elements.error.hidden = state.error === undefined;
+  elements.convertButton.disabled = state.isWorking || !state.canConvert;
+  elements.dropZone.inert = state.isWorking;
+  elements.dropZone.setAttribute("aria-disabled", String(state.isWorking));
+  for (const control of elements.sourceControls) {
+    control.disabled = state.isWorking;
+  }
+}
 
 export function getSourceSelectionError(
   mode: FileImportFormat,
@@ -284,6 +318,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   const convertPanel = document.createElement("section");
   const convertHeading = document.createElement("h2");
   const convertButton = document.createElement("button");
+  const conversionProgress = document.createElement("progress");
   const conversionStatus = document.createElement("p");
   const conversionError = document.createElement("p");
   convertPanel.className = "panel";
@@ -291,15 +326,21 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   convertButton.type = "button";
   convertButton.textContent = "Convert to .aseprite";
   convertButton.disabled = true;
+  conversionProgress.className = "conversion-progress";
+  conversionProgress.setAttribute("aria-label", "Conversion progress");
+  conversionProgress.hidden = true;
+  conversionStatus.id = "conversion-status";
   conversionStatus.setAttribute("role", "status");
   conversionStatus.setAttribute("aria-live", "polite");
   conversionStatus.textContent = "Choose source files to begin.";
   conversionError.setAttribute("role", "alert");
   conversionError.setAttribute("aria-live", "assertive");
   conversionError.hidden = true;
+  convertButton.setAttribute("aria-describedby", conversionStatus.id);
   convertPanel.append(
     convertHeading,
     convertButton,
+    conversionProgress,
     conversionStatus,
     conversionError,
   );
@@ -319,6 +360,25 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   let mode: FileImportFormat = "png-sequence";
   let selectedFiles: readonly BrowserSourceFile[] = [];
   let conversionRequest = 0;
+  let isConverting = false;
+
+  const conversionElements: ConversionUiElements = {
+    activityControl: convertButton,
+    progress: conversionProgress,
+    status: conversionStatus,
+    error: conversionError,
+    sourceControls: [
+      modeSelect,
+      fileInput,
+      frameWidth.input,
+      frameHeight.input,
+      rows.input,
+      columns.input,
+      frameOrder,
+    ],
+    dropZone,
+    convertButton,
+  };
 
   const exportUi = mountExportDownloadUi(exportContainer);
   exportUi.element.hidden = true;
@@ -345,11 +405,13 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
 
   const clearConversion = (): void => {
     conversionRequest += 1;
+    isConverting = false;
     selectedFiles = [];
-    convertButton.disabled = true;
-    conversionStatus.textContent = "Choose source files to begin.";
-    conversionError.hidden = true;
-    conversionError.textContent = "";
+    renderConversionState(conversionElements, {
+      isWorking: false,
+      canConvert: false,
+      status: "Choose source files to begin.",
+    });
     memoryWarning.hidden = true;
     memoryWarning.textContent = "";
     syncProject(null);
@@ -358,14 +420,22 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   const fileImportDependencies: FileImportDependencies = {
     format: mode,
     onFilesImported(files): void {
+      if (isConverting) {
+        throw new Error(
+          "Wait for the current conversion to finish before changing source files.",
+        );
+      }
       clearConversion();
       const selectionError = getSourceSelectionError(mode, files);
       if (selectionError !== null) {
         throw new Error(selectionError);
       }
       selectedFiles = files;
-      convertButton.disabled = false;
-      conversionStatus.textContent = "Source files are ready to convert.";
+      renderConversionState(conversionElements, {
+        isWorking: false,
+        canConvert: true,
+        status: "Source files are ready to convert.",
+      });
       renderLargeFileWarning(
         memoryWarning,
         mode,
@@ -405,16 +475,26 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   };
 
   const handleConvert = async (): Promise<void> => {
+    if (isConverting || selectedFiles.length === 0) {
+      return;
+    }
     const request = ++conversionRequest;
-    convertButton.disabled = true;
-    conversionError.hidden = true;
-    conversionError.textContent = "";
-    conversionStatus.textContent =
-      mode === "piskel"
-        ? "Converting the Piskel project browser-locally."
-        : "Converting files browser-locally.";
+    isConverting = true;
+    syncProject(null);
+    renderConversionState(conversionElements, {
+      isWorking: true,
+      canConvert: true,
+      status:
+        mode === "piskel"
+          ? "Converting the Piskel project browser-locally. This may take a while."
+          : "Converting files browser-locally. This may take a while.",
+    });
 
     try {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      if (request !== conversionRequest) {
+        return;
+      }
       const project = await convertSourceFiles(
         mode,
         selectedFiles,
@@ -424,21 +504,28 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
         return;
       }
       syncProject(project);
-      conversionStatus.textContent = getConversionSuccessStatus(mode, project);
+      renderConversionState(conversionElements, {
+        isWorking: false,
+        canConvert: true,
+        status: getConversionSuccessStatus(mode, project),
+      });
     } catch (error) {
       if (request !== conversionRequest) {
         return;
       }
       syncProject(null);
-      conversionStatus.textContent =
-        mode === "piskel"
-          ? "Piskel conversion did not complete."
-          : "Conversion did not complete.";
-      conversionError.textContent = getConversionErrorMessage(mode, error);
-      conversionError.hidden = false;
+      renderConversionState(conversionElements, {
+        isWorking: false,
+        canConvert: true,
+        status:
+          mode === "piskel"
+            ? "Piskel conversion did not complete."
+            : "Conversion did not complete.",
+        error: getConversionErrorMessage(mode, error),
+      });
     } finally {
       if (request === conversionRequest) {
-        convertButton.disabled = selectedFiles.length === 0;
+        isConverting = false;
       }
     }
   };
