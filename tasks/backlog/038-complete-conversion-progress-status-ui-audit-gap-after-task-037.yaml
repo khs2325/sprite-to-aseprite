@@ -1,0 +1,60 @@
+id: "038"
+title: Complete conversion progress status UI audit gap after task 037
+status: backlog
+task_origin: product-completion
+audit_gap:
+  kind: remediation
+  category: performance-large-file
+  check_keys:
+    - conversionProgress
+  previous_task_id: "037"
+  previous_task_state: done
+priority: high
+goal: 'Complete the still-failing Performance/large-file readiness audit check(s) after done task 037 "Add conversion progress status UI": conversionProgress: long-running conversion progress is exposed in UI status.'
+context: This task was generated deterministically because a product-completeness audit found missing product work in the repository.
+scope:
+  summary: 'Complete the still-failing Performance/large-file readiness audit check(s) after done task 037 "Add conversion progress status UI": conversionProgress: long-running conversion progress is exposed in UI status.'
+  allowed_paths:
+    - index.html
+    - src/index.ts
+    - src/app/**
+    - src/**/*.test.*
+    - docs/**
+    - scripts/auto-dev-cycle.mjs
+    - scripts/auto-dev-cycle.test.mjs
+    - README_AUTOMATION.md
+  forbidden_paths: &a1
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+non_goals:
+  - Do not implement unrelated roadmap features.
+  - Do not upload user artwork or use external processing services.
+  - Do not change dependencies, lockfiles, or GitHub workflows.
+requirements:
+  - Use plain TypeScript and DOM APIs.
+  - Do not add React, Vue, Svelte, or other dependencies.
+  - Keep files processed browser-locally.
+  - Do not upload user artwork.
+  - Reuse existing app, core, importer, and exporter helpers.
+  - Do not duplicate conversion logic.
+  - Add focused tests.
+  - "Reproduce and inspect the remaining Performance/large-file readiness audit check(s): conversionProgress: long-running conversion progress is exposed in UI status."
+  - Review task 037 "Add conversion progress status UI" and its resulting changes before editing.
+  - Distinguish genuinely missing product work from an incomplete prior implementation and a stale or incorrect audit detector/mapping.
+  - Apply the smallest safe product fix; if the product already satisfies the requirement, correct the audit detector or mapping and add a focused regression test.
+  - Keep controls and accessible status text consistent while conversion is running or fails.
+acceptance_criteria:
+  - 'Complete the still-failing Performance/large-file readiness audit check(s) after done task 037 "Add conversion progress status UI": conversionProgress: long-running conversion progress is exposed in UI status.'
+  - Focused tests cover the behavior introduced by this task.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *a1
