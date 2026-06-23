@@ -30,16 +30,20 @@ the server with `Ctrl+C`.
 1. Under **Choose an import mode**, select the mode matching the source files.
 2. Under **Add source files**, drag the required files onto the drop area or
    use the file picker. The app accepts `.png`, `.json`, and `.piskel` files;
-   each mode validates its required file combination.
+   each mode validates its required file combination. Review the selected-file
+   cards before conversion. PNG cards include browser-local thumbnails, while
+   JSON and Piskel cards show document details without displaying their raw
+   contents. Remove individual files or use **Clear selected files** as needed.
 3. Check that the app reports the source files are ready, then select
    **Convert to .aseprite**. Conversion happens browser-locally.
 4. Review the rebuilt timeline and make any timing or layer-name changes.
 5. Select **Download .aseprite**. The browser downloads
    `sprite-project.aseprite`; no generated file is uploaded.
 
-Changing the import mode or selecting new source files clears the previous
-conversion. If conversion fails, correct the reported source or settings issue
-and select the files again.
+Changing the import mode revalidates the current selected files. Selecting or
+dropping a new set replaces the previous selection. Removing, clearing, or
+replacing files clears any conversion that no longer matches the source. All
+file cards and previews are created in the browser; artwork is never uploaded.
 
 ## Large files and browser memory
 
@@ -98,18 +102,24 @@ individual durations if needed.
 
 Use this mode for one PNG arranged as a regular grid with no metadata file.
 
-1. Select **Spritesheet grid**.
-2. Enter the frame width, frame height, row count, and column count as positive
-   whole numbers.
+1. Select **Spritesheet grid** and add exactly one PNG.
+2. Enter the frame width and frame height as positive whole numbers. After the
+   browser reads the PNG dimensions locally, the app calculates rows and
+   columns using the whole frames that fit across and down the image.
 3. Choose the frame order:
    - **Rows first** reads left to right across each row, then moves down.
    - **Columns first** reads top to bottom down each column, then moves right.
-4. Add exactly one PNG. Do not add a JSON file.
+4. Review the browser-local grid overlay. Its accessible status reports the
+   columns, rows, and total frame count. Adjust rows or columns manually when
+   needed; the visible values are used for conversion.
 5. Select **Convert to .aseprite**.
 
 The configured grid must exactly cover the PNG: `frame width x columns` must
 equal the image width, and `frame height x rows` must equal the image height.
 Every grid cell becomes a frame with a default duration of 100 milliseconds.
+The overlay updates when the selected PNG or any grid value changes. A warning
+appears when the frame size does not divide the image evenly, when settings
+leave pixels outside the grid, or when the grid exceeds the image dimensions.
 
 ## Spritesheet PNG + JSON
 

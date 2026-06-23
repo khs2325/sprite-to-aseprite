@@ -27,6 +27,94 @@ export type BrowserSourceFile =
       text: string;
     };
 
+export type SourceFilePresentation = {
+  fileName: string;
+  fileSize: string;
+  kind: BrowserSourceFile["kind"];
+  typeLabel: "PNG image" | "JSON metadata" | "Piskel project";
+};
+
+export type SourcePreviewUrlStore = {
+  clear(): void;
+  get(file: File): string;
+  retain(files: readonly File[]): void;
+};
+
+type ObjectUrlApi = Pick<typeof URL, "createObjectURL" | "revokeObjectURL">;
+
+const SOURCE_TYPE_LABELS: Record<
+  BrowserSourceFile["kind"],
+  SourceFilePresentation["typeLabel"]
+> = {
+  png: "PNG image",
+  json: "JSON metadata",
+  piskel: "Piskel project",
+};
+
+export function formatFileSize(byteCount: number): string {
+  if (byteCount < 1024) {
+    return `${byteCount} ${byteCount === 1 ? "byte" : "bytes"}`;
+  }
+  const units = ["KB", "MB", "GB"] as const;
+  let value = byteCount / 1024;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  const precision = value >= 10 ? 0 : 1;
+  return `${value.toFixed(precision)} ${units[unitIndex]}`;
+}
+
+export function getSourceFilePresentation(
+  source: BrowserSourceFile,
+): SourceFilePresentation {
+  return {
+    fileName: source.file.name,
+    fileSize: formatFileSize(source.file.size),
+    kind: source.kind,
+    typeLabel: SOURCE_TYPE_LABELS[source.kind],
+  };
+}
+
+export function createSourcePreviewUrlStore(
+  urlApi: ObjectUrlApi = URL,
+): SourcePreviewUrlStore {
+  const urls = new Map<File, string>();
+
+  const revoke = (file: File): void => {
+    const url = urls.get(file);
+    if (url !== undefined) {
+      urlApi.revokeObjectURL(url);
+      urls.delete(file);
+    }
+  };
+
+  return {
+    clear(): void {
+      for (const file of [...urls.keys()]) {
+        revoke(file);
+      }
+    },
+    get(file: File): string {
+      let url = urls.get(file);
+      if (url === undefined) {
+        url = urlApi.createObjectURL(file);
+        urls.set(file, url);
+      }
+      return url;
+    },
+    retain(files: readonly File[]): void {
+      const retained = new Set(files);
+      for (const file of [...urls.keys()]) {
+        if (!retained.has(file)) {
+          revoke(file);
+        }
+      }
+    },
+  };
+}
+
 export type FileImportDependencies = {
   format?: FileImportFormat;
   onFilesImported?: (
