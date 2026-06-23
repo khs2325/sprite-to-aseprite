@@ -93,6 +93,7 @@ type ParsedPiskel = {
   height: number;
   fps: number;
   frameCount: number;
+  visibleFrameIndexes: number[];
   layers: ParsedLayer[];
 };
 
@@ -461,6 +462,56 @@ function parseLayer(
   };
 }
 
+function parseVisibleFrameIndexes(
+  hiddenFrames: unknown,
+  frameCount: number,
+): number[] {
+  if (hiddenFrames === undefined) {
+    return Array.from({ length: frameCount }, (_, frameIndex) => frameIndex);
+  }
+  if (!Array.isArray(hiddenFrames)) {
+    fail(
+      "hidden-frames",
+      "Piskel object.hiddenFrames must be an array when present.",
+    );
+  }
+
+  const hidden = new Set<number>();
+  for (const frameIndex of hiddenFrames) {
+    if (!Number.isSafeInteger(frameIndex)) {
+      fail(
+        "hidden-frames",
+        "Piskel object.hiddenFrames must contain safe integer frame indexes.",
+      );
+    }
+    if ((frameIndex as number) < 0 || (frameIndex as number) >= frameCount) {
+      fail(
+        "hidden-frames",
+        "Piskel object.hiddenFrames contains an out-of-range frame index.",
+      );
+    }
+    if (hidden.has(frameIndex as number)) {
+      fail(
+        "hidden-frames",
+        "Piskel object.hiddenFrames contains a duplicate frame index.",
+      );
+    }
+    hidden.add(frameIndex as number);
+  }
+
+  const visible = Array.from(
+    { length: frameCount },
+    (_, frameIndex) => frameIndex,
+  ).filter((frameIndex) => !hidden.has(frameIndex));
+  if (visible.length === 0) {
+    fail(
+      "hidden-frames",
+      "Piskel file must contain at least one visible frame.",
+    );
+  }
+  return visible;
+}
+
 function parsePiskelDocument(json: string): ParsedPiskel {
   let value: unknown;
   try {
@@ -513,13 +564,6 @@ function parsePiskelDocument(json: string): ParsedPiskel {
   if (!Array.isArray(piskel.layers) || piskel.layers.length === 0) {
     fail("invalid-field", "Piskel object.layers must be a non-empty array.");
   }
-  if (
-    piskel.hiddenFrames !== undefined &&
-    (!Array.isArray(piskel.hiddenFrames) || piskel.hiddenFrames.length !== 0)
-  ) {
-    fail("hidden-frames", "Piskel object.hiddenFrames must be absent or empty; hidden frames are unsupported.");
-  }
-
   const layers: ParsedLayer[] = [];
   let frameCount: number | undefined;
   for (const [layerIndex, encodedLayer] of piskel.layers.entries()) {
@@ -533,12 +577,17 @@ function parsePiskelDocument(json: string): ParsedPiskel {
     frameCount ??= layer.frameCount;
     layers.push(layer);
   }
+  const visibleFrameIndexes = parseVisibleFrameIndexes(
+    piskel.hiddenFrames,
+    frameCount!,
+  );
 
   return {
     width: piskel.width,
     height: piskel.height,
     fps: piskel.fps,
     frameCount: frameCount!,
+    visibleFrameIndexes,
     layers,
   };
 }
@@ -620,10 +669,18 @@ export async function importPiskelJson(
     MIN_FRAME_DURATION_MS,
     Math.min(MAX_FRAME_DURATION_MS, Math.round(1000 / parsed.fps)),
   );
+  const outputFrameBySourceFrame = new Map(
+    parsed.visibleFrameIndexes.map((sourceFrameIndex, outputFrameIndex) => [
+      sourceFrameIndex,
+      outputFrameIndex,
+    ]),
+  );
 
   const layers: SpriteProject["layers"] = [];
   for (const [layerIndex, layer] of parsed.layers.entries()) {
-    const cels = new Array<SpriteCel | undefined>(parsed.frameCount);
+    const cels = new Array<SpriteCel | undefined>(
+      parsed.visibleFrameIndexes.length,
+    );
 
     for (const [chunkIndex, chunk] of layer.chunks.entries()) {
       let sheet: ImageData;
@@ -645,9 +702,13 @@ export async function importPiskelJson(
       }
 
       for (const [columnIndex, column] of chunk.layout.entries()) {
-        for (const [rowIndex, frameIndex] of column.entries()) {
-          cels[frameIndex] = {
-            frameIndex,
+        for (const [rowIndex, sourceFrameIndex] of column.entries()) {
+          const outputFrameIndex = outputFrameBySourceFrame.get(sourceFrameIndex);
+          if (outputFrameIndex === undefined) {
+            continue;
+          }
+          cels[outputFrameIndex] = {
+            frameIndex: outputFrameIndex,
             x: 0,
             y: 0,
             imageData: sliceCel(
@@ -675,7 +736,7 @@ export async function importPiskelJson(
     width: parsed.width,
     height: parsed.height,
     colorMode: "rgba",
-    frames: Array.from({ length: parsed.frameCount }, (_, index) => ({
+    frames: parsed.visibleFrameIndexes.map((_, index) => ({
       index,
       durationMs,
     })),

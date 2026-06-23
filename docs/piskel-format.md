@@ -30,8 +30,9 @@ The file must be UTF-8 JSON with this model-version-2 shape:
   `fps`, `height`, `width`, and `layers`. `description` is an optional string.
   The optional boolean `expanded` field is harmless Piskel editor UI state and
   is ignored.
-  `hiddenFrames` may be absent or an empty array; a non-empty value is rejected
-  because `SpriteProject` has no matching hidden-frame state.
+  `hiddenFrames` may be absent, empty, or an array of unique in-range frame
+  indexes. Hidden Piskel frames are skipped because the converter output does
+  not preserve a hidden-frame state. At least one frame must remain visible.
 - `name` must be a non-empty string. It is project metadata and does not create
   a layer. `description`, when present, is metadata only.
 - `width` and `height` must each be integers from `1` through `1024` inclusive.
@@ -106,14 +107,18 @@ durationMs = clamp(Math.round(1000 / fps), 1, 65535)
 ```
 
 The bounds match the positive unsigned 16-bit duration supported by the
-Aseprite exporter. Each Piskel layer becomes one `SpriteLayer` at the same
-array position. Each decoded frame becomes a full-canvas cel at `(0, 0)` with
-RGBA `ImageData`; transparent frames remain transparent cels.
+Aseprite exporter. Visible source frames keep their original relative order
+and are reindexed contiguously from zero. Cels for hidden source frames are
+omitted from every layer; every remaining cel receives the corresponding new
+frame index and the FPS-derived duration remains unchanged. Each Piskel layer
+becomes one `SpriteLayer` at the same array position. Each decoded visible
+frame becomes a full-canvas cel at `(0, 0)` with RGBA `ImageData`; transparent
+frames remain transparent cels.
 
 The parser must reject malformed JSON, wrong types, unsupported versions,
-unsupported legacy layers, inconsistent layer frame counts, invalid layouts,
+invalid hidden-frame arrays, inconsistent layer frame counts, invalid layouts,
 invalid PNG data URLs, and decoded size mismatches with a specific error. It
-must not silently skip bad layers, chunks, or frames.
+must not silently skip bad layers, chunks, or visible frames.
 
 ## Preserved, defaulted, and unsupported data
 
@@ -131,18 +136,20 @@ validated but are not represented in the output. Per-frame durations are not
 accepted; every frame receives the duration derived from the one project FPS.
 
 Unsupported model versions, unknown fields other than the documented
-`expanded` state, non-empty `hiddenFrames`, ambiguous layer image layouts,
-external image URLs, incomplete or ambiguous frame coverage, and invalid PNG
-data are rejected. Features outside the accepted document fields are not
-silently defaulted or advertised as preserved.
+`expanded` state, invalid or duplicate `hiddenFrames` indexes, hiding every
+frame, ambiguous layer image layouts, external image URLs, incomplete or
+ambiguous frame coverage, and invalid PNG data are rejected. Features outside
+the accepted document fields are not silently defaulted or advertised as
+preserved.
 
 ## Validation diagnostics
 
 The browser reports the importer-authored reason without displaying source
 JSON, embedded pixel data, or a stack trace. Common messages identify invalid
 outer JSON, an unsupported `modelVersion`, a missing required `piskel` field,
-invalid dimensions or FPS, unsupported hidden frames, invalid string-encoded
-layer JSON, missing or ambiguous layer image data, invalid chunk layout or
+invalid dimensions or FPS, invalid/duplicate/out-of-range hidden frame indexes,
+an all-hidden timeline, invalid string-encoded layer JSON, missing or ambiguous
+layer image data, invalid chunk layout or
 frame coverage, invalid PNG data URLs, embedded PNG dimension mismatches, and
 browser image decode failures.
 

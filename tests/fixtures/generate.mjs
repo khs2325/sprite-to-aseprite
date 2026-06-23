@@ -182,6 +182,42 @@ outputs.set(
   }),
 );
 outputs.set(
+  "piskel/multiple-hidden-frames.piskel",
+  mutatePiskel(outputs.get("piskel/multi-frame.piskel"), (document) => {
+    document.piskel.hiddenFrames = [0, 2];
+  }),
+);
+outputs.set(
+  "piskel/hidden-multi-layer.piskel",
+  mutatePiskel(outputs.get("piskel/multi-layer.piskel"), (document) => {
+    document.piskel.hiddenFrames = [1];
+  }),
+);
+outputs.set(
+  "piskel/duplicate-hidden-frames.piskel",
+  mutatePiskel(diagnosticBase, (document) => {
+    document.piskel.hiddenFrames = [1, 1];
+  }),
+);
+outputs.set(
+  "piskel/out-of-range-hidden-frame.piskel",
+  mutatePiskel(diagnosticBase, (document) => {
+    document.piskel.hiddenFrames = [2];
+  }),
+);
+outputs.set(
+  "piskel/non-array-hidden-frames.piskel",
+  mutatePiskel(diagnosticBase, (document) => {
+    document.piskel.hiddenFrames = 1;
+  }),
+);
+outputs.set(
+  "piskel/all-frames-hidden.piskel",
+  mutatePiskel(diagnosticBase, (document) => {
+    document.piskel.hiddenFrames = [0, 1];
+  }),
+);
+outputs.set(
   "piskel/legacy-base64png.piskel",
   mutatePiskel(diagnosticBase, (document) => {
     document.piskel.expanded = false;

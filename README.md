@@ -23,6 +23,8 @@ The current conversion core supports:
   [documented supported subset](docs/piskel-format.md). It converts embedded
   PNG chunk frames and preserves supported source layer names and order,
   opacity/visibility, global-FPS timing, transparency, and decoded RGBA pixels.
+  Hidden Piskel frames are skipped and remaining visible frames are reindexed
+  because the output model does not preserve hidden-frame state.
 
 These inputs rebuild a timeline from the extracted frames. Piskel support is
 limited to the documented subset and is not described as universal, perfect,

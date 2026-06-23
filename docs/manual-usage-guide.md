@@ -170,10 +170,14 @@ project FPS becomes one duration for every frame, calculated as
 are not supported. Opacity from `0` through `1` is rounded to Aseprite's 8-bit
 range. Missing layer visibility defaults to visible.
 
-Other model versions, undocumented fields, non-empty `hiddenFrames`, ambiguous
-layers containing both `chunks` and top-level `base64PNG`, external PNG URLs,
-malformed or incomplete chunk layouts, and invalid or incorrectly sized
-embedded PNGs are rejected. Legacy layers containing only top-level
+Hidden Piskel frames are accepted but omitted from the converted timeline,
+because `SpriteProject` and the generated Aseprite output do not preserve a
+hidden-frame state. Remaining frames keep their source order and are reindexed
+from zero. Other model versions, undocumented fields, invalid, duplicate, or
+out-of-range `hiddenFrames` indexes, an all-hidden timeline, ambiguous layers
+containing both `chunks` and top-level `base64PNG`, external PNG URLs, malformed
+or incomplete chunk layouts, and invalid or incorrectly sized embedded PNGs
+are rejected. Legacy layers containing only top-level
 `base64PNG` are accepted as horizontal frame sheets. Validation errors name the
 first detected field, layout, coverage, or embedded-image problem without
 showing source contents or stack traces.
@@ -234,6 +238,8 @@ For a Piskel conversion, compare the downloaded file with the source project:
 
 - confirm the canvas width and height;
 - confirm the frame count and zero-based source frame order;
+- confirm hidden source frames are absent and the remaining visible frames are
+  reindexed contiguously;
 - confirm representative or all frame durations equal the rounded and clamped
   global-FPS conversion described above;
 - confirm layer names and source array order, plus each layer's opacity and

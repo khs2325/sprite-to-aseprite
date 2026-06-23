@@ -429,6 +429,51 @@ describe("importer to Aseprite export integration", () => {
     ]);
   });
 
+  it("omits hidden Piskel frames and exports reindexed visible frames", async () => {
+    const contents = readFileSync(
+      new URL(
+        "../../tests/fixtures/piskel/hidden-multi-layer.piskel",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    const project = await importPiskel(
+      createFile("hidden-multi-layer.piskel", contents, "application/json"),
+      { decodePng: async (bytes) => decodeFixturePng(bytes) },
+    );
+
+    expect(project.frames).toEqual([{ index: 0, durationMs: 50 }]);
+    expect(project.layers.map(({ name, opacity, visible, cels }) => ({
+      name,
+      opacity,
+      visible,
+      frameIndexes: cels.map(({ frameIndex }) => frameIndex),
+    }))).toEqual([
+      {
+        name: "Background",
+        opacity: 128,
+        visible: true,
+        frameIndexes: [0],
+      },
+      {
+        name: "Accent",
+        opacity: 255,
+        visible: true,
+        frameIndexes: [0],
+      },
+    ]);
+
+    const bytes = exportAseprite(project);
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const frames = parseFrames(bytes);
+    expect(view.getUint16(6, true)).toBe(1);
+    expect(frames).toHaveLength(1);
+    expect(frames[0].durationMs).toBe(50);
+    expect(frames[0].chunks.map(({ type }) => type)).toEqual([
+      0x2004, 0x2004, 0x2005, 0x2005,
+    ]);
+  });
+
   it("rejects malformed Piskel input at the conversion boundary", async () => {
     const file = createFile(
       "malformed.piskel",
