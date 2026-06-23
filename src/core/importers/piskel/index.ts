@@ -484,6 +484,9 @@ function parseVisibleFrameIndexes(
 
   const hidden = new Set<number>();
   for (const value of hiddenFrames) {
+    if (value === "") {
+      continue;
+    }
     const frameIndex =
       typeof value === "string" && /^(?:0|[1-9]\d*)$/u.test(value)
         ? Number(value)

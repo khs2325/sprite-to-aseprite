@@ -31,13 +31,15 @@ The file must be UTF-8 JSON with this model-version-2 shape:
   The optional boolean `expanded` field is harmless Piskel editor UI state and
   is ignored.
   `hiddenFrames` may be absent, an empty array, or an array of unique in-range
-  frame indexes. Some Piskel exports write this field as an empty string; the
-  converter treats `"hiddenFrames": ""` as no hidden frames. Array entries may
-  be safe integer numbers or strict decimal index strings such as `"3"`.
-  Non-empty top-level strings, including `"1"` and `"1,3"`, are rejected rather
-  than guessed as alternate formats. Hidden Piskel frames are skipped because
-  the converter output does not preserve hidden-frame state. At least one frame
-  must remain visible.
+  frame indexes. Some Piskel exports write this field as an empty string or as
+  an array containing empty strings. The converter treats `"hiddenFrames": ""`,
+  `"hiddenFrames": [""]`, and repeated empty-string array sentinels as no hidden
+  frames. Array entries may otherwise be safe integer numbers or strict decimal
+  index strings such as `"3"`. Whitespace-only strings are not empty sentinels
+  and are rejected. Non-empty top-level strings, including `"1"` and `"1,3"`,
+  are rejected rather than guessed as alternate formats. Hidden Piskel frames
+  are skipped because the converter output does not preserve hidden-frame
+  state. At least one frame must remain visible.
 - `name` must be a non-empty string. It is project metadata and does not create
   a layer. `description`, when present, is metadata only.
 - `width` and `height` must each be integers from `1` through `1024` inclusive.

@@ -305,6 +305,22 @@ describe("Piskel conversion messages", () => {
     );
   });
 
+  it("reports invalid hiddenFrames precisely without exposing a stack trace", () => {
+    const detail =
+      "Piskel object.hiddenFrames must contain safe integer frame indexes or strict decimal index strings.";
+    const error = new PiskelImportError("hidden-frames", detail);
+    error.stack = `PiskelImportError: ${detail}\n    at parseVisibleFrameIndexes (private-source.ts:1:1)`;
+
+    const message = getConversionErrorMessage("piskel", error);
+
+    expect(message).toBe(
+      `The Piskel file failed validation: ${detail} ` +
+        "Check that it is a supported model-version-2 .piskel file.",
+    );
+    expect(message).not.toContain("parseVisibleFrameIndexes");
+    expect(message).not.toContain("private-source.ts");
+  });
+
   it("does not expose arbitrary thrown content as an importer diagnostic", () => {
     const privateContents = '{"private pixels":"do not display"}';
 

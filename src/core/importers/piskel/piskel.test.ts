@@ -266,6 +266,23 @@ describe("Piskel importer", () => {
     ).toEqual([0, 1]);
   });
 
+  it.each([[[""]], [["", ""]]])(
+    "treats empty array sentinels %j as no hidden frames",
+    async (hiddenFrames) => {
+      const document = documentFixture("multi-frame");
+      piskelObject(document).hiddenFrames = hiddenFrames;
+
+      const project = await importPiskelJson(JSON.stringify(document), {
+        decodePng: fixtureDecoder(),
+      });
+
+      expect(project.frames.map(({ index }) => index)).toEqual([0, 1, 2]);
+      expect(project.layers[0].cels.map(({ frameIndex }) => frameIndex)).toEqual([
+        0, 1, 2,
+      ]);
+    },
+  );
+
   it("skips one hidden frame and reindexes visible cels contiguously", async () => {
     const project = await importPiskelJson(fixture("hidden-frames"), {
       decodePng: fixtureDecoder(),
@@ -660,7 +677,7 @@ describe("Piskel validation", () => {
     },
   );
 
-  it.each([1.5, "", "01", "+1", "1.0", "1,3", null])(
+  it.each([1.5, " ", "01", "+1", "-1", "1.0", "1,3", "hidden", null])(
     "rejects invalid hidden frame array index %s",
     async (frameIndex) => {
       const document = documentFixture("multi-frame");
