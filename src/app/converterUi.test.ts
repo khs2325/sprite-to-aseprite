@@ -261,7 +261,7 @@ describe("convertSourceFiles", () => {
 describe("Piskel conversion messages", () => {
   it("reports converted frames and preserved source layers", () => {
     expect(getConversionSuccessStatus("piskel", project)).toBe(
-      "Converted 1 Piskel frame and preserved 1 layer in an editable Aseprite timeline. Ready to download.",
+      "Converted 1 visible Piskel frame and preserved 1 layer in an editable Aseprite timeline. Ready to download.",
     );
   });
 
@@ -271,7 +271,7 @@ describe("Piskel conversion messages", () => {
     ["missing-field", "Piskel object.layers is required."],
     ["invalid-dimension", "Piskel object.width must be an integer from 1 to 1024."],
     ["invalid-fps", "Piskel object.fps must be a finite number greater than zero."],
-    ["hidden-frames", "Piskel object.hiddenFrames must be absent or empty; hidden frames are unsupported."],
+    ["hidden-frames", "Piskel object.hiddenFrames contains a duplicate frame index."],
     ["legacy-layer-layout", "Piskel layer 1 cannot contain both chunks and a legacy base64PNG field."],
     ["invalid-layer-json", "Piskel layer 1 is not valid JSON."],
     ["missing-chunks", "Piskel layer 1 must contain chunks or a legacy base64PNG field."],

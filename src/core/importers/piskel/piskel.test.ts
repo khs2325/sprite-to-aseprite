@@ -14,13 +14,19 @@ import {
 type JsonRecord = Record<string, unknown>;
 
 type PiskelFixtureName =
+  | "all-frames-hidden"
   | "bad-frame-coverage"
   | "bad-png-dimensions"
+  | "duplicate-hidden-frames"
   | "extra-harmless-field"
   | "hidden-frames"
+  | "hidden-multi-layer"
   | "legacy-base64png"
   | "multi-frame"
   | "multi-layer"
+  | "multiple-hidden-frames"
+  | "non-array-hidden-frames"
+  | "out-of-range-hidden-frame"
   | "unsupported-model-version";
 
 function fixture(name: PiskelFixtureName): string {
@@ -230,6 +236,79 @@ describe("Piskel importer", () => {
     ]);
   });
 
+  it("imports normally when hiddenFrames is absent or empty", async () => {
+    const absent = documentFixture("multi-frame");
+    delete piskelObject(absent).hiddenFrames;
+
+    const absentProject = await importPiskelJson(JSON.stringify(absent), {
+      decodePng: fixtureDecoder(),
+    });
+    const emptyProject = await importPiskelJson(fixture("multi-frame"), {
+      decodePng: fixtureDecoder(),
+    });
+
+    expect(absentProject.frames.map(({ index }) => index)).toEqual([0, 1, 2]);
+    expect(emptyProject.frames.map(({ index }) => index)).toEqual([0, 1, 2]);
+    expect(absentProject.layers[0].cels.map(({ frameIndex }) => frameIndex)).toEqual([
+      0, 1, 2,
+    ]);
+  });
+
+  it("skips one hidden frame and reindexes visible cels contiguously", async () => {
+    const project = await importPiskelJson(fixture("hidden-frames"), {
+      decodePng: fixtureDecoder(),
+    });
+
+    expect(project.frames).toEqual([{ index: 0, durationMs: 83 }]);
+    expect(project.layers[0].cels).toHaveLength(1);
+    expect(project.layers[0].cels[0].frameIndex).toBe(0);
+    expect(pixel(project.layers[0].cels[0].imageData, 0, 0)).toEqual([
+      230, 57, 70, 255,
+    ]);
+  });
+
+  it("skips multiple hidden frames while preserving visible-frame order", async () => {
+    const project = await importPiskelJson(fixture("multiple-hidden-frames"), {
+      decodePng: fixtureDecoder(),
+    });
+
+    expect(project.frames).toEqual([{ index: 0, durationMs: 83 }]);
+    expect(project.layers[0].cels.map(({ frameIndex }) => frameIndex)).toEqual([0]);
+    expect(pixel(project.layers[0].cels[0].imageData, 1, 0)).toEqual([
+      42, 157, 143, 255,
+    ]);
+  });
+
+  it("preserves layer metadata and visible cel pixels while skipping hidden frames", async () => {
+    const document = JSON.parse(fixture("hidden-multi-layer")) as JsonRecord;
+    const accent = layerRecord(document, 1);
+    accent.visible = false;
+    replaceLayer(document, accent, 1);
+
+    const project = await importPiskelJson(JSON.stringify(document), {
+      decodePng: fixtureDecoder(),
+    });
+
+    expect(project.frames).toEqual([{ index: 0, durationMs: 50 }]);
+    expect(project.layers.map(({ name, opacity, visible }) => ({
+      name,
+      opacity,
+      visible,
+    }))).toEqual([
+      { name: "Background", opacity: 128, visible: true },
+      { name: "Accent", opacity: 255, visible: false },
+    ]);
+    expect(project.layers.every(({ cels }) =>
+      cels.length === 1 && cels[0].frameIndex === 0,
+    )).toBe(true);
+    expect(pixel(project.layers[0].cels[0].imageData, 0, 0)).toEqual([
+      69, 123, 157, 255,
+    ]);
+    expect(pixel(project.layers[1].cels[0].imageData, 0, 0)).toEqual([
+      230, 57, 70, 255,
+    ]);
+  });
+
   it("maps rectangular layout[column][row] cells to sorted frame cels", async () => {
     const document = documentFixture("multi-frame");
     const piskel = piskelObject(document);
@@ -334,11 +413,6 @@ describe("Piskel validation", () => {
       importPiskelJson(fixture("unsupported-model-version")),
       "unsupported-model-version",
       "expected integer 2",
-    );
-    await expectPiskelError(
-      importPiskelJson(fixture("hidden-frames")),
-      "hidden-frames",
-      "hidden frames are unsupported",
     );
     await expectPiskelError(
       importPiskelJson(fixture("bad-frame-coverage")),
@@ -504,7 +578,7 @@ describe("Piskel validation", () => {
     );
   });
 
-  it("rejects unsupported fields, ambiguous legacy layers, and non-empty hidden frames", async () => {
+  it("rejects unsupported fields and ambiguous legacy layers", async () => {
     const unsupported = documentFixture("multi-frame");
     piskelObject(unsupported).unsupportedMetadata = true;
     await expect(importPiskelJson(JSON.stringify(unsupported))).rejects.toThrow(
@@ -520,12 +594,44 @@ describe("Piskel validation", () => {
       "cannot contain both chunks and a legacy base64PNG field.",
     );
 
-    const hidden = documentFixture("multi-frame");
-    piskelObject(hidden).hiddenFrames = [0];
-    await expect(importPiskelJson(JSON.stringify(hidden))).rejects.toThrow(
-      "Piskel object.hiddenFrames must be absent or empty; hidden frames are unsupported.",
+  });
+
+  it.each([
+    [
+      "non-array-hidden-frames" as const,
+      "Piskel object.hiddenFrames must be an array when present.",
+    ],
+    [
+      "duplicate-hidden-frames" as const,
+      "Piskel object.hiddenFrames contains a duplicate frame index.",
+    ],
+    [
+      "out-of-range-hidden-frame" as const,
+      "Piskel object.hiddenFrames contains an out-of-range frame index.",
+    ],
+    [
+      "all-frames-hidden" as const,
+      "Piskel file must contain at least one visible frame.",
+    ],
+  ])("rejects invalid hidden-frame fixture %s", async (name, message) => {
+    await expectPiskelError(
+      importPiskelJson(fixture(name)),
+      "hidden-frames",
+      message,
     );
   });
+
+  it.each([1.5, "1", null])(
+    "rejects non-integer hidden frame index %s",
+    async (frameIndex) => {
+      const document = documentFixture("multi-frame");
+      piskelObject(document).hiddenFrames = [frameIndex];
+
+      await expect(importPiskelJson(JSON.stringify(document))).rejects.toThrow(
+        "Piskel object.hiddenFrames must contain safe integer frame indexes.",
+      );
+    },
+  );
 
   it.each([0, -1, "12"])("rejects invalid FPS %s", async (fps) => {
     const document = documentFixture("multi-frame");

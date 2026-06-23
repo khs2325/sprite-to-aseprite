@@ -155,7 +155,7 @@ export function getConversionSuccessStatus(
     const layerCount = project.layers.length;
     const layerNoun = layerCount === 1 ? "layer" : "layers";
     return (
-      `Converted ${frameCount} Piskel ${frameNoun} and preserved ${layerCount} ${layerNoun} ` +
+      `Converted ${frameCount} visible Piskel ${frameNoun} and preserved ${layerCount} ${layerNoun} ` +
       "in an editable Aseprite timeline. Ready to download."
     );
   }
