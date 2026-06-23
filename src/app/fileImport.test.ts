@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { PiskelImportError } from "../core/importers/piskel";
 import {
   bindFileImportControl,
   getSourceKind,
@@ -296,6 +297,36 @@ describe("bindFileImportControl", () => {
         "Check that the file is a supported model-version-2 .piskel file.",
     );
     expect(errorOutput.textContent).not.toContain(privateContents);
+  });
+
+  it("includes safe Piskel importer detail in selection errors", async () => {
+    const errorOutput = createOutput();
+    const control = bindFileImportControl(
+      createInput(),
+      errorOutput,
+      createOutput(),
+      {
+        format: "piskel",
+        onFilesImported: () => {
+          throw new PiskelImportError(
+            "unsupported-model-version",
+            "Unsupported Piskel modelVersion; expected integer 2.",
+          );
+        },
+      },
+    );
+
+    expect(
+      await control.selectFiles([
+        new File(["{}"], "sprite.piskel", { type: "" }),
+      ]),
+    ).toBe(false);
+
+    expect(errorOutput.textContent).toBe(
+      "Piskel import failed. " +
+        "Unsupported Piskel modelVersion; expected integer 2. " +
+        "Check that the file is a supported model-version-2 .piskel file.",
+    );
   });
 
   it("uses files from the browser input change event and removes its handler", async () => {

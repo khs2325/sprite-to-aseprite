@@ -1,6 +1,10 @@
 import type { SpriteProject } from "../core/SpriteProject";
 import { importPngSequence } from "../core/importers/pngSequence";
-import { importPiskel } from "../core/importers/piskel";
+import {
+  getPiskelImportDiagnostic,
+  importPiskel,
+  PiskelImportError,
+} from "../core/importers/piskel";
 import {
   importSpritesheetGrid,
   type SpritesheetGridImportOptions,
@@ -171,32 +175,24 @@ export function getConversionErrorMessage(
       : "Could not convert the selected files.";
   }
 
-  const message = error instanceof Error ? error.message.toLowerCase() : "";
-  if (message.includes("unsupported")) {
+  const diagnostic = getPiskelImportDiagnostic(error);
+  if (diagnostic === null) {
     return (
-      "This Piskel file uses an unsupported format or feature. " +
-      "Use a model-version-2 .piskel file with no hidden frames."
-    );
-  }
-  if (message.includes("decode png") || message.includes("canvas context")) {
-    return (
-      "Could not decode an embedded Piskel layer image in this browser. " +
-      "Check that the .piskel file is complete and try again."
+      "Could not convert the Piskel file. " +
+      "Check that it is a supported model-version-2 .piskel file."
     );
   }
   if (
-    message.includes("not valid json") ||
-    message.includes("must") ||
-    message.includes("required") ||
-    message.includes("invalid")
+    error instanceof PiskelImportError &&
+    error.code === "browser-image-decode"
   ) {
     return (
-      "The Piskel file failed validation. " +
-      "Check that it is a valid model-version-2 .piskel file."
+      `Could not decode an embedded Piskel layer image in this browser: ${diagnostic} ` +
+      "Check that the .piskel file is complete and try again."
     );
   }
   return (
-    "Could not convert the Piskel file. " +
+    `The Piskel file failed validation: ${diagnostic} ` +
     "Check that it is a supported model-version-2 .piskel file."
   );
 }

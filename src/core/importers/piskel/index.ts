@@ -19,6 +19,7 @@ const PISKEL_FIELDS = new Set([
   "width",
   "layers",
   "hiddenFrames",
+  "expanded",
 ]);
 const LAYER_FIELDS = new Set([
   "name",
@@ -26,8 +27,47 @@ const LAYER_FIELDS = new Set([
   "visible",
   "frameCount",
   "chunks",
+  "base64PNG",
 ]);
 const CHUNK_FIELDS = new Set(["layout", "base64PNG"]);
+
+export type PiskelImportErrorCode =
+  | "browser-image-decode"
+  | "frame-coverage"
+  | "hidden-frames"
+  | "invalid-chunk-layout"
+  | "invalid-dimension"
+  | "invalid-field"
+  | "invalid-fps"
+  | "invalid-json"
+  | "invalid-layer-json"
+  | "invalid-png-data-url"
+  | "legacy-layer-layout"
+  | "missing-chunks"
+  | "missing-field"
+  | "png-dimension-mismatch"
+  | "unsupported-field"
+  | "unsupported-model-version";
+
+export class PiskelImportError extends Error {
+  constructor(
+    readonly code: PiskelImportErrorCode,
+    message: string,
+    options: ErrorOptions = {},
+  ) {
+    super(message, options);
+    this.name = "PiskelImportError";
+  }
+}
+
+/** Returns importer-authored detail only; arbitrary thrown values stay private. */
+export function getPiskelImportDiagnostic(error: unknown): string | null {
+  return error instanceof PiskelImportError ? error.message : null;
+}
+
+function fail(code: PiskelImportErrorCode, message: string): never {
+  throw new PiskelImportError(code, message);
+}
 
 export type PiskelImportDependencies = {
   decodePng?: (pngBytes: Uint8Array) => Promise<ImageData>;
@@ -69,8 +109,9 @@ function assertAllowedFields(
   allowedFields: ReadonlySet<string>,
   path: string,
 ): void {
-  if (Object.keys(value).some((field) => !allowedFields.has(field))) {
-    throw new Error(`${path} contains unsupported fields.`);
+  const unsupported = Object.keys(value).find((field) => !allowedFields.has(field));
+  if (unsupported !== undefined) {
+    fail("unsupported-field", `${path} contains unsupported field ${JSON.stringify(unsupported)}.`);
   }
 }
 
@@ -80,7 +121,7 @@ function assertRequiredField(
   path: string,
 ): void {
   if (!hasOwn(value, field)) {
-    throw new Error(`${path}.${field} is required.`);
+    fail("missing-field", `${path}.${field} is required.`);
   }
 }
 
@@ -104,7 +145,7 @@ function base64Value(character: string): number {
 
 function decodeStrictBase64(payload: string, path: string): Uint8Array {
   if (payload.length === 0 || payload.length % 4 !== 0) {
-    throw new Error(`${path} must contain strict base64 PNG data.`);
+    fail("invalid-png-data-url", `${path} must contain strict base64 PNG data.`);
   }
 
   const padding = payload.endsWith("==") ? 2 : payload.endsWith("=") ? 1 : 0;
@@ -112,12 +153,12 @@ function decodeStrictBase64(payload: string, path: string): Uint8Array {
 
   for (let index = 0; index < dataLength; index += 1) {
     if (base64Value(payload[index]) === -1) {
-      throw new Error(`${path} must contain strict base64 PNG data.`);
+      fail("invalid-png-data-url", `${path} must contain strict base64 PNG data.`);
     }
   }
   for (let index = dataLength; index < payload.length; index += 1) {
     if (payload[index] !== "=") {
-      throw new Error(`${path} must contain strict base64 PNG data.`);
+      fail("invalid-png-data-url", `${path} must contain strict base64 PNG data.`);
     }
   }
 
@@ -125,7 +166,7 @@ function decodeStrictBase64(payload: string, path: string): Uint8Array {
     (padding === 2 && (base64Value(payload[payload.length - 3]) & 0x0f) !== 0) ||
     (padding === 1 && (base64Value(payload[payload.length - 2]) & 0x03) !== 0)
   ) {
-    throw new Error(`${path} must contain strict base64 PNG data.`);
+    fail("invalid-png-data-url", `${path} must contain strict base64 PNG data.`);
   }
 
   const byteLength = (payload.length / 4) * 3 - padding;
@@ -173,7 +214,7 @@ function assertPngStructure(
     bytes.length < 33 ||
     PNG_SIGNATURE.some((byte, index) => bytes[index] !== byte)
   ) {
-    throw new Error(invalidMessage);
+    fail("invalid-png-data-url", invalidMessage);
   }
 
   let offset = PNG_SIGNATURE.length;
@@ -185,7 +226,7 @@ function assertPngStructure(
     const length = readUint32(bytes, offset);
     const dataOffset = offset + 8;
     if (length > bytes.length - dataOffset - 4) {
-      throw new Error(invalidMessage);
+      fail("invalid-png-data-url", invalidMessage);
     }
 
     const type = String.fromCharCode(
@@ -196,21 +237,21 @@ function assertPngStructure(
     );
     if (offset === PNG_SIGNATURE.length) {
       if (type !== "IHDR" || length !== 13) {
-        throw new Error(invalidMessage);
+        fail("invalid-png-data-url", invalidMessage);
       }
       width = readUint32(bytes, dataOffset);
       height = readUint32(bytes, dataOffset + 4);
       if (width === 0 || height === 0) {
-        throw new Error(invalidMessage);
+        fail("invalid-png-data-url", invalidMessage);
       }
     } else if (type === "IHDR") {
-      throw new Error(invalidMessage);
+      fail("invalid-png-data-url", invalidMessage);
     }
 
     offset = dataOffset + length + 4;
     if (type === "IEND") {
       if (length !== 0 || offset !== bytes.length) {
-        throw new Error(invalidMessage);
+        fail("invalid-png-data-url", invalidMessage);
       }
       sawEnd = true;
       break;
@@ -218,10 +259,11 @@ function assertPngStructure(
   }
 
   if (!sawEnd || width === undefined || height === undefined) {
-    throw new Error(invalidMessage);
+    fail("invalid-png-data-url", invalidMessage);
   }
   if (width !== expectedWidth || height !== expectedHeight) {
-    throw new Error(
+    fail(
+      "png-dimension-mismatch",
       `${path} PNG dimensions must be ${expectedWidth}x${expectedHeight}.`,
     );
   }
@@ -234,7 +276,7 @@ function parsePngDataUrl(
   path: string,
 ): Uint8Array {
   if (typeof value !== "string" || !value.startsWith(PNG_DATA_URL_PREFIX)) {
-    throw new Error(`${path} must be an embedded PNG data URL.`);
+    fail("invalid-png-data-url", `${path} must be an embedded PNG data URL.`);
   }
 
   const bytes = decodeStrictBase64(
@@ -256,40 +298,41 @@ function parseChunk(
 ): ParsedChunk {
   const path = `Piskel layer ${layerIndex + 1}, chunk ${chunkIndex + 1}`;
   if (!isRecord(value)) {
-    throw new Error(`${path} must be an object.`);
+    fail("invalid-chunk-layout", `${path} must be an object.`);
   }
   assertAllowedFields(value, CHUNK_FIELDS, path);
   assertRequiredField(value, "layout", path);
   assertRequiredField(value, "base64PNG", path);
 
   if (!Array.isArray(value.layout) || value.layout.length === 0) {
-    throw new Error(`${path}.layout must be a non-empty column array.`);
+    fail("invalid-chunk-layout", `${path}.layout must be a non-empty column array.`);
   }
 
   const layout: number[][] = [];
   let rowCount: number | undefined;
   for (const [columnIndex, column] of value.layout.entries()) {
     if (!Array.isArray(column) || column.length === 0) {
-      throw new Error(`${path}.layout columns must be non-empty arrays.`);
+      fail("invalid-chunk-layout", `${path}.layout columns must be non-empty arrays.`);
     }
     if (rowCount === undefined) {
       rowCount = column.length;
     } else if (column.length !== rowCount) {
-      throw new Error(`${path}.layout must be rectangular.`);
+      fail("invalid-chunk-layout", `${path}.layout must be rectangular.`);
     }
 
     const parsedColumn: number[] = [];
     for (const [rowIndex, frameIndex] of column.entries()) {
       if (!Number.isSafeInteger(frameIndex)) {
-        throw new Error(
+        fail(
+          "invalid-chunk-layout",
           `${path}.layout[${columnIndex}][${rowIndex}] must be an integer frame index.`,
         );
       }
       if ((frameIndex as number) < 0 || (frameIndex as number) >= frameCount) {
-        throw new Error(`${path}.layout contains an out-of-range frame index.`);
+        fail("invalid-chunk-layout", `${path}.layout contains an out-of-range frame index.`);
       }
       if (coveredFrames.has(frameIndex as number)) {
-        throw new Error(`${path}.layout contains a duplicate frame index.`);
+        fail("frame-coverage", `${path}.layout contains a duplicate frame index.`);
       }
       coveredFrames.add(frameIndex as number);
       parsedColumn.push(frameIndex as number);
@@ -300,7 +343,7 @@ function parseChunk(
   const sheetWidth = width * layout.length;
   const sheetHeight = height * rowCount!;
   if (!Number.isSafeInteger(sheetWidth) || !Number.isSafeInteger(sheetHeight)) {
-    throw new Error(`${path}.layout dimensions are too large.`);
+    fail("invalid-chunk-layout", `${path}.layout dimensions are too large.`);
   }
 
   return {
@@ -325,56 +368,75 @@ function parseLayer(
 ): ParsedLayer {
   const path = `Piskel layer ${layerIndex + 1}`;
   if (typeof encodedLayer !== "string") {
-    throw new Error(`${path} must be a string-encoded JSON record.`);
+    fail("invalid-layer-json", `${path} must be a string-encoded JSON record.`);
   }
 
   let value: unknown;
   try {
     value = JSON.parse(encodedLayer) as unknown;
   } catch {
-    throw new Error(`${path} is not valid JSON.`);
+    fail("invalid-layer-json", `${path} is not valid JSON.`);
   }
   if (!isRecord(value)) {
-    throw new Error(`${path} must decode to an object.`);
-  }
-  if (hasOwn(value, "base64PNG") && !hasOwn(value, "chunks")) {
-    throw new Error(`${path} uses the unsupported legacy PNG layout.`);
+    fail("invalid-layer-json", `${path} must decode to an object.`);
   }
   assertAllowedFields(value, LAYER_FIELDS, path);
-  for (const field of ["name", "opacity", "frameCount", "chunks"]) {
+  for (const field of ["name", "frameCount"]) {
     assertRequiredField(value, field, path);
   }
 
-  if (typeof value.name !== "string" || value.name.trim().length === 0) {
-    throw new Error(`${path}.name must be a non-empty string.`);
+  const hasChunks = hasOwn(value, "chunks");
+  const hasLegacyPng = hasOwn(value, "base64PNG");
+  if (hasChunks && hasLegacyPng) {
+    fail(
+      "legacy-layer-layout",
+      `${path} cannot contain both chunks and a legacy base64PNG field.`,
+    );
   }
+  if (!hasChunks && !hasLegacyPng) {
+    fail(
+      "missing-chunks",
+      `${path} must contain chunks or a legacy base64PNG field.`,
+    );
+  }
+
+  if (typeof value.name !== "string" || value.name.trim().length === 0) {
+    fail("invalid-field", `${path}.name must be a non-empty string.`);
+  }
+  const opacity = value.opacity ?? 1;
   if (
-    typeof value.opacity !== "number" ||
-    !Number.isFinite(value.opacity) ||
-    value.opacity < 0 ||
-    value.opacity > 1
+    typeof opacity !== "number" ||
+    !Number.isFinite(opacity) ||
+    opacity < 0 ||
+    opacity > 1
   ) {
-    throw new Error(`${path}.opacity must be a finite number from 0 to 1.`);
+    fail("invalid-field", `${path}.opacity must be a finite number from 0 to 1 when present.`);
   }
   if (value.visible !== undefined && typeof value.visible !== "boolean") {
-    throw new Error(`${path}.visible must be a boolean when present.`);
+    fail("invalid-field", `${path}.visible must be a boolean when present.`);
   }
   if (!Number.isSafeInteger(value.frameCount) || (value.frameCount as number) <= 0) {
-    throw new Error(`${path}.frameCount must be a positive integer.`);
+    fail("invalid-field", `${path}.frameCount must be a positive integer.`);
   }
   if (
     expectedFrameCount !== undefined &&
     value.frameCount !== expectedFrameCount
   ) {
-    throw new Error("All Piskel layers must have the same frameCount.");
-  }
-  if (!Array.isArray(value.chunks) || value.chunks.length === 0) {
-    throw new Error(`${path}.chunks must be a non-empty array.`);
+    fail("frame-coverage", "All Piskel layers must have the same frameCount.");
   }
 
   const frameCount = value.frameCount as number;
+  const chunkValues = hasLegacyPng
+    ? [{
+        layout: Array.from({ length: frameCount }, (_, frameIndex) => [frameIndex]),
+        base64PNG: value.base64PNG,
+      }]
+    : value.chunks;
+  if (!Array.isArray(chunkValues) || chunkValues.length === 0) {
+    fail("missing-chunks", `${path}.chunks must be a non-empty array.`);
+  }
   const coveredFrames = new Set<number>();
-  const chunks = value.chunks.map((chunk, chunkIndex) =>
+  const chunks = chunkValues.map((chunk, chunkIndex) =>
     parseChunk(
       chunk,
       layerIndex,
@@ -387,12 +449,12 @@ function parseLayer(
   );
 
   if (coveredFrames.size !== frameCount) {
-    throw new Error(`${path} frame coverage is incomplete.`);
+    fail("frame-coverage", `${path} frame coverage is incomplete.`);
   }
 
   return {
     name: value.name,
-    opacity: Math.round(value.opacity * 255),
+    opacity: Math.round(opacity * 255),
     visible: value.visible ?? true,
     frameCount,
     chunks,
@@ -404,20 +466,20 @@ function parsePiskelDocument(json: string): ParsedPiskel {
   try {
     value = JSON.parse(json) as unknown;
   } catch {
-    throw new Error("Piskel file is not valid JSON.");
+    fail("invalid-json", "Piskel file is not valid JSON.");
   }
   if (!isRecord(value)) {
-    throw new Error("Piskel document must be an object.");
+    fail("invalid-field", "Piskel document must be an object.");
   }
   assertAllowedFields(value, OUTER_FIELDS, "Piskel document");
   assertRequiredField(value, "modelVersion", "Piskel document");
   assertRequiredField(value, "piskel", "Piskel document");
 
   if (value.modelVersion !== MODEL_VERSION) {
-    throw new Error("Unsupported Piskel modelVersion; expected integer 2.");
+    fail("unsupported-model-version", "Unsupported Piskel modelVersion; expected integer 2.");
   }
   if (!isRecord(value.piskel)) {
-    throw new Error("Piskel document.piskel must be an object.");
+    fail("invalid-field", "Piskel document.piskel must be an object.");
   }
 
   const piskel = value.piskel;
@@ -427,32 +489,35 @@ function parsePiskelDocument(json: string): ParsedPiskel {
   }
 
   if (typeof piskel.name !== "string" || piskel.name.trim().length === 0) {
-    throw new Error("Piskel object.name must be a non-empty string.");
+    fail("invalid-field", "Piskel object.name must be a non-empty string.");
   }
   if (piskel.description !== undefined && typeof piskel.description !== "string") {
-    throw new Error("Piskel object.description must be a string when present.");
+    fail("invalid-field", "Piskel object.description must be a string when present.");
+  }
+  if (piskel.expanded !== undefined && typeof piskel.expanded !== "boolean") {
+    fail("invalid-field", "Piskel object.expanded must be a boolean when present.");
   }
   if (
     typeof piskel.fps !== "number" ||
     !Number.isFinite(piskel.fps) ||
     piskel.fps <= 0
   ) {
-    throw new Error("Piskel object.fps must be a finite number greater than zero.");
+    fail("invalid-fps", "Piskel object.fps must be a finite number greater than zero.");
   }
   if (!isDimension(piskel.width)) {
-    throw new Error("Piskel object.width must be an integer from 1 to 1024.");
+    fail("invalid-dimension", "Piskel object.width must be an integer from 1 to 1024.");
   }
   if (!isDimension(piskel.height)) {
-    throw new Error("Piskel object.height must be an integer from 1 to 1024.");
+    fail("invalid-dimension", "Piskel object.height must be an integer from 1 to 1024.");
   }
   if (!Array.isArray(piskel.layers) || piskel.layers.length === 0) {
-    throw new Error("Piskel object.layers must be a non-empty array.");
+    fail("invalid-field", "Piskel object.layers must be a non-empty array.");
   }
   if (
     piskel.hiddenFrames !== undefined &&
     (!Array.isArray(piskel.hiddenFrames) || piskel.hiddenFrames.length !== 0)
   ) {
-    throw new Error("Piskel object.hiddenFrames must be absent or empty.");
+    fail("hidden-frames", "Piskel object.hiddenFrames must be absent or empty; hidden frames are unsupported.");
   }
 
   const layers: ParsedLayer[] = [];
@@ -564,13 +629,16 @@ export async function importPiskelJson(
       let sheet: ImageData;
       try {
         sheet = await decodePng(chunk.pngBytes);
-      } catch {
-        throw new Error(
+      } catch (error) {
+        throw new PiskelImportError(
+          "browser-image-decode",
           `Could not decode PNG for Piskel layer ${layerIndex + 1}, chunk ${chunkIndex + 1}.`,
+          { cause: error },
         );
       }
       if (!isValidDecodedImage(sheet, chunk.sheetWidth, chunk.sheetHeight)) {
-        throw new Error(
+        throw new PiskelImportError(
+          "png-dimension-mismatch",
           `Decoded PNG for Piskel layer ${layerIndex + 1}, chunk ${chunkIndex + 1} ` +
             `must contain ${chunk.sheetWidth}x${chunk.sheetHeight} RGBA pixels.`,
         );

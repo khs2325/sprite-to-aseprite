@@ -162,15 +162,21 @@ The importer supports UTF-8 JSON files with integer `modelVersion: 2` and the
 documented string-encoded layer and embedded PNG chunk structure. It preserves
 layer names and order, opacity/visibility, frames, timing, transparency, and
 decoded RGBA pixels only when those values are represented by that supported
-source subset. Each layer must cover the same complete frame range. The single
+source subset. The harmless boolean `expanded` editor-state field is ignored,
+and missing layer opacity defaults to fully opaque. Each layer must cover the
+same complete frame range. The single
 project FPS becomes one duration for every frame, calculated as
 `clamp(round(1000 / fps), 1, 65535)` milliseconds; per-frame source durations
 are not supported. Opacity from `0` through `1` is rounded to Aseprite's 8-bit
 range. Missing layer visibility defaults to visible.
 
-Other model versions, unknown fields, non-empty `hiddenFrames`, legacy layers
-with one top-level `base64PNG`, external PNG URLs, malformed or incomplete
-chunk layouts, and invalid or incorrectly sized embedded PNGs are rejected.
+Other model versions, undocumented fields, non-empty `hiddenFrames`, ambiguous
+layers containing both `chunks` and top-level `base64PNG`, external PNG URLs,
+malformed or incomplete chunk layouts, and invalid or incorrectly sized
+embedded PNGs are rejected. Legacy layers containing only top-level
+`base64PNG` are accepted as horizontal frame sheets. Validation errors name the
+first detected field, layout, coverage, or embedded-image problem without
+showing source contents or stack traces.
 The project name and description are validated metadata but are not exported;
 internal layer ids are generated. These boundaries mean Piskel conversion is
 not claimed to be universal, perfect, or lossless.
