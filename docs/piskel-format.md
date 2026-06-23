@@ -30,9 +30,14 @@ The file must be UTF-8 JSON with this model-version-2 shape:
   `fps`, `height`, `width`, and `layers`. `description` is an optional string.
   The optional boolean `expanded` field is harmless Piskel editor UI state and
   is ignored.
-  `hiddenFrames` may be absent, empty, or an array of unique in-range frame
-  indexes. Hidden Piskel frames are skipped because the converter output does
-  not preserve a hidden-frame state. At least one frame must remain visible.
+  `hiddenFrames` may be absent, an empty array, or an array of unique in-range
+  frame indexes. Some Piskel exports write this field as an empty string; the
+  converter treats `"hiddenFrames": ""` as no hidden frames. Array entries may
+  be safe integer numbers or strict decimal index strings such as `"3"`.
+  Non-empty top-level strings, including `"1"` and `"1,3"`, are rejected rather
+  than guessed as alternate formats. Hidden Piskel frames are skipped because
+  the converter output does not preserve hidden-frame state. At least one frame
+  must remain visible.
 - `name` must be a non-empty string. It is project metadata and does not create
   a layer. `description`, when present, is metadata only.
 - `width` and `height` must each be integers from `1` through `1024` inclusive.
@@ -136,11 +141,11 @@ validated but are not represented in the output. Per-frame durations are not
 accepted; every frame receives the duration derived from the one project FPS.
 
 Unsupported model versions, unknown fields other than the documented
-`expanded` state, invalid or duplicate `hiddenFrames` indexes, hiding every
-frame, ambiguous layer image layouts, external image URLs, incomplete or
-ambiguous frame coverage, and invalid PNG data are rejected. Features outside
-the accepted document fields are not silently defaulted or advertised as
-preserved.
+`expanded` state, invalid or duplicate normalized `hiddenFrames` indexes,
+hiding every frame, ambiguous layer image layouts, external image URLs,
+incomplete or ambiguous frame coverage, and invalid PNG data are rejected.
+Features outside the accepted document fields are not silently defaulted or
+advertised as preserved.
 
 ## Validation diagnostics
 

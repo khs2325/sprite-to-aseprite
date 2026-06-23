@@ -466,22 +466,32 @@ function parseVisibleFrameIndexes(
   hiddenFrames: unknown,
   frameCount: number,
 ): number[] {
-  if (hiddenFrames === undefined) {
+  if (hiddenFrames === undefined || hiddenFrames === "") {
     return Array.from({ length: frameCount }, (_, frameIndex) => frameIndex);
+  }
+  if (typeof hiddenFrames === "string") {
+    fail(
+      "hidden-frames",
+      "Piskel object.hiddenFrames may be an empty string for compatibility, but non-empty strings are unsupported.",
+    );
   }
   if (!Array.isArray(hiddenFrames)) {
     fail(
       "hidden-frames",
-      "Piskel object.hiddenFrames must be an array when present.",
+      "Piskel object.hiddenFrames must be an array or an empty string when present.",
     );
   }
 
   const hidden = new Set<number>();
-  for (const frameIndex of hiddenFrames) {
+  for (const value of hiddenFrames) {
+    const frameIndex =
+      typeof value === "string" && /^(?:0|[1-9]\d*)$/u.test(value)
+        ? Number(value)
+        : value;
     if (!Number.isSafeInteger(frameIndex)) {
       fail(
         "hidden-frames",
-        "Piskel object.hiddenFrames must contain safe integer frame indexes.",
+        "Piskel object.hiddenFrames must contain safe integer frame indexes or strict decimal index strings.",
       );
     }
     if ((frameIndex as number) < 0 || (frameIndex as number) >= frameCount) {

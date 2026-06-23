@@ -9,9 +9,6 @@
     "layers": [
       "{\"name\":\"Diagnostic\",\"opacity\":1,\"frameCount\":2,\"chunks\":[{\"layout\":[[0],[1]],\"base64PNG\":\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAYAAAB/qH1jAAAAHElEQVR42mN4Zun2nwEKtOb2Q9j/L6b9B2EQGwCudQsk4qGpRwAAAABJRU5ErkJggg==\"}]}"
     ],
-    "hiddenFrames": [
-      1,
-      "1"
-    ]
+    "hiddenFrames": ""
   }
 }
