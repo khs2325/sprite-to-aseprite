@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import { PiskelImportError } from "../core/importers/piskel";
 import {
   bindFileImportControl,
+  createSourcePreviewUrlStore,
+  formatFileSize,
+  getSourceFilePresentation,
   getSourceKind,
   SUPPORTED_SOURCE_ACCEPT,
   type BrowserSourceFile,
@@ -73,6 +76,52 @@ function dragFilesOver(target: DropTargetStub): void {
 }
 
 describe("bindFileImportControl", () => {
+  it("builds readable PNG, JSON, and Piskel card details without source text", () => {
+    expect(getSourceFilePresentation({
+      file: new File([new Uint8Array(1536)], "sheet.png"),
+      kind: "png",
+      bytes: new ArrayBuffer(0),
+    })).toEqual({
+      fileName: "sheet.png",
+      fileSize: "1.5 KB",
+      kind: "png",
+      typeLabel: "PNG image",
+    });
+    expect(getSourceFilePresentation({
+      file: new File(["private metadata"], "sheet.json"),
+      kind: "json",
+      text: "private metadata",
+    })).toMatchObject({ typeLabel: "JSON metadata" });
+    expect(getSourceFilePresentation({
+      file: new File(["private project"], "sprite.piskel"),
+      kind: "piskel",
+      text: "private project",
+    })).toMatchObject({ typeLabel: "Piskel project" });
+    expect(formatFileSize(1)).toBe("1 byte");
+  });
+
+  it("reuses and revokes browser-local preview URLs", () => {
+    const createObjectURL = vi.fn((file: File) => `blob:${file.name}`);
+    const revokeObjectURL = vi.fn();
+    const urls = createSourcePreviewUrlStore({
+      createObjectURL,
+      revokeObjectURL,
+    });
+    const first = new File(["first"], "first.png");
+    const second = new File(["second"], "second.png");
+
+    expect(urls.get(first)).toBe("blob:first.png");
+    expect(urls.get(first)).toBe("blob:first.png");
+    expect(urls.get(second)).toBe("blob:second.png");
+    expect(createObjectURL).toHaveBeenCalledTimes(2);
+
+    urls.retain([second]);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:first.png");
+
+    urls.clear();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:second.png");
+  });
+
   it("advertises and classifies .piskel files by extension for generic MIME types", () => {
     expect(SUPPORTED_SOURCE_ACCEPT.split(",")).toContain(".piskel");
     expect(

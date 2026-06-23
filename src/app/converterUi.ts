@@ -1,3 +1,5 @@
+import "../styles.css";
+
 import type { SpriteProject } from "../core/SpriteProject";
 import { importPngSequence } from "../core/importers/pngSequence";
 import {
@@ -13,6 +15,8 @@ import { importSpritesheetJson } from "../core/importers/spritesheetJson";
 import { mountExportDownloadUi } from "./exportDownload";
 import {
   bindFileImportControl,
+  createSourcePreviewUrlStore,
+  getSourceFilePresentation,
   SUPPORTED_SOURCE_ACCEPT,
   type BrowserSourceFile,
   type FileImportDependencies,
@@ -38,7 +42,11 @@ type ConversionUiElements = {
   progress: HTMLElement;
   status: HTMLElement;
   error: HTMLElement;
-  sourceControls: readonly (HTMLInputElement | HTMLSelectElement)[];
+  sourceControls: readonly (
+    | HTMLButtonElement
+    | HTMLInputElement
+    | HTMLSelectElement
+  )[];
   dropZone: HTMLElement;
   convertButton: HTMLButtonElement;
 };
@@ -63,6 +71,127 @@ const MODE_LABELS: Record<FileImportFormat, string> = {
   "spritesheet-json": "Spritesheet PNG + JSON",
   piskel: "Piskel project",
 };
+
+export type GridAutoCalculation = {
+  columns: number | null;
+  rows: number | null;
+  warning: string | null;
+};
+
+export type GridPreviewState = {
+  canConvert: boolean;
+  description: string;
+  warning: string | null;
+};
+
+const UNEVEN_GRID_WARNING =
+  "The image size is not evenly divisible by the frame size. Adjust the frame size before converting so no edge pixels are left outside the grid.";
+
+function isPositiveInteger(value: number): boolean {
+  return Number.isSafeInteger(value) && value > 0;
+}
+
+export function calculateGridFromImage(
+  imageWidth: number,
+  imageHeight: number,
+  frameWidth: number,
+  frameHeight: number,
+): GridAutoCalculation {
+  if (!isPositiveInteger(frameWidth) || !isPositiveInteger(frameHeight)) {
+    return {
+      columns: null,
+      rows: null,
+      warning: "Frame width and frame height must be positive whole numbers.",
+    };
+  }
+
+  const columns = Math.floor(imageWidth / frameWidth);
+  const rows = Math.floor(imageHeight / frameHeight);
+  if (columns === 0 || rows === 0) {
+    return {
+      columns,
+      rows,
+      warning: "The frame size exceeds the selected image dimensions.",
+    };
+  }
+  return {
+    columns,
+    rows,
+    warning:
+      imageWidth % frameWidth === 0 && imageHeight % frameHeight === 0
+        ? null
+        : UNEVEN_GRID_WARNING,
+  };
+}
+
+export function getGridPreviewState(
+  imageWidth: number,
+  imageHeight: number,
+  options: SpritesheetGridImportOptions,
+): GridPreviewState {
+  const values = [
+    options.frameWidth,
+    options.frameHeight,
+    options.rows,
+    options.columns,
+  ];
+  if (!values.every(isPositiveInteger)) {
+    return {
+      canConvert: false,
+      description: "Grid preview is waiting for positive whole-number settings.",
+      warning: "Frame width, frame height, rows, and columns must be positive whole numbers.",
+    };
+  }
+
+  const description =
+    `Grid preview: ${options.columns} columns by ${options.rows} rows, ` +
+    `${options.columns * options.rows} frames.`;
+  const gridWidth = options.frameWidth * options.columns;
+  const gridHeight = options.frameHeight * options.rows;
+  if (gridWidth > imageWidth || gridHeight > imageHeight) {
+    return {
+      canConvert: false,
+      description,
+      warning: "The configured grid exceeds the selected image dimensions.",
+    };
+  }
+  if (
+    imageWidth % options.frameWidth !== 0 ||
+    imageHeight % options.frameHeight !== 0
+  ) {
+    return { canConvert: false, description, warning: UNEVEN_GRID_WARNING };
+  }
+  if (gridWidth !== imageWidth || gridHeight !== imageHeight) {
+    return {
+      canConvert: false,
+      description,
+      warning: "The configured rows and columns do not cover the complete image.",
+    };
+  }
+  return { canConvert: true, description, warning: null };
+}
+
+export function getSourceSelectionState(
+  mode: FileImportFormat,
+  files: readonly BrowserSourceFile[],
+): { canConvert: boolean; error: string | null; status: string } {
+  if (files.length === 0) {
+    return {
+      canConvert: false,
+      error: null,
+      status: "Choose source files to begin.",
+    };
+  }
+  const error = getSourceSelectionError(mode, files);
+  return {
+    canConvert: error === null,
+    error,
+    status:
+      error === null
+        ? "Source files are ready to convert."
+        : "Adjust the selected files for the current import mode.",
+  };
+}
 
 export function renderConversionState(
   elements: ConversionUiElements,
@@ -272,7 +401,33 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
     columns.label,
     frameOrderLabel,
   );
-  controls.append(controlsHeading, modeLabel, gridFields);
+
+  const gridPreview = document.createElement("section");
+  const gridPreviewHeading = document.createElement("h3");
+  const gridPreviewFrame = document.createElement("div");
+  const gridPreviewImage = document.createElement("img");
+  const gridOverlay = document.createElement("div");
+  const gridPreviewStatus = document.createElement("p");
+  const gridPreviewWarning = document.createElement("p");
+  gridPreview.className = "grid-preview";
+  gridPreviewHeading.textContent = "Grid overlay preview";
+  gridPreviewFrame.className = "grid-preview-frame";
+  gridPreviewImage.alt = "Selected spritesheet preview";
+  gridOverlay.className = "grid-overlay";
+  gridOverlay.setAttribute("aria-hidden", "true");
+  gridPreviewStatus.setAttribute("role", "status");
+  gridPreviewStatus.setAttribute("aria-live", "polite");
+  gridPreviewWarning.className = "grid-warning";
+  gridPreviewWarning.setAttribute("role", "status");
+  gridPreviewWarning.setAttribute("aria-live", "polite");
+  gridPreviewFrame.append(gridPreviewImage, gridOverlay);
+  gridPreview.append(
+    gridPreviewHeading,
+    gridPreviewFrame,
+    gridPreviewStatus,
+    gridPreviewWarning,
+  );
+  controls.append(controlsHeading, modeLabel, gridFields, gridPreview);
 
   const importPanel = document.createElement("section");
   const importHeading = document.createElement("h2");
@@ -282,6 +437,10 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   const sourceError = document.createElement("p");
   const sourceStatus = document.createElement("p");
   const memoryWarning = document.createElement("p");
+  const selectedFilesSection = document.createElement("section");
+  const selectedFilesHeading = document.createElement("h3");
+  const selectedFileList = document.createElement("ul");
+  const clearFilesButton = document.createElement("button");
   importPanel.className = "panel";
   importHeading.textContent = "2. Add source files";
   dropZone.className = "drop-zone";
@@ -302,10 +461,22 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   memoryWarning.setAttribute("role", "status");
   memoryWarning.setAttribute("aria-live", "polite");
   memoryWarning.hidden = true;
+  selectedFilesSection.className = "selected-files";
+  selectedFilesSection.setAttribute("aria-label", "Selected source files");
+  selectedFilesHeading.textContent = "Selected files";
+  selectedFileList.className = "selected-file-list";
+  clearFilesButton.type = "button";
+  clearFilesButton.textContent = "Clear selected files";
+  selectedFilesSection.append(
+    selectedFilesHeading,
+    selectedFileList,
+    clearFilesButton,
+  );
   dropZone.append(dropInstructions, fileInput);
   importPanel.append(
     importHeading,
     dropZone,
+    selectedFilesSection,
     sourceError,
     sourceStatus,
     memoryWarning,
@@ -357,6 +528,11 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   let selectedFiles: readonly BrowserSourceFile[] = [];
   let conversionRequest = 0;
   let isConverting = false;
+  let gridSourceFile: File | null = null;
+  let gridImageWidth: number | null = null;
+  let gridImageHeight: number | null = null;
+  let gridImageError: string | null = null;
+  const previewUrls = createSourcePreviewUrlStore();
 
   const conversionElements: ConversionUiElements = {
     activityControl: convertButton,
@@ -371,6 +547,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
       rows.input,
       columns.input,
       frameOrder,
+      clearFilesButton,
     ],
     dropZone,
     convertButton,
@@ -399,18 +576,215 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
     },
   });
 
-  const clearConversion = (): void => {
+  const invalidateConversion = (): void => {
     conversionRequest += 1;
     isConverting = false;
-    selectedFiles = [];
+    syncProject(null);
+  };
+
+  const readGridOptions = (): SpritesheetGridImportOptions => ({
+    frameWidth: Number(frameWidth.input.value),
+    frameHeight: Number(frameHeight.input.value),
+    rows: Number(rows.input.value),
+    columns: Number(columns.input.value),
+    frameOrder: frameOrder.value as "row-major" | "column-major",
+  });
+
+  const getSingleSelectedPng = (): BrowserSourceFile | null =>
+    selectedFiles.length === 1 && selectedFiles[0].kind === "png"
+      ? selectedFiles[0]
+      : null;
+
+  const renderSelectedFiles = (): void => {
+    const pngFiles = selectedFiles
+      .filter((source) => source.kind === "png")
+      .map((source) => source.file);
+    previewUrls.retain(pngFiles);
+    selectedFileList.replaceChildren();
+    selectedFilesSection.hidden = selectedFiles.length === 0;
+
+    selectedFiles.forEach((source, index) => {
+      const presentation = getSourceFilePresentation(source);
+      const item = document.createElement("li");
+      const visual =
+        source.kind === "png"
+          ? document.createElement("img")
+          : document.createElement("span");
+      const details = document.createElement("div");
+      const name = document.createElement("strong");
+      const metadata = document.createElement("span");
+      const removeButton = document.createElement("button");
+
+      item.className = "selected-file-card";
+      if (visual instanceof HTMLImageElement) {
+        visual.className = "selected-file-thumbnail";
+        visual.src = previewUrls.get(source.file);
+        visual.alt = `Thumbnail preview of ${presentation.fileName}`;
+      } else {
+        visual.className = `selected-file-icon selected-file-icon-${source.kind}`;
+        visual.textContent = source.kind === "piskel" ? "PISKEL" : "JSON";
+        visual.setAttribute("aria-hidden", "true");
+      }
+      details.className = "selected-file-details";
+      name.textContent = presentation.fileName;
+      metadata.textContent = `${presentation.typeLabel} · ${presentation.fileSize}`;
+      removeButton.type = "button";
+      removeButton.textContent = `Remove ${presentation.fileName}`;
+      removeButton.addEventListener("click", () => {
+        if (!isConverting) {
+          applySelectedFiles(
+            selectedFiles.filter((_, fileIndex) => fileIndex !== index),
+          );
+        }
+      });
+      details.append(name, metadata);
+      item.append(visual, details, removeButton);
+      selectedFileList.append(item);
+    });
+  };
+
+  const renderGridPreview = (): GridPreviewState | null => {
+    const source = getSingleSelectedPng();
+    gridPreview.hidden = mode !== "spritesheet-grid" || source === null;
+    if (mode !== "spritesheet-grid" || source === null) {
+      gridPreviewStatus.textContent = "";
+      gridPreviewWarning.textContent = "";
+      gridPreviewWarning.hidden = true;
+      return null;
+    }
+
+    if (gridImageWidth === null || gridImageHeight === null) {
+      gridPreviewStatus.textContent =
+        gridImageError === null
+          ? "Reading the selected spritesheet dimensions browser-locally."
+          : "Grid preview is unavailable for the selected PNG.";
+      gridPreviewWarning.textContent = gridImageError ?? "";
+      gridPreviewWarning.hidden = gridImageError === null;
+      return null;
+    }
+
+    const options = readGridOptions();
+    const previewState = getGridPreviewState(
+      gridImageWidth,
+      gridImageHeight,
+      options,
+    );
+    gridPreviewStatus.textContent = previewState.description;
+    gridPreviewWarning.textContent = previewState.warning ?? "";
+    gridPreviewWarning.hidden = previewState.warning === null;
+    if (isPositiveInteger(options.columns) && isPositiveInteger(options.rows)) {
+      gridOverlay.style.backgroundSize =
+        `${100 / options.columns}% ${100 / options.rows}%`;
+    } else {
+      gridOverlay.style.backgroundSize = "";
+    }
+    return previewState;
+  };
+
+  const updateReadiness = (): void => {
+    const sourceState = getSourceSelectionState(mode, selectedFiles);
+    let canConvert = sourceState.canConvert;
+    let status = sourceState.status;
+    if (mode === "spritesheet-grid" && sourceState.canConvert) {
+      const gridState = renderGridPreview();
+      canConvert = gridState?.canConvert ?? false;
+      status = canConvert
+        ? "Source files and grid settings are ready to convert."
+        : "Review the spritesheet dimensions and grid settings before converting.";
+    }
+
+    sourceError.textContent = sourceState.error ?? "";
+    sourceError.hidden = sourceState.error === null;
+    sourceStatus.textContent =
+      selectedFiles.length === 0
+        ? ""
+        : `Selected ${selectedFiles.length} supported ${selectedFiles.length === 1 ? "file" : "files"}.`;
+    sourceStatus.hidden = selectedFiles.length === 0;
+    renderLargeFileWarning(
+      memoryWarning,
+      mode,
+      selectedFiles.map(({ file }) => file),
+    );
     renderConversionState(conversionElements, {
       isWorking: false,
-      canConvert: false,
-      status: "Choose source files to begin.",
+      canConvert,
+      status,
     });
-    memoryWarning.hidden = true;
-    memoryWarning.textContent = "";
-    syncProject(null);
+  };
+
+  const autoFillGrid = (): void => {
+    if (gridImageWidth === null || gridImageHeight === null) {
+      return;
+    }
+    const calculation = calculateGridFromImage(
+      gridImageWidth,
+      gridImageHeight,
+      Number(frameWidth.input.value),
+      Number(frameHeight.input.value),
+    );
+    if (calculation.columns !== null && calculation.rows !== null) {
+      columns.input.value = String(calculation.columns);
+      rows.input.value = String(calculation.rows);
+    }
+  };
+
+  const syncGridSource = (): void => {
+    if (mode !== "spritesheet-grid") {
+      gridPreview.hidden = true;
+      return;
+    }
+    const source = getSingleSelectedPng();
+    if (source?.file === gridSourceFile) {
+      renderGridPreview();
+      return;
+    }
+
+    gridSourceFile = source?.file ?? null;
+    gridImageWidth = null;
+    gridImageHeight = null;
+    gridImageError = null;
+    gridPreviewImage.removeAttribute("src");
+    if (source !== null) {
+      gridPreviewImage.alt = `Spritesheet grid preview of ${source.file.name}`;
+      gridPreviewImage.src = previewUrls.get(source.file);
+    }
+    renderGridPreview();
+  };
+
+  function applySelectedFiles(files: readonly BrowserSourceFile[]): void {
+    if (isConverting) {
+      return;
+    }
+    invalidateConversion();
+    selectedFiles = [...files];
+    fileInput.value = "";
+    renderSelectedFiles();
+    syncGridSource();
+    updateReadiness();
+  }
+
+  const handleGridImageLoad = (): void => {
+    if (gridSourceFile === null) {
+      return;
+    }
+    gridImageWidth = gridPreviewImage.naturalWidth;
+    gridImageHeight = gridPreviewImage.naturalHeight;
+    gridImageError = null;
+    autoFillGrid();
+    renderGridPreview();
+    updateReadiness();
+  };
+
+  const handleGridImageError = (): void => {
+    if (gridSourceFile === null) {
+      return;
+    }
+    gridImageWidth = null;
+    gridImageHeight = null;
+    gridImageError =
+      "Could not read the selected PNG dimensions for a grid preview.";
+    renderGridPreview();
+    updateReadiness();
   };
 
   const fileImportDependencies: FileImportDependencies = {
@@ -421,22 +795,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
           "Wait for the current conversion to finish before changing source files.",
         );
       }
-      clearConversion();
-      const selectionError = getSourceSelectionError(mode, files);
-      if (selectionError !== null) {
-        throw new Error(selectionError);
-      }
-      selectedFiles = files;
-      renderConversionState(conversionElements, {
-        isWorking: false,
-        canConvert: true,
-        status: "Source files are ready to convert.",
-      });
-      renderLargeFileWarning(
-        memoryWarning,
-        mode,
-        files.map(({ file }) => file),
-      );
+      applySelectedFiles(files);
     },
   };
   const fileImportControl = bindFileImportControl(
@@ -447,15 +806,8 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
     dropZone,
   );
 
-  const readGridOptions = (): SpritesheetGridImportOptions => ({
-    frameWidth: Number(frameWidth.input.value),
-    frameHeight: Number(frameHeight.input.value),
-    rows: Number(rows.input.value),
-    columns: Number(columns.input.value),
-    frameOrder: frameOrder.value as "row-major" | "column-major",
-  });
-
   const handleModeChange = (): void => {
+    invalidateConversion();
     mode = modeSelect.value as FileImportFormat;
     fileImportDependencies.format = mode;
     gridFields.hidden = mode !== "spritesheet-grid";
@@ -465,9 +817,25 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
       mode === "piskel"
         ? "Drop exactly one .piskel file here, or choose one below."
         : "Drag and drop PNG, JSON, or Piskel files here, or choose files below.";
-    fileInput.value = "";
-    void fileImportControl.selectFiles([]);
-    clearConversion();
+    syncGridSource();
+    updateReadiness();
+  };
+
+  const handleFrameSizeInput = (): void => {
+    invalidateConversion();
+    autoFillGrid();
+    renderGridPreview();
+    updateReadiness();
+  };
+
+  const handleGridLayoutInput = (): void => {
+    invalidateConversion();
+    renderGridPreview();
+    updateReadiness();
+  };
+
+  const handleClearFiles = (): void => {
+    applySelectedFiles([]);
   };
 
   const handleConvert = async (): Promise<void> => {
@@ -527,15 +895,33 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   };
 
   modeSelect.addEventListener("change", handleModeChange);
+  frameWidth.input.addEventListener("input", handleFrameSizeInput);
+  frameHeight.input.addEventListener("input", handleFrameSizeInput);
+  rows.input.addEventListener("input", handleGridLayoutInput);
+  columns.input.addEventListener("input", handleGridLayoutInput);
+  frameOrder.addEventListener("change", handleGridLayoutInput);
+  gridPreviewImage.addEventListener("load", handleGridImageLoad);
+  gridPreviewImage.addEventListener("error", handleGridImageError);
+  clearFilesButton.addEventListener("click", handleClearFiles);
   convertButton.addEventListener("click", handleConvert);
+  renderSelectedFiles();
   handleModeChange();
 
   return {
     destroy(): void {
       conversionRequest += 1;
       modeSelect.removeEventListener("change", handleModeChange);
+      frameWidth.input.removeEventListener("input", handleFrameSizeInput);
+      frameHeight.input.removeEventListener("input", handleFrameSizeInput);
+      rows.input.removeEventListener("input", handleGridLayoutInput);
+      columns.input.removeEventListener("input", handleGridLayoutInput);
+      frameOrder.removeEventListener("change", handleGridLayoutInput);
+      gridPreviewImage.removeEventListener("load", handleGridImageLoad);
+      gridPreviewImage.removeEventListener("error", handleGridImageError);
+      clearFilesButton.removeEventListener("click", handleClearFiles);
       convertButton.removeEventListener("click", handleConvert);
       fileImportControl.destroy();
+      previewUrls.clear();
       previewUi.destroy();
       layerUi.destroy();
       exportUi.destroy();

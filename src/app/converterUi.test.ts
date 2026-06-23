@@ -7,10 +7,13 @@ import {
 } from "../core/importers/piskel";
 import type { SpritesheetGridImportOptions } from "../core/importers/spritesheetGrid";
 import {
+  calculateGridFromImage,
   convertSourceFiles,
   getConversionErrorMessage,
   getConversionSuccessStatus,
+  getGridPreviewState,
   getSourceSelectionError,
+  getSourceSelectionState,
   renderConversionState,
 } from "./converterUi";
 import type { BrowserSourceFile } from "./fileImport";
@@ -171,6 +174,78 @@ describe("getSourceSelectionError", () => {
         piskel("two.piskel"),
       ]),
     ).toContain("exactly one .piskel file");
+  });
+
+  it("revalidates remaining and cleared files without a second selection state", () => {
+    const files = [png("sheet.png"), json("sheet.json")];
+    expect(getSourceSelectionState("spritesheet-json", files).canConvert)
+      .toBe(true);
+    expect(
+      getSourceSelectionState("spritesheet-json", files.slice(0, 1)),
+    ).toMatchObject({
+      canConvert: false,
+      error: expect.stringContaining("one PNG and one JSON"),
+    });
+    expect(getSourceSelectionState("spritesheet-json", [])).toEqual({
+      canConvert: false,
+      error: null,
+      status: "Choose source files to begin.",
+    });
+  });
+
+  it("revalidates the same selected files when import mode changes", () => {
+    const files = [png("sheet.png")];
+    expect(getSourceSelectionState("spritesheet-grid", files).canConvert)
+      .toBe(true);
+    expect(getSourceSelectionState("piskel", files).canConvert).toBe(false);
+  });
+});
+
+describe("spritesheet grid preview calculations", () => {
+  it("auto-calculates rows and columns and recalculates for frame-size changes", () => {
+    expect(calculateGridFromImage(128, 96, 32, 32)).toEqual({
+      columns: 4,
+      rows: 3,
+      warning: null,
+    });
+    expect(calculateGridFromImage(128, 96, 16, 24)).toEqual({
+      columns: 8,
+      rows: 4,
+      warning: null,
+    });
+  });
+
+  it("reports invalid frame sizes and uneven image division", () => {
+    expect(calculateGridFromImage(128, 96, 0, 32)).toMatchObject({
+      columns: null,
+      rows: null,
+      warning: expect.stringContaining("positive whole numbers"),
+    });
+    expect(calculateGridFromImage(130, 97, 32, 32)).toMatchObject({
+      columns: 4,
+      rows: 3,
+      warning: expect.stringContaining("not evenly divisible"),
+    });
+  });
+
+  it("updates accessible preview details for manual row and column changes", () => {
+    expect(getGridPreviewState(128, 96, gridOptions)).toMatchObject({
+      canConvert: false,
+      description: "Grid preview: 3 columns by 2 rows, 6 frames.",
+      warning: expect.stringContaining("do not cover"),
+    });
+    expect(getGridPreviewState(48, 32, gridOptions)).toMatchObject({
+      canConvert: true,
+      description: "Grid preview: 3 columns by 2 rows, 6 frames.",
+      warning: null,
+    });
+    expect(
+      getGridPreviewState(48, 32, { ...gridOptions, columns: 4 }),
+    ).toMatchObject({
+      canConvert: false,
+      description: "Grid preview: 4 columns by 2 rows, 8 frames.",
+      warning: expect.stringContaining("exceeds"),
+    });
   });
 });
 

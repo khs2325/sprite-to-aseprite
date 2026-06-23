@@ -38,7 +38,14 @@ schemas are not currently supported.
 Artwork and metadata are read and processed in the browser. Conversion and
 `.aseprite` generation do not upload user files to a server or send them to a
 remote image-processing service. The generated file is downloaded locally
-using browser APIs.
+using browser APIs. Selected files can be reviewed and removed before
+conversion; PNG thumbnail previews and the spritesheet grid overlay also use
+browser-local object URLs that are released when no longer needed.
+
+In spritesheet grid mode, the UI reads the selected PNG dimensions locally and
+auto-calculates rows and columns from the current frame size. A responsive grid
+overlay updates with the selected image and visible grid settings so slicing
+can be checked before conversion.
 
 ## Flat-image limitations
 
