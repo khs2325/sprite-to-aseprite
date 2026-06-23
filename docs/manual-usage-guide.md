@@ -173,7 +173,12 @@ range. Missing layer visibility defaults to visible.
 Hidden Piskel frames are accepted but omitted from the converted timeline,
 because `SpriteProject` and the generated Aseprite output do not preserve a
 hidden-frame state. Remaining frames keep their source order and are reindexed
-from zero. Other model versions, undocumented fields, invalid, duplicate, or
+from zero. Some Piskel exports serialize `hiddenFrames` as an empty string; the
+converter treats that exact value as no hidden frames. A non-empty top-level
+string is rejected instead of being interpreted as a comma-separated format.
+Arrays accept safe integer indexes and strict decimal index strings, while
+duplicate normalized indexes are rejected. Other model versions, undocumented
+fields, invalid, duplicate, or
 out-of-range `hiddenFrames` indexes, an all-hidden timeline, ambiguous layers
 containing both `chunks` and top-level `base64PNG`, external PNG URLs, malformed
 or incomplete chunk layouts, and invalid or incorrectly sized embedded PNGs

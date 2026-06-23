@@ -18,6 +18,7 @@ type PiskelFixtureName =
   | "bad-frame-coverage"
   | "bad-png-dimensions"
   | "duplicate-hidden-frames"
+  | "empty-string-hidden-frames"
   | "extra-harmless-field"
   | "hidden-frames"
   | "hidden-multi-layer"
@@ -26,6 +27,7 @@ type PiskelFixtureName =
   | "multi-layer"
   | "multiple-hidden-frames"
   | "non-array-hidden-frames"
+  | "numeric-string-hidden-frames"
   | "out-of-range-hidden-frame"
   | "unsupported-model-version";
 
@@ -236,7 +238,7 @@ describe("Piskel importer", () => {
     ]);
   });
 
-  it("imports normally when hiddenFrames is absent or empty", async () => {
+  it("imports normally when hiddenFrames is absent, empty, or an empty string", async () => {
     const absent = documentFixture("multi-frame");
     delete piskelObject(absent).hiddenFrames;
 
@@ -246,12 +248,22 @@ describe("Piskel importer", () => {
     const emptyProject = await importPiskelJson(fixture("multi-frame"), {
       decodePng: fixtureDecoder(),
     });
+    const emptyStringProject = await importPiskelJson(
+      fixture("empty-string-hidden-frames"),
+      { decodePng: fixtureDecoder() },
+    );
 
     expect(absentProject.frames.map(({ index }) => index)).toEqual([0, 1, 2]);
     expect(emptyProject.frames.map(({ index }) => index)).toEqual([0, 1, 2]);
+    expect(emptyStringProject.frames.map(({ index }) => index)).toEqual([
+      0, 1,
+    ]);
     expect(absentProject.layers[0].cels.map(({ frameIndex }) => frameIndex)).toEqual([
       0, 1, 2,
     ]);
+    expect(
+      emptyStringProject.layers[0].cels.map(({ frameIndex }) => frameIndex),
+    ).toEqual([0, 1]);
   });
 
   it("skips one hidden frame and reindexes visible cels contiguously", async () => {
@@ -274,6 +286,21 @@ describe("Piskel importer", () => {
 
     expect(project.frames).toEqual([{ index: 0, durationMs: 83 }]);
     expect(project.layers[0].cels.map(({ frameIndex }) => frameIndex)).toEqual([0]);
+    expect(pixel(project.layers[0].cels[0].imageData, 1, 0)).toEqual([
+      42, 157, 143, 255,
+    ]);
+  });
+
+  it("accepts strict numeric-string indexes and reindexes visible frames", async () => {
+    const project = await importPiskelJson(
+      fixture("numeric-string-hidden-frames"),
+      { decodePng: fixtureDecoder() },
+    );
+
+    expect(project.frames).toEqual([{ index: 0, durationMs: 83 }]);
+    expect(project.layers[0].cels.map(({ frameIndex }) => frameIndex)).toEqual([
+      0,
+    ]);
     expect(pixel(project.layers[0].cels[0].imageData, 1, 0)).toEqual([
       42, 157, 143, 255,
     ]);
@@ -599,7 +626,7 @@ describe("Piskel validation", () => {
   it.each([
     [
       "non-array-hidden-frames" as const,
-      "Piskel object.hiddenFrames must be an array when present.",
+      "Piskel object.hiddenFrames must be an array or an empty string when present.",
     ],
     [
       "duplicate-hidden-frames" as const,
@@ -621,14 +648,26 @@ describe("Piskel validation", () => {
     );
   });
 
-  it.each([1.5, "1", null])(
-    "rejects non-integer hidden frame index %s",
+  it.each(["1", "1,3"])(
+    "rejects unsupported top-level hiddenFrames string %s",
+    async (hiddenFrames) => {
+      const document = documentFixture("multi-frame");
+      piskelObject(document).hiddenFrames = hiddenFrames;
+
+      await expect(importPiskelJson(JSON.stringify(document))).rejects.toThrow(
+        "Piskel object.hiddenFrames may be an empty string for compatibility, but non-empty strings are unsupported.",
+      );
+    },
+  );
+
+  it.each([1.5, "", "01", "+1", "1.0", "1,3", null])(
+    "rejects invalid hidden frame array index %s",
     async (frameIndex) => {
       const document = documentFixture("multi-frame");
       piskelObject(document).hiddenFrames = [frameIndex];
 
       await expect(importPiskelJson(JSON.stringify(document))).rejects.toThrow(
-        "Piskel object.hiddenFrames must contain safe integer frame indexes.",
+        "Piskel object.hiddenFrames must contain safe integer frame indexes or strict decimal index strings.",
       );
     },
   );

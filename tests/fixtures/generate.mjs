@@ -182,9 +182,21 @@ outputs.set(
   }),
 );
 outputs.set(
+  "piskel/empty-string-hidden-frames.piskel",
+  mutatePiskel(diagnosticBase, (document) => {
+    document.piskel.hiddenFrames = "";
+  }),
+);
+outputs.set(
   "piskel/multiple-hidden-frames.piskel",
   mutatePiskel(outputs.get("piskel/multi-frame.piskel"), (document) => {
     document.piskel.hiddenFrames = [0, 2];
+  }),
+);
+outputs.set(
+  "piskel/numeric-string-hidden-frames.piskel",
+  mutatePiskel(outputs.get("piskel/multi-frame.piskel"), (document) => {
+    document.piskel.hiddenFrames = ["0", "2"];
   }),
 );
 outputs.set(
@@ -196,7 +208,7 @@ outputs.set(
 outputs.set(
   "piskel/duplicate-hidden-frames.piskel",
   mutatePiskel(diagnosticBase, (document) => {
-    document.piskel.hiddenFrames = [1, 1];
+    document.piskel.hiddenFrames = [1, "1"];
   }),
 );
 outputs.set(
