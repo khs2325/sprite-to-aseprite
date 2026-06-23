@@ -157,6 +157,62 @@ outputs.set(
   ]),
 );
 
+function mutatePiskel(source, mutate) {
+  const document = JSON.parse(source);
+  mutate(document);
+  return `${JSON.stringify(document, null, 2)}\n`;
+}
+
+const diagnosticBase = piskelFile("Synthetic diagnostics", 12, [
+  piskelLayer("Diagnostic", 1, motionFrames.slice(0, 2), [
+    { frameIndexes: [0, 1] },
+  ]),
+]);
+
+outputs.set(
+  "piskel/unsupported-model-version.piskel",
+  mutatePiskel(diagnosticBase, (document) => {
+    document.modelVersion = 1;
+  }),
+);
+outputs.set(
+  "piskel/hidden-frames.piskel",
+  mutatePiskel(diagnosticBase, (document) => {
+    document.piskel.hiddenFrames = [1];
+  }),
+);
+outputs.set(
+  "piskel/legacy-base64png.piskel",
+  mutatePiskel(diagnosticBase, (document) => {
+    document.piskel.expanded = false;
+    const layer = JSON.parse(document.piskel.layers[0]);
+    layer.base64PNG = layer.chunks[0].base64PNG;
+    delete layer.chunks;
+    delete layer.opacity;
+    document.piskel.layers[0] = JSON.stringify(layer);
+  }),
+);
+outputs.set(
+  "piskel/extra-harmless-field.piskel",
+  mutatePiskel(diagnosticBase, (document) => {
+    document.piskel.expanded = true;
+  }),
+);
+outputs.set(
+  "piskel/bad-frame-coverage.piskel",
+  mutatePiskel(diagnosticBase, (document) => {
+    const layer = JSON.parse(document.piskel.layers[0]);
+    layer.frameCount = 3;
+    document.piskel.layers[0] = JSON.stringify(layer);
+  }),
+);
+outputs.set(
+  "piskel/bad-png-dimensions.piskel",
+  mutatePiskel(diagnosticBase, (document) => {
+    document.piskel.width = 1;
+  }),
+);
+
 for (const [relativePath, content] of outputs) {
   const outputPath = join(fixtureDirectory, relativePath);
   if (process.argv.includes("--check")) {

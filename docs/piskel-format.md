@@ -28,6 +28,8 @@ The file must be UTF-8 JSON with this model-version-2 shape:
   missing versions, and other values are rejected.
 - `piskel` is required and must be an object. Its required fields are `name`,
   `fps`, `height`, `width`, and `layers`. `description` is an optional string.
+  The optional boolean `expanded` field is harmless Piskel editor UI state and
+  is ignored.
   `hiddenFrames` may be absent or an empty array; a non-empty value is rejected
   because `SpriteProject` has no matching hidden-frame state.
 - `name` must be a non-empty string. It is project metadata and does not create
@@ -38,8 +40,9 @@ The file must be UTF-8 JSON with this model-version-2 shape:
 - `layers` must be a non-empty array. Every entry must be a JSON string whose
   decoded value is a layer record; direct object entries are rejected. Array
   order is source layer order and is copied unchanged to `SpriteProject`.
-- Unknown fields at the outer, `piskel`, layer, and chunk levels are rejected so
-  unsupported variants do not lose metadata silently.
+- Other unknown fields at the outer, `piskel`, layer, and chunk levels are
+  rejected with the field name so unsupported variants do not lose metadata
+  silently.
 
 ## Layer records
 
@@ -60,7 +63,8 @@ Each string in `piskel.layers` must decode to exactly this shape:
 ```
 
 - `name` is required, non-empty, and preserved exactly.
-- `opacity` is required and must be a finite number from `0` through `1`.
+- `opacity`, when present, must be a finite number from `0` through `1`.
+  Missing opacity defaults to `1`, matching Piskel's normal layer default.
   Conversion to the integer `SpriteLayer.opacity` is
   `Math.round(opacity * 255)`.
 - Optional `visible`, when present, must be boolean. When absent, the layer is
@@ -68,10 +72,11 @@ Each string in `piskel.layers` must decode to exactly this shape:
   not create a source layer.
 - `frameCount` is a positive integer. Every layer must have the same
   `frameCount`, which becomes the project timeline length.
-- `chunks` is a required, non-empty array. The legacy layer form containing one
-  top-level `base64PNG` and no `chunks` is intentionally rejected, even though
-  Piskel itself has historically normalized it. This first subset has one
-  unambiguous image layout path.
+- A layer must contain either a non-empty `chunks` array or the legacy Piskel
+  form with one top-level `base64PNG`, but never both. The legacy form is
+  normalized to one horizontal sheet whose frames are ordered from `0` through
+  `frameCount - 1`, matching Piskel's own compatibility behavior. An ambiguous
+  record containing both forms is rejected.
 
 Layer ids are generated deterministically as `piskel-layer-0`,
 `piskel-layer-1`, and so on. No source layers are merged, split, or synthesized.
@@ -125,7 +130,22 @@ placed at `(0, 0)`. The Piskel project `name` and optional `description` are
 validated but are not represented in the output. Per-frame durations are not
 accepted; every frame receives the duration derived from the one project FPS.
 
-Unsupported model versions, unknown fields, non-empty `hiddenFrames`, legacy
-top-level layer `base64PNG`, external image URLs, incomplete or ambiguous frame
-coverage, and invalid PNG data are rejected. Features outside the accepted
-document fields are not silently defaulted or advertised as preserved.
+Unsupported model versions, unknown fields other than the documented
+`expanded` state, non-empty `hiddenFrames`, ambiguous layer image layouts,
+external image URLs, incomplete or ambiguous frame coverage, and invalid PNG
+data are rejected. Features outside the accepted document fields are not
+silently defaulted or advertised as preserved.
+
+## Validation diagnostics
+
+The browser reports the importer-authored reason without displaying source
+JSON, embedded pixel data, or a stack trace. Common messages identify invalid
+outer JSON, an unsupported `modelVersion`, a missing required `piskel` field,
+invalid dimensions or FPS, unsupported hidden frames, invalid string-encoded
+layer JSON, missing or ambiguous layer image data, invalid chunk layout or
+frame coverage, invalid PNG data URLs, embedded PNG dimension mismatches, and
+browser image decode failures.
+
+These messages describe the first detected structural problem. Correcting one
+problem may reveal another; validation remains strict where accepting ambiguous
+data could change layer or frame output.

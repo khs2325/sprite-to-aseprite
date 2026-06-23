@@ -3,15 +3,47 @@ import { inflateSync } from "node:zlib";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { importPiskel, importPiskelJson } from ".";
+import {
+  getPiskelImportDiagnostic,
+  importPiskel,
+  importPiskelJson,
+  PiskelImportError,
+  type PiskelImportErrorCode,
+} from ".";
 
 type JsonRecord = Record<string, unknown>;
 
-function fixture(name: "multi-frame" | "multi-layer"): string {
+type PiskelFixtureName =
+  | "bad-frame-coverage"
+  | "bad-png-dimensions"
+  | "extra-harmless-field"
+  | "hidden-frames"
+  | "legacy-base64png"
+  | "multi-frame"
+  | "multi-layer"
+  | "unsupported-model-version";
+
+function fixture(name: PiskelFixtureName): string {
   return readFileSync(
     new URL(`../../../../tests/fixtures/piskel/${name}.piskel`, import.meta.url),
     "utf8",
   );
+}
+
+async function expectPiskelError(
+  operation: Promise<unknown>,
+  code: PiskelImportErrorCode,
+  message: string,
+): Promise<void> {
+  try {
+    await operation;
+  } catch (error) {
+    expect(error).toBeInstanceOf(PiskelImportError);
+    expect(error).toMatchObject({ code });
+    expect(getPiskelImportDiagnostic(error)).toContain(message);
+    return;
+  }
+  throw new Error(`Expected Piskel import to fail with ${code}.`);
 }
 
 function documentFixture(name: "multi-frame" | "multi-layer"): JsonRecord {
@@ -178,6 +210,26 @@ describe("Piskel importer", () => {
     ]);
   });
 
+  it("accepts harmless expanded state and Piskel's legacy base64PNG layer form", async () => {
+    const expanded = await importPiskelJson(fixture("extra-harmless-field"), {
+      decodePng: fixtureDecoder(),
+    });
+    const legacy = await importPiskelJson(fixture("legacy-base64png"), {
+      decodePng: fixtureDecoder(),
+    });
+
+    expect(expanded).toMatchObject({ width: 2, height: 2 });
+    expect(legacy).toMatchObject({
+      width: 2,
+      height: 2,
+      frames: [{ index: 0 }, { index: 1 }],
+      layers: [{ name: "Diagnostic", opacity: 255, visible: true }],
+    });
+    expect(legacy.layers[0].cels.map(({ frameIndex }) => frameIndex)).toEqual([
+      0, 1,
+    ]);
+  });
+
   it("maps rectangular layout[column][row] cells to sorted frame cels", async () => {
     const document = documentFixture("multi-frame");
     const piskel = piskelObject(document);
@@ -270,6 +322,44 @@ describe("Piskel validation", () => {
       importPiskelJson(JSON.stringify(document), { decodePng }),
     ).rejects.toThrow("Piskel layer 1 is not valid JSON.");
     expect(decodePng).not.toHaveBeenCalled();
+  });
+
+  it("classifies representative failures for safe UI diagnostics", async () => {
+    await expectPiskelError(
+      importPiskelJson("not-json"),
+      "invalid-json",
+      "not valid JSON",
+    );
+    await expectPiskelError(
+      importPiskelJson(fixture("unsupported-model-version")),
+      "unsupported-model-version",
+      "expected integer 2",
+    );
+    await expectPiskelError(
+      importPiskelJson(fixture("hidden-frames")),
+      "hidden-frames",
+      "hidden frames are unsupported",
+    );
+    await expectPiskelError(
+      importPiskelJson(fixture("bad-frame-coverage")),
+      "frame-coverage",
+      "frame coverage is incomplete",
+    );
+    await expectPiskelError(
+      importPiskelJson(fixture("bad-png-dimensions")),
+      "png-dimension-mismatch",
+      "PNG dimensions must be",
+    );
+    await expectPiskelError(
+      importPiskelJson(fixture("multi-frame"), {
+        decodePng: async () => {
+          throw new Error("private decoder detail");
+        },
+      }),
+      "browser-image-decode",
+      "Could not decode PNG for Piskel layer 1, chunk 1",
+    );
+    expect(getPiskelImportDiagnostic(new Error("private pixels"))).toBeNull();
   });
 
   it.each([undefined, 1, 3, "2"])(
@@ -414,27 +504,26 @@ describe("Piskel validation", () => {
     );
   });
 
-  it("rejects unsupported fields, legacy layers, and non-empty hidden frames", async () => {
+  it("rejects unsupported fields, ambiguous legacy layers, and non-empty hidden frames", async () => {
     const unsupported = documentFixture("multi-frame");
     piskelObject(unsupported).unsupportedMetadata = true;
     await expect(importPiskelJson(JSON.stringify(unsupported))).rejects.toThrow(
-      "Piskel object contains unsupported fields.",
+      'Piskel object contains unsupported field "unsupportedMetadata".',
     );
 
-    const legacy = documentFixture("multi-frame");
-    const legacyLayer = layerRecord(legacy);
-    const chunks = legacyLayer.chunks as JsonRecord[];
-    delete legacyLayer.chunks;
-    legacyLayer.base64PNG = chunks[0].base64PNG;
-    replaceLayer(legacy, legacyLayer);
-    await expect(importPiskelJson(JSON.stringify(legacy))).rejects.toThrow(
-      "uses the unsupported legacy PNG layout.",
+    const ambiguousLegacy = documentFixture("multi-frame");
+    const ambiguousLayer = layerRecord(ambiguousLegacy);
+    const chunks = ambiguousLayer.chunks as JsonRecord[];
+    ambiguousLayer.base64PNG = chunks[0].base64PNG;
+    replaceLayer(ambiguousLegacy, ambiguousLayer);
+    await expect(importPiskelJson(JSON.stringify(ambiguousLegacy))).rejects.toThrow(
+      "cannot contain both chunks and a legacy base64PNG field.",
     );
 
     const hidden = documentFixture("multi-frame");
     piskelObject(hidden).hiddenFrames = [0];
     await expect(importPiskelJson(JSON.stringify(hidden))).rejects.toThrow(
-      "Piskel object.hiddenFrames must be absent or empty.",
+      "Piskel object.hiddenFrames must be absent or empty; hidden frames are unsupported.",
     );
   });
 

@@ -1,4 +1,5 @@
 import { validateSpriteProject } from "../core/validation";
+import { getPiskelImportDiagnostic } from "../core/importers/piskel";
 
 export const SUPPORTED_SOURCE_ACCEPT =
   ".png,.json,.piskel,image/png,application/json";
@@ -130,7 +131,7 @@ function getImporterMessage(
   if (format === "piskel") {
     return message === "Piskel mode requires exactly one .piskel file."
       ? message
-      : null;
+      : getPiskelImportDiagnostic(error);
   }
   return message.length > 0 ? message : null;
 }

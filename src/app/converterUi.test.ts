@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { SpriteProject } from "../core/SpriteProject";
+import {
+  PiskelImportError,
+  type PiskelImportErrorCode,
+} from "../core/importers/piskel";
 import type { SpritesheetGridImportOptions } from "../core/importers/spritesheetGrid";
 import {
   convertSourceFiles,
@@ -261,21 +265,57 @@ describe("Piskel conversion messages", () => {
     );
   });
 
-  it("maps validation and unsupported-format failures to safe actionable errors", () => {
+  it.each<[PiskelImportErrorCode, string]>([
+    ["invalid-json", "Piskel file is not valid JSON."],
+    ["unsupported-model-version", "Unsupported Piskel modelVersion; expected integer 2."],
+    ["missing-field", "Piskel object.layers is required."],
+    ["invalid-dimension", "Piskel object.width must be an integer from 1 to 1024."],
+    ["invalid-fps", "Piskel object.fps must be a finite number greater than zero."],
+    ["hidden-frames", "Piskel object.hiddenFrames must be absent or empty; hidden frames are unsupported."],
+    ["legacy-layer-layout", "Piskel layer 1 cannot contain both chunks and a legacy base64PNG field."],
+    ["invalid-layer-json", "Piskel layer 1 is not valid JSON."],
+    ["missing-chunks", "Piskel layer 1 must contain chunks or a legacy base64PNG field."],
+    ["invalid-chunk-layout", "Piskel layer 1, chunk 1.layout must be rectangular."],
+    ["frame-coverage", "Piskel layer 1 frame coverage is incomplete."],
+    ["invalid-png-data-url", "Piskel layer 1, chunk 1.base64PNG must be an embedded PNG data URL."],
+    ["png-dimension-mismatch", "Piskel layer 1, chunk 1.base64PNG PNG dimensions must be 4x2."],
+  ])("surfaces safe %s importer detail", (code, detail) => {
+    const message = getConversionErrorMessage(
+      "piskel",
+      new PiskelImportError(code, detail),
+    );
+
+    expect(message).toBe(
+      `The Piskel file failed validation: ${detail} ` +
+        "Check that it is a supported model-version-2 .piskel file.",
+    );
+    expect(message).not.toContain("PiskelImportError");
+  });
+
+  it("reports browser image decode detail without a stack trace", () => {
+    const detail = "Could not decode PNG for Piskel layer 1, chunk 1.";
+    expect(
+      getConversionErrorMessage(
+        "piskel",
+        new PiskelImportError("browser-image-decode", detail),
+      ),
+    ).toBe(
+      `Could not decode an embedded Piskel layer image in this browser: ${detail} ` +
+        "Check that the .piskel file is complete and try again.",
+    );
+  });
+
+  it("does not expose arbitrary thrown content as an importer diagnostic", () => {
     const privateContents = '{"private pixels":"do not display"}';
 
-    const validationMessage = getConversionErrorMessage(
+    const message = getConversionErrorMessage(
       "piskel",
       new Error(`Piskel object.width must be valid. ${privateContents}`),
     );
-    expect(validationMessage).toContain("failed validation");
-    expect(validationMessage).not.toContain(privateContents);
-
-    const unsupportedMessage = getConversionErrorMessage(
-      "piskel",
-      new Error(`Unsupported Piskel field. ${privateContents}`),
+    expect(message).toBe(
+      "Could not convert the Piskel file. " +
+        "Check that it is a supported model-version-2 .piskel file.",
     );
-    expect(unsupportedMessage).toContain("unsupported format or feature");
-    expect(unsupportedMessage).not.toContain(privateContents);
+    expect(message).not.toContain(privateContents);
   });
 });
