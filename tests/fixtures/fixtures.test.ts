@@ -211,6 +211,47 @@ describe("synthetic sprite fixtures", () => {
     ]);
   });
 
+  it("provides a trimmed atlas with deterministic placement and timing", () => {
+    const sheet = decodeFixturePng("spritesheet/trimmed-atlas.png");
+    const metadata = parseSpritesheetJsonMetadata(
+      readFileSync(
+        join(fixtureDirectory, "spritesheet/trimmed-atlas.json"),
+        "utf8",
+      ),
+    );
+    const project = createSpritesheetJsonProject(sheet, metadata);
+    const [topRight, leftColumn] = project.layers[0].cels.map(
+      ({ imageData }) => imageData,
+    );
+
+    expect(sheet).toMatchObject({ width: 3, height: 2 });
+    expect(project).toMatchObject({ width: 4, height: 4 });
+    expect(project.frames.map(({ durationMs }) => durationMs))
+      .toEqual([125, 75]);
+    expect(pixel(topRight, 2, 0)).toEqual([255, 209, 102, 255]);
+    expect(pixel(topRight, 3, 0)).toEqual([17, 138, 178, 255]);
+    expect(pixel(topRight, 1, 0)).toEqual([0, 0, 0, 0]);
+    expect(pixel(topRight, 2, 1)).toEqual([0, 0, 0, 0]);
+    expect(pixel(leftColumn, 1, 1)).toEqual([239, 71, 111, 255]);
+    expect(pixel(leftColumn, 1, 2)).toEqual([17, 138, 178, 255]);
+    expect(pixel(leftColumn, 0, 1)).toEqual([0, 0, 0, 0]);
+    expect(pixel(leftColumn, 1, 0)).toEqual([0, 0, 0, 0]);
+  });
+
+  it("provides invalid trimmed metadata without placement geometry", () => {
+    const metadata = readFileSync(
+      join(
+        fixtureDirectory,
+        "spritesheet/trimmed-atlas-missing-placement.json",
+      ),
+      "utf8",
+    );
+
+    expect(() => parseSpritesheetJsonMetadata(metadata)).toThrow(
+      "frames[0].spriteSourceSize must be an object when trimmed is true.",
+    );
+  });
+
   it("provides a chunked model-version-2 Piskel fixture with three distinct frames", () => {
     const { fixture, layers } = parsePiskelFixture("piskel/multi-frame.piskel");
 
