@@ -43,6 +43,24 @@ rather than silently inventing or dropping source structure.
 This support is not universal, perfect, or lossless Piskel conversion. Artwork
 is never uploaded or remotely processed.
 
+## Planned post-MVP compatibility work
+
+The next planned work expands the existing browser-local architecture without
+claiming support before implementation is tested:
+
+1. TexturePacker trimmed frames, followed by rotated frames and clearer atlas
+   format diagnostics.
+2. Optional SpriteProject frame tags mapped from supported Aseprite JSON, then
+   encoded by a separately tested `.aseprite` writer change.
+3. GIF and APNG research plus synthetic fixtures before core importers are
+   implemented, because timing, blending, and disposal require explicit
+   compatibility boundaries.
+
+Flat atlas, GIF, and APNG sources do not provide editable source-layer data, so
+these paths will rebuild frames on a generated layer rather than claim layer
+recovery. All planned processing remains in the browser with no artwork upload
+or server conversion.
+
 ## Core user promise
 
 User files stay in the browser whenever the web app processes artwork.
