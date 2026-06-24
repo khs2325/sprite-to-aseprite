@@ -64,6 +64,208 @@ type GifFixtureMetadata = {
   width: number;
 };
 
+type ApngFrameFixtureMetadata = {
+  blend: number;
+  delayDenominator: number;
+  delayNumerator: number;
+  dispose: number;
+  height: number;
+  left: number;
+  pixels: Buffer;
+  sequence: number;
+  top: number;
+  width: number;
+};
+
+type ApngFixtureMetadata = {
+  chunkTypes: string[];
+  declaredFrames: number;
+  frames: ApngFrameFixtureMetadata[];
+  height: number;
+  plays: number;
+  sequenceNumbers: number[];
+  width: number;
+};
+
+function fixtureCrc32(bytes: Buffer): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function inspectApngFixture(relativePath: string): ApngFixtureMetadata {
+  const png = readFileSync(join(fixtureDirectory, relativePath));
+  expect(png.subarray(0, 8)).toEqual(pngSignature);
+
+  let offset = 8;
+  let width = 0;
+  let height = 0;
+  let declaredFrames = 0;
+  let plays = 0;
+  let currentFrame: (Omit<ApngFrameFixtureMetadata, "pixels"> & {
+    compressed: Buffer[];
+  }) | undefined;
+  const chunkTypes: string[] = [];
+  const sequenceNumbers: number[] = [];
+  const encodedFrames: Array<NonNullable<typeof currentFrame>> = [];
+
+  while (offset < png.length) {
+    const length = png.readUInt32BE(offset);
+    const type = png.toString("ascii", offset + 4, offset + 8);
+    const dataStart = offset + 8;
+    const dataEnd = dataStart + length;
+    expect(dataEnd + 4).toBeLessThanOrEqual(png.length);
+    const data = png.subarray(dataStart, dataEnd);
+    const crcPayload = png.subarray(offset + 4, dataEnd);
+    expect(png.readUInt32BE(dataEnd)).toBe(fixtureCrc32(crcPayload));
+    chunkTypes.push(type);
+    offset = dataEnd + 4;
+
+    if (type === "IHDR") {
+      expect(data).toHaveLength(13);
+      width = data.readUInt32BE(0);
+      height = data.readUInt32BE(4);
+      expect([...data.subarray(8)]).toEqual([8, 6, 0, 0, 0]);
+    } else if (type === "acTL") {
+      expect(data).toHaveLength(8);
+      declaredFrames = data.readUInt32BE(0);
+      plays = data.readUInt32BE(4);
+    } else if (type === "fcTL") {
+      expect(data).toHaveLength(26);
+      currentFrame = {
+        sequence: data.readUInt32BE(0),
+        width: data.readUInt32BE(4),
+        height: data.readUInt32BE(8),
+        left: data.readUInt32BE(12),
+        top: data.readUInt32BE(16),
+        delayNumerator: data.readUInt16BE(20),
+        delayDenominator: data.readUInt16BE(22),
+        dispose: data[24],
+        blend: data[25],
+        compressed: [],
+      };
+      encodedFrames.push(currentFrame);
+      sequenceNumbers.push(currentFrame.sequence);
+    } else if (type === "IDAT") {
+      if (currentFrame === undefined) {
+        throw new Error("Fixture IDAT is missing fcTL.");
+      }
+      currentFrame.compressed.push(Buffer.from(data));
+    } else if (type === "fdAT") {
+      if (currentFrame === undefined) {
+        throw new Error("Fixture fdAT is missing fcTL.");
+      }
+      const sequence = data.readUInt32BE(0);
+      sequenceNumbers.push(sequence);
+      currentFrame.compressed.push(Buffer.from(data.subarray(4)));
+    } else if (type === "IEND") {
+      expect(data).toHaveLength(0);
+      break;
+    }
+  }
+
+  expect(offset).toBe(png.length);
+  const frames = encodedFrames.map(({ compressed, ...frame }) => {
+    const rows = inflateSync(Buffer.concat(compressed));
+    const rowLength = frame.width * 4;
+    expect(rows).toHaveLength(frame.height * (rowLength + 1));
+    const pixels = Buffer.alloc(frame.width * frame.height * 4);
+    for (let y = 0; y < frame.height; y += 1) {
+      const rowOffset = y * (rowLength + 1);
+      expect(rows[rowOffset]).toBe(0);
+      rows.copy(pixels, y * rowLength, rowOffset + 1, rowOffset + 1 + rowLength);
+    }
+    return { ...frame, pixels };
+  });
+  expect(frames).toHaveLength(declaredFrames);
+
+  return {
+    chunkTypes,
+    declaredFrames,
+    frames,
+    height,
+    plays,
+    sequenceNumbers,
+    width,
+  };
+}
+
+function normalizeApngFixtureDelay(numerator: number, denominator: number): number {
+  const effectiveDenominator = denominator === 0 ? 100 : denominator;
+  return Math.max(
+    1,
+    Math.min(65_535, Math.round((numerator * 1000) / effectiveDenominator)),
+  );
+}
+
+function compositeApngFixture(
+  fixture: ApngFixtureMetadata,
+): Uint8ClampedArray[] {
+  let canvas = new Uint8ClampedArray(fixture.width * fixture.height * 4);
+  const snapshots: Uint8ClampedArray[] = [];
+
+  for (const frame of fixture.frames) {
+    const before = canvas.slice();
+    for (let y = 0; y < frame.height; y += 1) {
+      for (let x = 0; x < frame.width; x += 1) {
+        const sourceOffset = (y * frame.width + x) * 4;
+        const destinationOffset = (
+          (frame.top + y) * fixture.width + frame.left + x
+        ) * 4;
+        if (frame.blend === 0) {
+          canvas.set(
+            frame.pixels.subarray(sourceOffset, sourceOffset + 4),
+            destinationOffset,
+          );
+          continue;
+        }
+
+        const sourceAlpha = frame.pixels[sourceOffset + 3] / 255;
+        const destinationAlpha = canvas[destinationOffset + 3] / 255;
+        const outputAlpha = sourceAlpha + destinationAlpha * (1 - sourceAlpha);
+        if (outputAlpha === 0) {
+          canvas.fill(0, destinationOffset, destinationOffset + 4);
+          continue;
+        }
+        for (let channel = 0; channel < 3; channel += 1) {
+          canvas[destinationOffset + channel] = Math.round((
+            frame.pixels[sourceOffset + channel] * sourceAlpha
+            + canvas[destinationOffset + channel]
+              * destinationAlpha * (1 - sourceAlpha)
+          ) / outputAlpha);
+        }
+        canvas[destinationOffset + 3] = Math.round(outputAlpha * 255);
+      }
+    }
+    snapshots.push(canvas.slice());
+
+    if (frame.dispose === 1) {
+      for (let y = 0; y < frame.height; y += 1) {
+        const start = ((frame.top + y) * fixture.width + frame.left) * 4;
+        canvas.fill(0, start, start + frame.width * 4);
+      }
+    } else if (frame.dispose === 2) {
+      canvas = before;
+    }
+  }
+  return snapshots;
+}
+
+function apngPixel(
+  pixels: Uint8ClampedArray,
+  width: number,
+  x: number,
+  y: number,
+): number[] {
+  const offset = (y * width + x) * 4;
+  return [...pixels.slice(offset, offset + 4)];
+}
+
 function inspectGifFixture(relativePath: string): GifFixtureMetadata {
   const gif = readFileSync(join(fixtureDirectory, relativePath));
   const signature = gif.toString("ascii", 0, 6);
@@ -305,6 +507,64 @@ function pixel(image: ImageData, x: number, y: number): number[] {
 }
 
 describe("synthetic sprite fixtures", () => {
+  it("provides APNG chunk sequences, offsets, and normalized timing", () => {
+    const apng = inspectApngFixture("apng/timing-offsets.apng");
+
+    expect(apng).toMatchObject({
+      width: 3,
+      height: 2,
+      declaredFrames: 4,
+      plays: 0,
+    });
+    expect(apng.chunkTypes).toEqual([
+      "IHDR", "acTL", "fcTL", "IDAT", "fcTL", "fdAT",
+      "fcTL", "fdAT", "fcTL", "fdAT", "IEND",
+    ]);
+    expect(apng.sequenceNumbers).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(apng.frames.map((frame) => ({
+      rectangle: [frame.left, frame.top, frame.width, frame.height],
+      delay: [frame.delayNumerator, frame.delayDenominator],
+      dispose: frame.dispose,
+      blend: frame.blend,
+    }))).toEqual([
+      { rectangle: [0, 0, 3, 2], delay: [0, 100], dispose: 0, blend: 0 },
+      { rectangle: [1, 0, 2, 1], delay: [1, 60], dispose: 0, blend: 0 },
+      { rectangle: [2, 1, 1, 1], delay: [1, 0], dispose: 0, blend: 0 },
+      { rectangle: [0, 1, 1, 1], delay: [65_535, 1], dispose: 0, blend: 0 },
+    ]);
+    expect(apng.frames.map(({ delayNumerator, delayDenominator }) =>
+      normalizeApngFixtureDelay(delayNumerator, delayDenominator)))
+      .toEqual([1, 17, 10, 65_535]);
+  });
+
+  it("provides distinct APNG source and over alpha blending", () => {
+    const apng = inspectApngFixture("apng/blend.apng");
+    const snapshots = compositeApngFixture(apng);
+
+    expect(apng.frames.map(({ blend }) => blend)).toEqual([0, 0, 1]);
+    expect(apngPixel(snapshots[0], apng.width, 0, 0))
+      .toEqual([255, 0, 0, 255]);
+    expect(apngPixel(snapshots[1], apng.width, 0, 0))
+      .toEqual([0, 0, 255, 128]);
+    expect(apngPixel(snapshots[2], apng.width, 1, 0))
+      .toEqual([128, 127, 0, 255]);
+  });
+
+  it("provides APNG none, background, and previous disposal behavior", () => {
+    const apng = inspectApngFixture("apng/disposal.apng");
+    const snapshots = compositeApngFixture(apng);
+
+    expect(apng.frames.map(({ dispose }) => dispose)).toEqual([0, 1, 2, 0]);
+    expect(snapshots.map((snapshot) => [0, 1, 2].map(
+      (x) => apngPixel(snapshot, apng.width, x, 0),
+    ))).toEqual([
+      [[255, 0, 0, 255], [255, 0, 0, 255], [255, 0, 0, 255]],
+      [[255, 0, 0, 255], [0, 255, 0, 255], [255, 0, 0, 255]],
+      [[255, 0, 0, 255], [0, 0, 0, 0], [0, 0, 255, 255]],
+      [[255, 209, 102, 255], [0, 0, 0, 0], [255, 0, 0, 255]],
+    ]);
+  });
+
   it("provides GIF89a timing, transparency, offsets, and loop metadata", () => {
     const gif = inspectGifFixture("gif/timing-transparency-offsets.gif");
 

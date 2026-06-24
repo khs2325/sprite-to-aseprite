@@ -38,6 +38,22 @@ fixture requires the pre-second-frame canvas to be restored before the third
 is drawn. The invalid fixture is intentionally structurally out of bounds for
 task 045 rejection tests.
 
+The APNG fixtures add these RGBA8, non-interlaced cases. Tests validate their
+chunk CRCs and sequence numbers, inflate their filter-0 rows, and compare the
+composited full-canvas snapshots.
+
+| Fixture | Canvas | Frames and rectangles | Timing | Blend/disposal |
+| --- | --- | --- | --- | --- |
+| `apng/timing-offsets.apng` | 3 by 2 | full canvas, `(1,0,2,1)`, `(2,1,1,1)`, `(0,1,1,1)` | `0/100` -> 1 ms, `1/60` -> 17 ms, `1/0` -> 10 ms, `65535/1` -> 65535 ms | source, none |
+| `apng/blend.apng` | 2 by 1 | full canvas, `(0,0,1,1)`, `(1,0,1,1)` | 100 ms each | source replacement, then over alpha blend |
+| `apng/disposal.apng` | 3 by 1 | full canvas, `(1,0,1,1)`, `(2,0,1,1)`, `(0,0,1,1)` | 50 ms each | none, background, previous, none |
+
+`blend.apng` replaces opaque red with 50%-alpha blue using source, then
+composites 50%-alpha red over opaque green to produce `[128,127,0,255]`.
+`disposal.apng` proves that background clears only its frame rectangle and
+previous restores the pre-draw rectangle before the following frame. APNG
+fixtures are flat animations and contain no recoverable source layers.
+
 The first PNG frame is a coral four-pixel spark around a yellow center. The
 second is the same shape shifted one pixel right and colored cyan. All unused
 pixels are transparent. The flat PNG fixtures rebuild a timeline from frames;
