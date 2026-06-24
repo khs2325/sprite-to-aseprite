@@ -68,6 +68,42 @@ describe("parseSpritesheetJsonMetadata", () => {
     }]);
   });
 
+  it("parses TexturePacker rotated frames and swapped trim dimensions", () => {
+    const metadata = parseSpritesheetJsonMetadata(JSON.stringify({
+      frames: [
+        {
+          frame: { x: 0, y: 0, w: 2, h: 3 },
+          duration: 70,
+          rotated: true,
+        },
+        {
+          frame: { x: 2, y: 0, w: 1, h: 2 },
+          duration: 90,
+          rotated: true,
+          trimmed: true,
+          sourceSize: { w: 4, h: 3 },
+          spriteSourceSize: { x: 1, y: 1, w: 2, h: 1 },
+        },
+      ],
+    }));
+
+    expect(metadata.frames).toEqual([
+      {
+        frame: { x: 0, y: 0, w: 2, h: 3 },
+        duration: 70,
+        rotated: true,
+      },
+      {
+        frame: { x: 2, y: 0, w: 1, h: 2 },
+        duration: 90,
+        rotated: true,
+        trimmed: true,
+        sourceSize: { w: 4, h: 3 },
+        spriteSourceSize: { x: 1, y: 1, w: 2, h: 1 },
+      },
+    ]);
+  });
+
   it.each([
     [{ frame: { x: -1, y: 0, w: 1, h: 1 } }, "frame.x"],
     [{ frame: { x: 0, y: -1, w: 1, h: 1 } }, "frame.y"],
@@ -76,7 +112,8 @@ describe("parseSpritesheetJsonMetadata", () => {
     [{ frame: { x: 0, y: 0, w: 1, h: 0 } }, "frame.h"],
     [{ frame: { x: 0, y: 0, w: 1, h: 1 }, duration: 0 }, "duration"],
     [{ frame: { x: 0, y: 0, w: 1, h: 1 }, duration: 1.5 }, "duration"],
-    [{ frame: { x: 0, y: 0, w: 1, h: 1 }, rotated: true }, "rotated"],
+    [{ frame: { x: 0, y: 0, w: 1, h: 1 }, rotated: 90 }, "rotated"],
+    [{ frame: { x: 0, y: 0, w: 1, h: 1 }, rotated: "clockwise" }, "rotated"],
     [{ frame: { x: 0, y: 0, w: 1, h: 1 }, trimmed: "true" }, "trimmed"],
   ])("rejects malformed frame metadata %#", (frame, field) => {
     expect(() => parseSpritesheetJsonMetadata(JSON.stringify({ frames: [frame] })))
@@ -128,6 +165,20 @@ describe("parseSpritesheetJsonMetadata", () => {
         ...trim,
       }],
     }))).toThrow(error);
+  });
+
+  it("rejects rotated trim dimensions that do not match restored orientation", () => {
+    expect(() => parseSpritesheetJsonMetadata(JSON.stringify({
+      frames: [{
+        frame: { x: 0, y: 0, w: 2, h: 3 },
+        rotated: true,
+        trimmed: true,
+        sourceSize: { w: 4, h: 4 },
+        spriteSourceSize: { x: 0, y: 0, w: 2, h: 3 },
+      }],
+    }))).toThrow(
+      "frames[0].spriteSourceSize.w must match frames[0].frame.h when rotated is true.",
+    );
   });
 
   it("rejects invalid JSON and empty frame collections", () => {
@@ -225,6 +276,57 @@ describe("createSpritesheetJsonProject", () => {
         0, 255, 255, 0,
         0, 255, 255, 0,
         0, 0, 0, 0,
+      ]);
+  });
+
+  it("restores TexturePacker rotation for asymmetric untrimmed pixels", () => {
+    const metadata = parseSpritesheetJsonMetadata(JSON.stringify({
+      frames: [{
+        frame: { x: 0, y: 0, w: 2, h: 3 },
+        duration: 65,
+        rotated: true,
+      }],
+    }));
+
+    const project = createSpritesheetJsonProject(
+      createSpritesheet(2, 3),
+      metadata,
+    );
+    const image = project.layers[0].cels[0].imageData;
+
+    expect(project).toMatchObject({
+      width: 3,
+      height: 2,
+      frames: [{ index: 0, durationMs: 65 }],
+    });
+    expect(Array.from(image.data).filter((_, index) => index % 4 === 0))
+      .toEqual([2, 4, 6, 1, 3, 5]);
+  });
+
+  it("restores rotation before placing a trimmed frame", () => {
+    const metadata = parseSpritesheetJsonMetadata(JSON.stringify({
+      frames: [{
+        frame: { x: 0, y: 0, w: 2, h: 3 },
+        rotated: true,
+        trimmed: true,
+        sourceSize: { w: 5, h: 4 },
+        spriteSourceSize: { x: 1, y: 1, w: 3, h: 2 },
+      }],
+    }));
+
+    const project = createSpritesheetJsonProject(
+      createSpritesheet(2, 3),
+      metadata,
+    );
+    const image = project.layers[0].cels[0].imageData;
+
+    expect(project).toMatchObject({ width: 5, height: 4 });
+    expect(Array.from(image.data).filter((_, index) => index % 4 === 0))
+      .toEqual([
+        0, 0, 0, 0, 0,
+        0, 2, 4, 6, 0,
+        0, 1, 3, 5, 0,
+        0, 0, 0, 0, 0,
       ]);
   });
 

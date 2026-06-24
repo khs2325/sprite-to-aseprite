@@ -154,27 +154,29 @@ positive integer `duration` in milliseconds:
 
 Array entries use array order; object-map entries use JSON property order.
 Missing durations default to 100 milliseconds. All rectangles must fit inside
-the PNG. Unrotated TexturePacker-style trimmed frames are supported when each
-trimmed entry provides complete placement metadata:
+the PNG. TexturePacker's common 90-degree clockwise atlas convention is
+supported with `"rotated": true`; orientation is restored before trim
+placement. Other rotation values and conventions are rejected. Trimmed frames
+are supported when each entry provides complete placement metadata:
 
 ```json
 {
-  "frame": { "x": 0, "y": 0, "w": 8, "h": 10 },
+  "frame": { "x": 0, "y": 0, "w": 10, "h": 8 },
   "duration": 100,
-  "rotated": false,
+  "rotated": true,
   "trimmed": true,
   "spriteSourceSize": { "x": 4, "y": 3, "w": 8, "h": 10 },
   "sourceSize": { "w": 16, "h": 16 }
 }
 ```
 
-The trimmed rectangle width and height must match `frame`, and its declared
+The trimmed rectangle width and height must match the restored frame dimensions
+(`frame.h` and `frame.w`, respectively, when rotated), and its declared
 placement must fit inside the positive whole-number `sourceSize`. The importer
-places the rectangle at that offset on a transparent full-size canvas. Every
-resulting frame canvas must have the same dimensions. Missing, malformed,
-negative, out-of-bounds, or inconsistent trim geometry is rejected rather
-than treating the cropped atlas rectangle as a complete frame. Rotated atlas
-frames remain unsupported.
+places the restored rectangle at that offset on a transparent full-size canvas.
+Every resulting frame canvas must have the same dimensions. Missing, malformed,
+negative, out-of-bounds, or inconsistent trim geometry is rejected rather than
+treating the cropped atlas rectangle as a complete frame.
 
 ## Piskel project
 
