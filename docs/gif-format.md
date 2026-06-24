@@ -1,8 +1,8 @@
-# Animated GIF import research
+# Animated GIF import format
 
-Task 044 defines the input contract for the core importer planned in task 045.
-It does not add GIF decoding or UI support. GIF artwork must be parsed in the
-browser from the selected file bytes and must never be uploaded.
+Task 044 defined this input contract, and task 045 implements the core importer.
+GIF artwork is parsed in the browser from the selected file bytes and is never
+uploaded. Browser UI selection remains separate from the core importer.
 
 ## Decoder choice
 
@@ -16,7 +16,7 @@ A flat GIF has no recoverable source layers.
 | `ImageDecoder` (WebCodecs) | Can expose animated image frames, durations, and repetition metadata when both the API and `image/gif` codec are present. It requires runtime feature detection, is not available in every target browser/test runtime, and native timing/compositing normalization is not guaranteed to match this contract. | Do not require it. A later optimization may use it only after parity tests against the canonical decoder. |
 | `createImageBitmap`, `HTMLImageElement`, and canvas | Browser-local and dependency-free, but they expose a rendered image rather than a deterministic GIF block/frame API. Timer-driven canvas capture cannot reliably recover source delays, rectangles, or disposal. | Not suitable for decoding. |
 | `DecompressionStream` | Has no GIF LZW format and does not parse GIF blocks. | Not applicable. |
-| Project-owned parser and LZW decoder | Works in browsers and Node tests, permits strict limits/errors, and makes timing and disposal deterministic. It adds code that must be covered by malformed-stream and compositing tests. | Required strategy for task 045. |
+| Project-owned parser and LZW decoder | Works in browsers and Node tests, permits strict limits/errors, and makes timing and disposal deterministic. It adds code that must be covered by malformed-stream and compositing tests. | Implemented canonical strategy. |
 
 Feature detection for an optional native path must check both
 `globalThis.ImageDecoder` and `ImageDecoder.isTypeSupported("image/gif")`.
@@ -26,7 +26,7 @@ Native decoding must never be the only path. Primary references are the
 
 ## Supported subset
 
-Task 045 should accept this minimum subset and reject everything else before
+The importer accepts this minimum subset and rejects everything else before
 allocating decoded frame output:
 
 - Header version `GIF89a` only. Reject `GIF87a` as unsupported rather than
@@ -43,8 +43,8 @@ allocating decoded frame output:
   rectangles may be offset or smaller, but must have non-zero dimensions and
   remain entirely inside the logical screen.
 - Non-interlaced image descriptors only for the initial implementation.
-  Interlaced images must fail with a specific unsupported-interlacing error;
-  task 045 must not interpret interlaced rows as sequential rows.
+  Interlaced images fail with a specific unsupported-interlacing error and are
+  not interpreted as sequential rows.
 - LZW minimum code sizes 2 through 8. Each image must have a clear code, an end
   code, valid dictionary/code-size transitions, and exactly `width * height`
   decoded indexes. Truncated, overlong, or invalid LZW data is an error.
@@ -87,7 +87,7 @@ identical frames. Do not merge frames or redistribute durations.
 Loop data is playback metadata, not frame content. Validate it and expose it
 from an internal parse result if useful, where zero means infinite looping and
 a positive value is the encoded repeat count. The current `SpriteProject` has
-no loop field, so task 045 must intentionally omit loop metadata while
+no loop field, so the importer intentionally omits loop metadata while
 rebuilding the timeline once. It must not encode extra frames to simulate
 loops.
 
@@ -130,6 +130,6 @@ The generated fixtures cover:
 - restore-to-previous followed by another frame; and
 - an out-of-bounds rectangle for precise future rejection coverage.
 
-Task 045 should add pixel-level decode/compositing expectations for these same
+Importer tests include pixel-level decode/compositing expectations for these
 files plus focused malformed LZW unit cases. The fixtures are synthetic test
 patterns, not downloaded or private artwork.
