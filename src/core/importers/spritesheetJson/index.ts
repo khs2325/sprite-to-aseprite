@@ -13,10 +13,28 @@ export type SpritesheetJsonFrameRectangle = {
   h: number;
 };
 
-export type SpritesheetJsonFrameMetadata = {
+export type SpritesheetJsonSourceSize = {
+  w: number;
+  h: number;
+};
+
+type SpritesheetJsonUntrimmedFrameMetadata = {
   frame: SpritesheetJsonFrameRectangle;
   duration: number;
+  trimmed?: false;
 };
+
+type SpritesheetJsonTrimmedFrameMetadata = {
+  frame: SpritesheetJsonFrameRectangle;
+  duration: number;
+  trimmed: true;
+  sourceSize: SpritesheetJsonSourceSize;
+  spriteSourceSize: SpritesheetJsonFrameRectangle;
+};
+
+export type SpritesheetJsonFrameMetadata =
+  | SpritesheetJsonUntrimmedFrameMetadata
+  | SpritesheetJsonTrimmedFrameMetadata;
 
 export type SpritesheetJsonMetadata = {
   frames: SpritesheetJsonFrameMetadata[];
@@ -66,8 +84,8 @@ function parseFrame(
   if (value.rotated !== undefined && value.rotated !== false) {
     throw new Error(`${path}.rotated must be false; rotated frames are unsupported.`);
   }
-  if (value.trimmed !== undefined && value.trimmed !== false) {
-    throw new Error(`${path}.trimmed must be false; trimmed frames are unsupported.`);
+  if (value.trimmed !== undefined && typeof value.trimmed !== "boolean") {
+    throw new Error(`${path}.trimmed must be a boolean.`);
   }
   if (!isRecord(value.frame)) {
     throw new Error(`${path}.frame must be an object.`);
@@ -92,13 +110,91 @@ function parseFrame(
     throw new Error(`${path}.duration must be a positive integer in milliseconds.`);
   }
 
+  const frame = {
+    x: rectangle.x,
+    y: rectangle.y,
+    w: rectangle.w,
+    h: rectangle.h,
+  };
+
+  if (value.trimmed === true) {
+    if (!isRecord(value.sourceSize)) {
+      throw new Error(`${path}.sourceSize must be an object when trimmed is true.`);
+    }
+    if (!isPositiveInteger(value.sourceSize.w)) {
+      throw new Error(`${path}.sourceSize.w must be a positive integer.`);
+    }
+    if (!isPositiveInteger(value.sourceSize.h)) {
+      throw new Error(`${path}.sourceSize.h must be a positive integer.`);
+    }
+    if (!isRecord(value.spriteSourceSize)) {
+      throw new Error(
+        `${path}.spriteSourceSize must be an object when trimmed is true.`,
+      );
+    }
+    if (!isNonNegativeInteger(value.spriteSourceSize.x)) {
+      throw new Error(`${path}.spriteSourceSize.x must be a non-negative integer.`);
+    }
+    if (!isNonNegativeInteger(value.spriteSourceSize.y)) {
+      throw new Error(`${path}.spriteSourceSize.y must be a non-negative integer.`);
+    }
+    if (!isPositiveInteger(value.spriteSourceSize.w)) {
+      throw new Error(`${path}.spriteSourceSize.w must be a positive integer.`);
+    }
+    if (!isPositiveInteger(value.spriteSourceSize.h)) {
+      throw new Error(`${path}.spriteSourceSize.h must be a positive integer.`);
+    }
+    if (value.spriteSourceSize.w !== frame.w) {
+      throw new Error(
+        `${path}.spriteSourceSize.w must match ${path}.frame.w for an unrotated trimmed frame.`,
+      );
+    }
+    if (value.spriteSourceSize.h !== frame.h) {
+      throw new Error(
+        `${path}.spriteSourceSize.h must match ${path}.frame.h for an unrotated trimmed frame.`,
+      );
+    }
+    if (
+      value.spriteSourceSize.x + value.spriteSourceSize.w > value.sourceSize.w ||
+      value.spriteSourceSize.y + value.spriteSourceSize.h > value.sourceSize.h
+    ) {
+      throw new Error(
+        `${path}.spriteSourceSize rectangle (` +
+          `${value.spriteSourceSize.x}, ${value.spriteSourceSize.y}, ` +
+          `${value.spriteSourceSize.w}, ${value.spriteSourceSize.h}) is outside ` +
+          `${path}.sourceSize dimensions ${value.sourceSize.w}x${value.sourceSize.h}.`,
+      );
+    }
+    if (
+      value.spriteSourceSize.x === 0 &&
+      value.spriteSourceSize.y === 0 &&
+      value.spriteSourceSize.w === value.sourceSize.w &&
+      value.spriteSourceSize.h === value.sourceSize.h
+    ) {
+      throw new Error(
+        `${path}.trimmed is true but spriteSourceSize fills sourceSize without trimming.`,
+      );
+    }
+
+    return {
+      frame,
+      duration,
+      trimmed: true,
+      sourceSize: {
+        w: value.sourceSize.w,
+        h: value.sourceSize.h,
+      },
+      spriteSourceSize: {
+        x: value.spriteSourceSize.x,
+        y: value.spriteSourceSize.y,
+        w: value.spriteSourceSize.w,
+        h: value.spriteSourceSize.h,
+      },
+    };
+  }
+
   return {
-    frame: {
-      x: rectangle.x,
-      y: rectangle.y,
-      w: rectangle.w,
-      h: rectangle.h,
-    },
+    frame,
     duration,
   };
 }
@@ -106,7 +202,8 @@ function parseFrame(
 /**
  * Parses the documented Aseprite-style metadata subset. `frames` may be an
  * ordered array or an object map; each entry needs `frame.{x,y,w,h}` and may
- * provide `duration`. Rotated and trimmed frames are not supported.
+ * provide `duration`. Unrotated TexturePacker-style trimmed frames also need
+ * complete `sourceSize` and `spriteSourceSize` placement geometry.
  */
 export function parseSpritesheetJsonMetadata(
   json: string,
@@ -188,6 +285,33 @@ function sliceFrame(
   };
 }
 
+function rebuildTrimmedFrame(
+  spritesheet: ImageData,
+  metadata: SpritesheetJsonTrimmedFrameMetadata,
+): ImageData {
+  const { frame, sourceSize, spriteSourceSize } = metadata;
+  const data = new Uint8ClampedArray(sourceSize.w * sourceSize.h * 4);
+  const rowLength = frame.w * 4;
+
+  for (let row = 0; row < frame.h; row += 1) {
+    const sourceOffset =
+      ((frame.y + row) * spritesheet.width + frame.x) * 4;
+    const destinationOffset =
+      ((spriteSourceSize.y + row) * sourceSize.w + spriteSourceSize.x) * 4;
+    data.set(
+      spritesheet.data.subarray(sourceOffset, sourceOffset + rowLength),
+      destinationOffset,
+    );
+  }
+
+  return {
+    colorSpace: spritesheet.colorSpace,
+    data,
+    height: sourceSize.h,
+    width: sourceSize.w,
+  };
+}
+
 export function createSpritesheetJsonProject(
   spritesheet: ImageData,
   metadata: SpritesheetJsonMetadata,
@@ -199,15 +323,28 @@ export function createSpritesheetJsonProject(
     throw new Error("Spritesheet metadata must contain at least one frame.");
   }
 
-  const firstRectangle = metadata.frames[0].frame;
-  const cels = metadata.frames.map(({ frame }, frameIndex) => {
+  const firstFrame = metadata.frames[0];
+  const firstWidth = firstFrame.trimmed === true
+    ? firstFrame.sourceSize.w
+    : firstFrame.frame.w;
+  const firstHeight = firstFrame.trimmed === true
+    ? firstFrame.sourceSize.h
+    : firstFrame.frame.h;
+  const cels = metadata.frames.map((frameMetadata, frameIndex) => {
+    const { frame } = frameMetadata;
+    const width = frameMetadata.trimmed === true
+      ? frameMetadata.sourceSize.w
+      : frame.w;
+    const height = frameMetadata.trimmed === true
+      ? frameMetadata.sourceSize.h
+      : frame.h;
     if (
-      frame.w !== firstRectangle.w ||
-      frame.h !== firstRectangle.h
+      width !== firstWidth ||
+      height !== firstHeight
     ) {
       throw new Error(
-        `Frame ${frameIndex + 1} dimensions ${frame.w}x${frame.h} do not match ` +
-          `the first frame dimensions ${firstRectangle.w}x${firstRectangle.h}.`,
+        `Frame ${frameIndex + 1} dimensions ${width}x${height} do not match ` +
+          `the first frame dimensions ${firstWidth}x${firstHeight}.`,
       );
     }
     if (frame.x + frame.w > spritesheet.width || frame.y + frame.h > spritesheet.height) {
@@ -221,13 +358,15 @@ export function createSpritesheetJsonProject(
       frameIndex,
       x: 0,
       y: 0,
-      imageData: sliceFrame(spritesheet, frame),
+      imageData: frameMetadata.trimmed === true
+        ? rebuildTrimmedFrame(spritesheet, frameMetadata)
+        : sliceFrame(spritesheet, frame),
     };
   });
 
   return {
-    width: firstRectangle.w,
-    height: firstRectangle.h,
+    width: firstWidth,
+    height: firstHeight,
     colorMode: "rgba",
     frames: metadata.frames.map(({ duration }, index) => ({
       index,

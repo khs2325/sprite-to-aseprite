@@ -154,7 +154,27 @@ positive integer `duration` in milliseconds:
 
 Array entries use array order; object-map entries use JSON property order.
 Missing durations default to 100 milliseconds. All rectangles must fit inside
-the PNG and have the same dimensions. Rotated or trimmed frames are rejected.
+the PNG. Unrotated TexturePacker-style trimmed frames are supported when each
+trimmed entry provides complete placement metadata:
+
+```json
+{
+  "frame": { "x": 0, "y": 0, "w": 8, "h": 10 },
+  "duration": 100,
+  "rotated": false,
+  "trimmed": true,
+  "spriteSourceSize": { "x": 4, "y": 3, "w": 8, "h": 10 },
+  "sourceSize": { "w": 16, "h": 16 }
+}
+```
+
+The trimmed rectangle width and height must match `frame`, and its declared
+placement must fit inside the positive whole-number `sourceSize`. The importer
+places the rectangle at that offset on a transparent full-size canvas. Every
+resulting frame canvas must have the same dimensions. Missing, malformed,
+negative, out-of-bounds, or inconsistent trim geometry is rejected rather
+than treating the cropped atlas rectangle as a complete frame. Rotated atlas
+frames remain unsupported.
 
 ## Piskel project
 

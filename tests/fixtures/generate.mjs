@@ -119,6 +119,45 @@ outputs.set("png-sequence/spark-01.png", encodePng(4, 4, frameOne));
 outputs.set("png-sequence/spark-02.png", encodePng(4, 4, frameTwo));
 outputs.set("spritesheet/spark-sheet.png", encodePng(8, 4, spritesheet));
 
+const trimmedAtlas = [
+  coral, yellow, cyan,
+  cyan, transparent, transparent,
+];
+const trimmedFrames = {
+  "top-right": {
+    frame: { x: 1, y: 0, w: 2, h: 1 },
+    duration: 125,
+    rotated: false,
+    trimmed: true,
+    spriteSourceSize: { x: 2, y: 0, w: 2, h: 1 },
+    sourceSize: { w: 4, h: 4 },
+  },
+  "left-column": {
+    frame: { x: 0, y: 0, w: 1, h: 2 },
+    duration: 75,
+    rotated: false,
+    trimmed: true,
+    spriteSourceSize: { x: 1, y: 1, w: 1, h: 2 },
+    sourceSize: { w: 4, h: 4 },
+  },
+};
+
+outputs.set("spritesheet/trimmed-atlas.png", encodePng(3, 2, trimmedAtlas));
+outputs.set(
+  "spritesheet/trimmed-atlas.json",
+  `${JSON.stringify({ frames: trimmedFrames }, null, 2)}\n`,
+);
+outputs.set(
+  "spritesheet/trimmed-atlas-missing-placement.json",
+  `${JSON.stringify({
+    frames: [{
+      frame: { x: 0, y: 0, w: 1, h: 2 },
+      trimmed: true,
+      sourceSize: { w: 4, h: 4 },
+    }],
+  }, null, 2)}\n`,
+);
+
 const red = [230, 57, 70, 255];
 const green = [42, 157, 143, 255];
 const blue = [69, 123, 157, 255];

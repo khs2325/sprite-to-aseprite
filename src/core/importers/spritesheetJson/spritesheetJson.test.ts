@@ -48,6 +48,26 @@ describe("parseSpritesheetJsonMetadata", () => {
       .toEqual([[1, 120], [0, 75]]);
   });
 
+  it("parses complete TexturePacker trim geometry", () => {
+    const metadata = parseSpritesheetJsonMetadata(JSON.stringify({
+      frames: [{
+        frame: { x: 1, y: 2, w: 2, h: 1 },
+        duration: 85,
+        trimmed: true,
+        sourceSize: { w: 4, h: 3 },
+        spriteSourceSize: { x: 1, y: 1, w: 2, h: 1 },
+      }],
+    }));
+
+    expect(metadata.frames).toEqual([{
+      frame: { x: 1, y: 2, w: 2, h: 1 },
+      duration: 85,
+      trimmed: true,
+      sourceSize: { w: 4, h: 3 },
+      spriteSourceSize: { x: 1, y: 1, w: 2, h: 1 },
+    }]);
+  });
+
   it.each([
     [{ frame: { x: -1, y: 0, w: 1, h: 1 } }, "frame.x"],
     [{ frame: { x: 0, y: -1, w: 1, h: 1 } }, "frame.y"],
@@ -57,10 +77,57 @@ describe("parseSpritesheetJsonMetadata", () => {
     [{ frame: { x: 0, y: 0, w: 1, h: 1 }, duration: 0 }, "duration"],
     [{ frame: { x: 0, y: 0, w: 1, h: 1 }, duration: 1.5 }, "duration"],
     [{ frame: { x: 0, y: 0, w: 1, h: 1 }, rotated: true }, "rotated"],
-    [{ frame: { x: 0, y: 0, w: 1, h: 1 }, trimmed: true }, "trimmed"],
+    [{ frame: { x: 0, y: 0, w: 1, h: 1 }, trimmed: "true" }, "trimmed"],
   ])("rejects malformed frame metadata %#", (frame, field) => {
     expect(() => parseSpritesheetJsonMetadata(JSON.stringify({ frames: [frame] })))
       .toThrow(field);
+  });
+
+  it.each([
+    [{}, "sourceSize must be an object"],
+    [{ sourceSize: { w: 0, h: 2 } }, "sourceSize.w"],
+    [{ sourceSize: { w: 2 } }, "sourceSize.h"],
+    [{ sourceSize: { w: 2, h: 2 } }, "spriteSourceSize must be an object"],
+    [{
+      sourceSize: { w: 2, h: 2 },
+      spriteSourceSize: { x: -1, y: 0, w: 1, h: 1 },
+    }, "spriteSourceSize.x"],
+    [{
+      sourceSize: { w: 2, h: 2 },
+      spriteSourceSize: { x: 0, y: -1, w: 1, h: 1 },
+    }, "spriteSourceSize.y"],
+    [{
+      sourceSize: { w: 2, h: 2 },
+      spriteSourceSize: { x: 0, y: 0, w: 0, h: 1 },
+    }, "spriteSourceSize.w"],
+    [{
+      sourceSize: { w: 2, h: 2 },
+      spriteSourceSize: { x: 0, y: 0, w: 1, h: 0 },
+    }, "spriteSourceSize.h"],
+    [{
+      sourceSize: { w: 3, h: 2 },
+      spriteSourceSize: { x: 0, y: 0, w: 2, h: 1 },
+    }, "spriteSourceSize.w must match"],
+    [{
+      sourceSize: { w: 2, h: 3 },
+      spriteSourceSize: { x: 0, y: 0, w: 1, h: 2 },
+    }, "spriteSourceSize.h must match"],
+    [{
+      sourceSize: { w: 2, h: 2 },
+      spriteSourceSize: { x: 2, y: 0, w: 1, h: 1 },
+    }, "is outside frames[0].sourceSize dimensions 2x2"],
+    [{
+      sourceSize: { w: 1, h: 1 },
+      spriteSourceSize: { x: 0, y: 0, w: 1, h: 1 },
+    }, "without trimming"],
+  ])("rejects incomplete or inconsistent trim metadata %#", (trim, error) => {
+    expect(() => parseSpritesheetJsonMetadata(JSON.stringify({
+      frames: [{
+        frame: { x: 0, y: 0, w: 1, h: 1 },
+        trimmed: true,
+        ...trim,
+      }],
+    }))).toThrow(error);
   });
 
   it("rejects invalid JSON and empty frame collections", () => {
@@ -120,6 +187,45 @@ describe("createSpritesheetJsonProject", () => {
     expect(project.layers[0].cels.map((cel) =>
       Array.from(cel.imageData.data).filter((_, index) => index % 4 === 0),
     )).toEqual([[3, 4, 7, 8], [1, 2, 5, 6]]);
+  });
+
+  it("places trimmed pixels on a transparent full-size canvas", () => {
+    const metadata = parseSpritesheetJsonMetadata(JSON.stringify({
+      frames: [{
+        frame: { x: 1, y: 0, w: 2, h: 2 },
+        duration: 85,
+        trimmed: true,
+        sourceSize: { w: 4, h: 4 },
+        spriteSourceSize: { x: 1, y: 1, w: 2, h: 2 },
+      }],
+    }));
+
+    const project = createSpritesheetJsonProject(
+      createSpritesheet(3, 2),
+      metadata,
+    );
+    const image = project.layers[0].cels[0].imageData;
+
+    expect(project).toMatchObject({
+      width: 4,
+      height: 4,
+      frames: [{ index: 0, durationMs: 85 }],
+    });
+    expect(image).toMatchObject({ width: 4, height: 4 });
+    expect(Array.from(image.data).filter((_, index) => index % 4 === 0))
+      .toEqual([
+        0, 0, 0, 0,
+        0, 2, 3, 0,
+        0, 5, 6, 0,
+        0, 0, 0, 0,
+      ]);
+    expect(Array.from(image.data).filter((_, index) => index % 4 === 3))
+      .toEqual([
+        0, 0, 0, 0,
+        0, 255, 255, 0,
+        0, 255, 255, 0,
+        0, 0, 0, 0,
+      ]);
   });
 
   it("rejects out-of-bounds and inconsistent frame rectangles", () => {
