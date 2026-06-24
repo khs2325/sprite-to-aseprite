@@ -48,5 +48,5 @@ verification:
   - npm run build
 auto_merge:
   allowed: false
-  max_changed_files: 8
+  max_changed_files: 15
   forbidden_paths: *forbidden
