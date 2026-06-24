@@ -65,6 +65,6 @@
   1. [x] supported-subset research and deterministic fixtures (task 044)
   2. [ ] core animated GIF importer (task 045)
 - APNG:
-  1. [ ] supported-subset research and deterministic fixtures (task 046)
+  1. [x] supported-subset research and deterministic fixtures (task 046)
   2. [ ] core APNG importer (task 047)
 - Pixelorama `.pxo` remains deferred until the atlas and GIF/APNG sequence is complete.

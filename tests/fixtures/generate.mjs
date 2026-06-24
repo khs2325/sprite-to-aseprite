@@ -74,6 +74,62 @@ function pngDataUrl(width, height, pixels) {
   return `data:image/png;base64,${encodePng(width, height, pixels).toString("base64")}`;
 }
 
+function uint16(value) {
+  const bytes = Buffer.alloc(2);
+  bytes.writeUInt16BE(value);
+  return bytes;
+}
+
+function encodeRgbaRows(width, height, pixels) {
+  const rows = [];
+  for (let y = 0; y < height; y += 1) {
+    rows.push(Buffer.from([0]));
+    rows.push(Buffer.from(pixels.slice(y * width, (y + 1) * width).flat()));
+  }
+  return deflateSync(Buffer.concat(rows), { level: 9 });
+}
+
+function apngFrameControl(sequence, frame) {
+  return Buffer.concat([
+    uint32(sequence),
+    uint32(frame.width),
+    uint32(frame.height),
+    uint32(frame.left),
+    uint32(frame.top),
+    uint16(frame.delayNumerator),
+    uint16(frame.delayDenominator),
+    Buffer.from([frame.dispose, frame.blend]),
+  ]);
+}
+
+function encodeApng(width, height, frames, { plays = 0 } = {}) {
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8;
+  header[9] = 6;
+
+  const blocks = [
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk("IHDR", header),
+    chunk("acTL", Buffer.concat([uint32(frames.length), uint32(plays)])),
+  ];
+  let sequence = 0;
+  frames.forEach((frame, index) => {
+    blocks.push(chunk("fcTL", apngFrameControl(sequence, frame)));
+    sequence += 1;
+    const compressed = encodeRgbaRows(frame.width, frame.height, frame.pixels);
+    if (index === 0) {
+      blocks.push(chunk("IDAT", compressed));
+    } else {
+      blocks.push(chunk("fdAT", Buffer.concat([uint32(sequence), compressed])));
+      sequence += 1;
+    }
+  });
+  blocks.push(chunk("IEND", Buffer.alloc(0)));
+  return Buffer.concat(blocks);
+}
+
 function uint16LittleEndian(value) {
   const bytes = Buffer.alloc(2);
   bytes.writeUInt16LE(value);
@@ -222,6 +278,96 @@ for (let y = 0; y < 4; y += 1) {
 outputs.set("png-sequence/spark-01.png", encodePng(4, 4, frameOne));
 outputs.set("png-sequence/spark-02.png", encodePng(4, 4, frameTwo));
 outputs.set("spritesheet/spark-sheet.png", encodePng(8, 4, spritesheet));
+
+const opaqueRed = [255, 0, 0, 255];
+const opaqueGreen = [0, 255, 0, 255];
+const opaqueBlue = [0, 0, 255, 255];
+const halfRed = [255, 0, 0, 128];
+const halfBlue = [0, 0, 255, 128];
+
+outputs.set(
+  "apng/timing-offsets.apng",
+  encodeApng(3, 2, [
+    {
+      left: 0, top: 0, width: 3, height: 2,
+      delayNumerator: 0, delayDenominator: 100,
+      dispose: 0, blend: 0,
+      pixels: [coral, transparent, transparent, transparent, transparent, transparent],
+    },
+    {
+      left: 1, top: 0, width: 2, height: 1,
+      delayNumerator: 1, delayDenominator: 60,
+      dispose: 0, blend: 0,
+      pixels: [transparent, cyan],
+    },
+    {
+      left: 2, top: 1, width: 1, height: 1,
+      delayNumerator: 1, delayDenominator: 0,
+      dispose: 0, blend: 0,
+      pixels: [yellow],
+    },
+    {
+      left: 0, top: 1, width: 1, height: 1,
+      delayNumerator: 65_535, delayDenominator: 1,
+      dispose: 0, blend: 0,
+      pixels: [coral],
+    },
+  ]),
+);
+
+outputs.set(
+  "apng/blend.apng",
+  encodeApng(2, 1, [
+    {
+      left: 0, top: 0, width: 2, height: 1,
+      delayNumerator: 1, delayDenominator: 10,
+      dispose: 0, blend: 0,
+      pixels: [opaqueRed, opaqueGreen],
+    },
+    {
+      left: 0, top: 0, width: 1, height: 1,
+      delayNumerator: 1, delayDenominator: 10,
+      dispose: 0, blend: 0,
+      pixels: [halfBlue],
+    },
+    {
+      left: 1, top: 0, width: 1, height: 1,
+      delayNumerator: 1, delayDenominator: 10,
+      dispose: 0, blend: 1,
+      pixels: [halfRed],
+    },
+  ]),
+);
+
+outputs.set(
+  "apng/disposal.apng",
+  encodeApng(3, 1, [
+    {
+      left: 0, top: 0, width: 3, height: 1,
+      delayNumerator: 1, delayDenominator: 20,
+      dispose: 0, blend: 0,
+      pixels: [opaqueRed, opaqueRed, opaqueRed],
+    },
+    {
+      left: 1, top: 0, width: 1, height: 1,
+      delayNumerator: 1, delayDenominator: 20,
+      dispose: 1, blend: 0,
+      pixels: [opaqueGreen],
+    },
+    {
+      left: 2, top: 0, width: 1, height: 1,
+      delayNumerator: 1, delayDenominator: 20,
+      dispose: 2, blend: 0,
+      pixels: [opaqueBlue],
+    },
+    {
+      left: 0, top: 0, width: 1, height: 1,
+      delayNumerator: 1, delayDenominator: 20,
+      dispose: 0, blend: 0,
+      pixels: [yellow],
+    },
+  ]),
+);
 
 outputs.set(
   "gif/timing-transparency-offsets.gif",
