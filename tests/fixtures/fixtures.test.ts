@@ -42,6 +42,142 @@ type PiskelFixture = {
   };
 };
 
+type GifFrameFixtureMetadata = {
+  delayCentiseconds: number;
+  disposal: number;
+  height: number;
+  interlaced: boolean;
+  left: number;
+  lzwMinimumCodeSize: number;
+  top: number;
+  transparentIndex: number | null;
+  width: number;
+};
+
+type GifFixtureMetadata = {
+  backgroundColorIndex: number;
+  frames: GifFrameFixtureMetadata[];
+  height: number;
+  loopCount: number | null;
+  pixelAspectRatio: number;
+  signature: string;
+  width: number;
+};
+
+function inspectGifFixture(relativePath: string): GifFixtureMetadata {
+  const gif = readFileSync(join(fixtureDirectory, relativePath));
+  const signature = gif.toString("ascii", 0, 6);
+  expect(signature).toBe("GIF89a");
+
+  const width = gif.readUInt16LE(6);
+  const height = gif.readUInt16LE(8);
+  const logicalScreenPacked = gif[10];
+  const backgroundColorIndex = gif[11];
+  const pixelAspectRatio = gif[12];
+  expect(logicalScreenPacked & 0x80).toBe(0x80);
+
+  const globalColorTableEntries = 1 << ((logicalScreenPacked & 0x07) + 1);
+  let offset = 13 + globalColorTableEntries * 3;
+  let loopCount: number | null = null;
+  let pendingControl: Pick<
+    GifFrameFixtureMetadata,
+    "delayCentiseconds" | "disposal" | "transparentIndex"
+  > | null = null;
+  const frames: GifFrameFixtureMetadata[] = [];
+
+  const readSubBlocks = (): Buffer => {
+    const blocks: Buffer[] = [];
+    while (true) {
+      const length = gif[offset];
+      offset += 1;
+      expect(length).toBeDefined();
+      if (length === 0) {
+        return Buffer.concat(blocks);
+      }
+      expect(offset + length).toBeLessThanOrEqual(gif.length);
+      blocks.push(gif.subarray(offset, offset + length));
+      offset += length;
+    }
+  };
+
+  while (gif[offset] !== 0x3b) {
+    expect(offset).toBeLessThan(gif.length);
+    const introducer = gif[offset];
+
+    if (introducer === 0x21 && gif[offset + 1] === 0xf9) {
+      expect(gif[offset + 2]).toBe(4);
+      const packed = gif[offset + 3];
+      pendingControl = {
+        delayCentiseconds: gif.readUInt16LE(offset + 4),
+        disposal: (packed >> 2) & 0x07,
+        transparentIndex: (packed & 0x01) === 0 ? null : gif[offset + 6],
+      };
+      expect(gif[offset + 7]).toBe(0);
+      offset += 8;
+      continue;
+    }
+
+    if (introducer === 0x21 && gif[offset + 1] === 0xff) {
+      expect(gif[offset + 2]).toBe(11);
+      const identifier = gif.toString("ascii", offset + 3, offset + 14);
+      offset += 14;
+      const applicationData = readSubBlocks();
+      if (identifier === "NETSCAPE2.0") {
+        expect([...applicationData.subarray(0, 1)]).toEqual([1]);
+        expect(applicationData).toHaveLength(3);
+        loopCount = applicationData.readUInt16LE(1);
+      }
+      continue;
+    }
+
+    expect(introducer).toBe(0x2c);
+    const left = gif.readUInt16LE(offset + 1);
+    const top = gif.readUInt16LE(offset + 3);
+    const frameWidth = gif.readUInt16LE(offset + 5);
+    const frameHeight = gif.readUInt16LE(offset + 7);
+    const imagePacked = gif[offset + 9];
+    offset += 10;
+    if ((imagePacked & 0x80) !== 0) {
+      offset += (1 << ((imagePacked & 0x07) + 1)) * 3;
+    }
+    const lzwMinimumCodeSize = gif[offset];
+    offset += 1;
+    expect(readSubBlocks().length).toBeGreaterThan(0);
+
+    frames.push({
+      delayCentiseconds: pendingControl?.delayCentiseconds ?? 0,
+      disposal: pendingControl?.disposal ?? 0,
+      height: frameHeight,
+      interlaced: (imagePacked & 0x40) !== 0,
+      left,
+      lzwMinimumCodeSize,
+      top,
+      transparentIndex: pendingControl?.transparentIndex ?? null,
+      width: frameWidth,
+    });
+    pendingControl = null;
+  }
+
+  expect(gif[offset]).toBe(0x3b);
+  expect(offset).toBe(gif.length - 1);
+  return {
+    backgroundColorIndex,
+    frames,
+    height,
+    loopCount,
+    pixelAspectRatio,
+    signature,
+    width,
+  };
+}
+
+function normalizeGifFixtureDelay(delayCentiseconds: number): number {
+  if (delayCentiseconds === 0) {
+    return 100;
+  }
+  return Math.max(20, Math.min(65_535, delayCentiseconds * 10));
+}
+
 function decodePng(png: Buffer): ImageData {
   expect(png.subarray(0, 8)).toEqual(pngSignature);
 
@@ -169,6 +305,71 @@ function pixel(image: ImageData, x: number, y: number): number[] {
 }
 
 describe("synthetic sprite fixtures", () => {
+  it("provides GIF89a timing, transparency, offsets, and loop metadata", () => {
+    const gif = inspectGifFixture("gif/timing-transparency-offsets.gif");
+
+    expect(gif).toMatchObject({
+      signature: "GIF89a",
+      width: 3,
+      height: 2,
+      backgroundColorIndex: 0,
+      pixelAspectRatio: 0,
+      loopCount: 0,
+    });
+    expect(gif.frames.map((frame) => ({
+      rectangle: [frame.left, frame.top, frame.width, frame.height],
+      delay: frame.delayCentiseconds,
+      disposal: frame.disposal,
+      transparentIndex: frame.transparentIndex,
+      interlaced: frame.interlaced,
+      lzwMinimumCodeSize: frame.lzwMinimumCodeSize,
+    }))).toEqual([
+      { rectangle: [0, 0, 3, 2], delay: 0, disposal: 1, transparentIndex: 0, interlaced: false, lzwMinimumCodeSize: 2 },
+      { rectangle: [1, 0, 2, 1], delay: 1, disposal: 1, transparentIndex: 0, interlaced: false, lzwMinimumCodeSize: 2 },
+      { rectangle: [2, 1, 1, 1], delay: 12, disposal: 1, transparentIndex: 0, interlaced: false, lzwMinimumCodeSize: 2 },
+      { rectangle: [0, 1, 1, 1], delay: 65_535, disposal: 1, transparentIndex: 0, interlaced: false, lzwMinimumCodeSize: 2 },
+    ]);
+    expect(gif.frames.map(({ delayCentiseconds }) =>
+      normalizeGifFixtureDelay(delayCentiseconds)))
+      .toEqual([100, 20, 120, 65_535]);
+  });
+
+  it("provides GIF89a background and previous disposal sequences", () => {
+    const background = inspectGifFixture("gif/disposal-background.gif");
+    const previous = inspectGifFixture("gif/disposal-previous.gif");
+
+    expect(background.frames.map(({ left, top, width, height, disposal }) => ({
+      rectangle: [left, top, width, height],
+      disposal,
+    }))).toEqual([
+      { rectangle: [0, 0, 3, 2], disposal: 1 },
+      { rectangle: [1, 0, 1, 1], disposal: 2 },
+      { rectangle: [2, 0, 1, 1], disposal: 1 },
+    ]);
+    expect(previous.frames.map(({ left, top, width, height, disposal }) => ({
+      rectangle: [left, top, width, height],
+      disposal,
+    }))).toEqual([
+      { rectangle: [0, 0, 3, 2], disposal: 1 },
+      { rectangle: [1, 0, 1, 2], disposal: 3 },
+      { rectangle: [2, 1, 1, 1], disposal: 1 },
+    ]);
+    expect(background.frames.every(({ delayCentiseconds }) =>
+      delayCentiseconds === 5)).toBe(true);
+    expect(previous.frames.every(({ delayCentiseconds }) =>
+      delayCentiseconds === 7)).toBe(true);
+  });
+
+  it("provides an intentionally out-of-bounds GIF frame", () => {
+    const gif = inspectGifFixture("gif/invalid-frame-bounds.gif");
+    const invalidFrame = gif.frames[1];
+
+    expect(gif.frames).toHaveLength(2);
+    expect([invalidFrame.left, invalidFrame.top, invalidFrame.width, invalidFrame.height])
+      .toEqual([2, 1, 2, 1]);
+    expect(invalidFrame.left + invalidFrame.width).toBeGreaterThan(gif.width);
+  });
+
   it("provides a two-frame 4x4 PNG sequence with known RGBA pixels", () => {
     const frames = [
       decodeFixturePng("png-sequence/spark-01.png"),
