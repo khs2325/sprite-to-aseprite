@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { PiskelImportError } from "../core/importers/piskel";
+import { SpritesheetJsonImportError } from "../core/importers/spritesheetJson";
 import {
   bindFileImportControl,
   createSourcePreviewUrlStore,
@@ -232,7 +233,10 @@ describe("bindFileImportControl", () => {
     const statusOutput = createOutput();
     const control = bindFileImportControl(input, errorOutput, statusOutput, {
       onFilesImported: () => {
-        throw new Error("Spritesheet metadata is not valid JSON.");
+        throw new SpritesheetJsonImportError(
+          "invalid-json",
+          "Spritesheet metadata is not valid JSON.",
+        );
       },
     });
     const privateContents = '{"privatePixelData":"do not display"}';
@@ -253,6 +257,36 @@ describe("bindFileImportControl", () => {
     });
     expect(errorOutput.textContent).not.toContain(privateContents);
     expect(statusOutput.hidden).toBe(true);
+  });
+
+  it("does not expose arbitrary atlas errors or stack traces", async () => {
+    const privateContents = '{"privatePixelData":"do not display"}';
+    const errorOutput = createOutput();
+    const error = new Error(privateContents);
+    error.stack = `Error: ${privateContents}\n at private-atlas.json:1:1`;
+    const control = bindFileImportControl(
+      createInput(),
+      errorOutput,
+      createOutput(),
+      {
+        format: "spritesheet-json",
+        onFilesImported: () => {
+          throw error;
+        },
+      },
+    );
+
+    expect(await control.selectFiles([
+      new File(["png"], "sheet.png"),
+      new File([privateContents], "sheet.json"),
+    ])).toBe(false);
+
+    expect(errorOutput.textContent).toBe(
+      "Spritesheet PNG + JSON import failed. " +
+        "Check that the JSON frame data is valid and fits inside the PNG.",
+    );
+    expect(errorOutput.textContent).not.toContain(privateContents);
+    expect(errorOutput.textContent).not.toContain("private-atlas.json");
   });
 
   it("shows SpriteProject validation messages before reporting success", async () => {

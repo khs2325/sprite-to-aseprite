@@ -11,7 +11,10 @@ import {
   importSpritesheetGrid,
   type SpritesheetGridImportOptions,
 } from "../core/importers/spritesheetGrid";
-import { importSpritesheetJson } from "../core/importers/spritesheetJson";
+import {
+  getSpritesheetJsonImportDiagnostic,
+  importSpritesheetJson,
+} from "../core/importers/spritesheetJson";
 import { mountExportDownloadUi } from "./exportDownload";
 import {
   bindFileImportControl,
@@ -468,6 +471,10 @@ export function getConversionErrorMessage(
   mode: FileImportFormat,
   error: unknown,
 ): string {
+  if (mode === "spritesheet-json") {
+    return getSpritesheetJsonImportDiagnostic(error) ??
+      "Could not convert the spritesheet atlas. Check that the JSON uses a supported root-level frame layout.";
+  }
   if (mode !== "piskel") {
     return error instanceof Error && error.message.trim().length > 0
       ? error.message
