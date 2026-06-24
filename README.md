@@ -72,6 +72,8 @@ Generated `.aseprite` files support the subset represented by the internal
 
 - 32-bit RGBA documents
 - multiple frames and per-frame durations
+- ordered frame tags with inclusive ranges and forward, reverse, or ping-pong
+  playback directions
 - normal image layers with names, visibility, and layer opacity
 - one unlinked, compressed RGBA image cel per layer per frame
 - cel positions within the document
@@ -81,7 +83,7 @@ The writer does not currently export:
 - indexed-color or grayscale documents
 - layer groups, tilemap layers, or non-normal blend modes
 - linked cels, per-cel opacity, or custom cel z-index
-- frame tags, slices, palettes, tilesets, user data, or color profiles
+- slices, palettes, tilesets, user data, or color profiles
 - other advanced Aseprite chunks not listed in the supported subset above
 
 Unsupported source features are not silently presented as preserved. For

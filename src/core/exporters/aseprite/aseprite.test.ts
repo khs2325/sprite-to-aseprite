@@ -205,6 +205,62 @@ describe("exportAseprite", () => {
     expect(secondFrame.nextOffset).toBe(bytes.length);
   });
 
+  it("writes deterministic frame-tag bytes for all supported directions and Unicode names", () => {
+    const project = createMinimalProject();
+    project.frames.push(
+      { index: 1, durationMs: 100 },
+      { index: 2, durationMs: 100 },
+    );
+    project.frameTags = [
+      { name: "Idle", from: 0, to: 0, direction: "forward" },
+      { name: "돌아", from: 1, to: 2, direction: "reverse" },
+      { name: "走る", from: 0, to: 2, direction: "ping-pong" },
+    ];
+
+    const first = exportAseprite(project);
+    const second = exportAseprite(project);
+    const firstFrame = parseFrame(first, 128);
+    const tagsChunk = firstFrame.chunks[1];
+    const expectedHex = [
+      "590000001820", // Chunk size and type.
+      "0300", // Three tags.
+      "00".repeat(8), // Reserved chunk header bytes.
+      "0000000000", // Frames 0..0, forward.
+      "0000", // Repeat count not specified.
+      "00".repeat(6), // Reserved tag bytes.
+      "00".repeat(3), // Deprecated RGB tag color.
+      "00", // Extra byte.
+      "040049646c65", // Idle.
+      "0100020001", // Frames 1..2, reverse.
+      "0000",
+      "00".repeat(6),
+      "00".repeat(3),
+      "00",
+      "0600eb8f8cec9584", // 돌아.
+      "0000020002", // Frames 0..2, ping-pong.
+      "0000",
+      "00".repeat(6),
+      "00".repeat(3),
+      "00",
+      "0600e8b5b0e3828b", // 走る.
+    ].join("");
+
+    expect(first).toEqual(second);
+    expect(firstFrame.chunks.map((chunk) => chunk.type)).toEqual([
+      0x2004, 0x2018,
+    ]);
+    expect(tagsChunk.bytes.length).toBe(0x59);
+    expect(bytesToHex(tagsChunk.bytes)).toBe(expectedHex);
+  });
+
+  it("keeps output byte-compatible when frame tags are absent or empty", () => {
+    const withoutTags = createMinimalProject();
+    const withEmptyTags = createMinimalProject();
+    withEmptyTags.frameTags = [];
+
+    expect(exportAseprite(withEmptyTags)).toEqual(exportAseprite(withoutTags));
+  });
+
   it("writes byte-level normal layer and compressed cel data across frames", () => {
     const project: SpriteProject = {
       width: 4,
@@ -337,6 +393,70 @@ describe("exportAseprite", () => {
     project.frames[0].durationMs = 0x10000;
 
     expect(() => exportAseprite(project)).toThrow(RangeError);
+  });
+
+  it.each([
+    ["a non-array value", "Loop", "must be an array"],
+    ["a non-object tag", [null], "must be an object"],
+    [
+      "an empty name",
+      [{ name: " ", from: 0, to: 0, direction: "forward" }],
+      "must not be empty or whitespace",
+    ],
+    [
+      "malformed Unicode",
+      [{ name: "\ud800", from: 0, to: 0, direction: "forward" }],
+      "must contain valid Unicode",
+    ],
+    [
+      "an oversized UTF-8 name",
+      [{ name: "é".repeat(32_768), from: 0, to: 0, direction: "forward" }],
+      "at most 65535 UTF-8 bytes",
+    ],
+    [
+      "a negative from frame",
+      [{ name: "Loop", from: -1, to: 0, direction: "forward" }],
+      "from frame must be an integer from 0 to 1",
+    ],
+    [
+      "an out-of-range to frame",
+      [{ name: "Loop", from: 0, to: 2, direction: "forward" }],
+      "to frame must be an integer from 0 to 1",
+    ],
+    [
+      "a descending frame range",
+      [{ name: "Loop", from: 1, to: 0, direction: "forward" }],
+      "from frame must be less than or equal",
+    ],
+    [
+      "an unsupported direction",
+      [{ name: "Loop", from: 0, to: 1, direction: "pingpong" }],
+      'must be "forward", "reverse", or "ping-pong"',
+    ],
+    [
+      "a duplicate name",
+      [
+        { name: "Loop", from: 0, to: 0, direction: "forward" },
+        { name: "Loop", from: 1, to: 1, direction: "reverse" },
+      ],
+      "is duplicated",
+    ],
+  ])("rejects frame tags with %s", (_label, frameTags, message) => {
+    const project = createMinimalProject();
+    project.frames.push({ index: 1, durationMs: 100 });
+    (project as unknown as { frameTags: unknown }).frameTags = frameTags;
+
+    expect(() => exportAseprite(project)).toThrow(message);
+  });
+
+  it("rejects frame-tag counts that cannot be written as a WORD", () => {
+    const project = createMinimalProject();
+    const tag = { name: "Loop", from: 0, to: 0, direction: "forward" } as const;
+    project.frameTags = new Array(0x10000).fill(tag);
+
+    expect(() => exportAseprite(project)).toThrow(
+      "Project must contain at most 65535 frame tags.",
+    );
   });
 
   it("rejects invalid layer and cel fields instead of truncating them", () => {

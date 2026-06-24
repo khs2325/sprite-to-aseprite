@@ -196,10 +196,11 @@ of `"forward"`, `"reverse"`, or `"pingpong"`:
 ```
 
 Tag order is preserved. Both indexes must reference imported frames, `from`
-must not exceed `to`, and exact duplicate names are rejected. Frame tags are
-currently retained in the browser-local `SpriteProject` conversion model;
-generated `.aseprite` files do not encode them yet. Non-Aseprite atlas metadata
-is not interpreted as Aseprite frame tags.
+must not exceed `to`, and exact duplicate names are rejected. Supported frame
+tags are retained in the browser-local `SpriteProject` conversion model and
+encoded as Aseprite frame tags in the generated file. Tag colors, finite repeat
+counts, ping-pong-reverse playback, and tag user data are not represented or
+exported. Non-Aseprite atlas metadata is not interpreted as Aseprite frame tags.
 
 ### Atlas JSON detection and diagnostics
 
