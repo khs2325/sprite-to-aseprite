@@ -1,0 +1,52 @@
+id: "042"
+title: Add SpriteProject frame tags and spritesheet JSON mapping
+status: backlog
+priority: medium
+goal: Represent validated animation frame tags in SpriteProject and map supported Aseprite JSON frameTags metadata into the model.
+context: >
+  SpriteProject currently represents frames, layers, and cels but not named frame ranges.
+  This task adds model/import support only; task 043 writes tags to .aseprite bytes.
+scope:
+  summary: Add optional frame-tag types and validation, then parse the supported Aseprite JSON meta.frameTags subset.
+  allowed_paths:
+    - src/core/SpriteProject.ts
+    - src/core/SpriteProject.test.ts
+    - src/core/validation/**
+    - src/core/importers/spritesheetJson/**
+    - src/core/conversion.integration.test.ts
+    - docs/product-spec.md
+    - docs/manual-usage-guide.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/core/exporters/**
+    - src/app/**
+non_goals:
+  - Do not write Aseprite frame-tag chunks; task 043 owns binary export.
+  - Do not add tags to formats that do not represent them.
+  - Do not add UI tag editing in this task.
+requirements:
+  - Add optional frame-tag data without breaking existing SpriteProject construction.
+  - Represent a non-empty name, inclusive from/to frame indexes, and supported forward, reverse, or ping-pong direction.
+  - Validate safe integer bounds, from less than or equal to to, existing frame references, supported direction, and deterministic duplicate-name policy.
+  - Parse the documented Aseprite JSON meta.frameTags array when present and reject malformed tag metadata precisely.
+  - Preserve frame-tag ordering from the source metadata.
+  - Add model, validation, importer, and integration tests while preserving files with no tags.
+acceptance_criteria:
+  - Supported Aseprite JSON tags appear in SpriteProject with exact names, ranges, directions, and order.
+  - Invalid ranges, names, directions, and references fail deterministically.
+  - Existing projects and atlas JSON without tags remain compatible.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: false
+  max_changed_files: 8
+  forbidden_paths: *forbidden

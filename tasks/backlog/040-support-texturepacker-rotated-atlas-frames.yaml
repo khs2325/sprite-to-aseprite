@@ -1,0 +1,55 @@
+id: "040"
+title: Support TexturePacker rotated atlas frames
+status: backlog
+priority: high
+goal: Restore the orientation of TexturePacker frames stored with the common 90-degree rotation convention.
+context: >
+  This task follows trimmed-frame support in task 039 so rotation and trim placement can
+  compose without duplicating frame reconstruction logic.
+scope:
+  summary: Decode supported rotated atlas rectangles, restore orientation, and test rotation with and without trimming.
+  allowed_paths:
+    - src/core/importers/spritesheetJson/**
+    - src/core/conversion.integration.test.ts
+    - tests/fixtures/spritesheet/**
+    - tests/fixtures/fixtures.test.ts
+    - tests/fixtures/generate.mjs
+    - docs/manual-usage-guide.md
+    - README.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/core/exporters/**
+    - src/core/importers/pngSequence/**
+    - src/core/importers/spritesheetGrid/**
+    - src/core/importers/piskel/**
+non_goals:
+  - Do not add arbitrary-angle rotation or guess undocumented rotation conventions.
+  - Do not broaden atlas format detection; task 041 owns diagnostics and detection.
+  - Do not add server processing, uploads, or production dependencies.
+requirements:
+  - Support the documented common TexturePacker 90-degree rotated-frame convention.
+  - Restore pixel orientation deterministically before applying supported trim placement.
+  - Preserve frame order, duration, transparency, and full output dimensions.
+  - Reject unsupported rotation values or ambiguous metadata with precise errors.
+  - Add synthetic asymmetric-pixel fixtures that prove orientation rather than only dimensions.
+  - Cover rotated untrimmed and rotated trimmed frames when task 039 behavior is present.
+  - Keep all image decoding and pixel manipulation browser-local.
+acceptance_criteria:
+  - Supported rotated fixtures import with the expected orientation and dimensions.
+  - Unsupported rotation variants fail clearly without silently returning rotated pixels.
+  - Existing unrotated and trimmed behavior remains passing.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: false
+  max_changed_files: 8
+  forbidden_paths: *forbidden
