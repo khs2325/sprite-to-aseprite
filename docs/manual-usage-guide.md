@@ -110,16 +110,20 @@ Use this mode for one PNG arranged as a regular grid with no metadata file.
    - **Rows first** reads left to right across each row, then moves down.
    - **Columns first** reads top to bottom down each column, then moves right.
 4. Review the browser-local grid overlay. Its accessible status reports the
-   columns, rows, and total frame count. Adjust rows or columns manually when
-   needed; the visible values are used for conversion.
+   image dimensions, columns, rows, frame dimensions, and total frame count.
+   Editing frame width or height recalculates rows and columns. Editing rows or
+   columns recalculates frame width and height. The visible values are used for
+   conversion.
 5. Select **Convert to .aseprite**.
 
 The configured grid must exactly cover the PNG: `frame width x columns` must
 equal the image width, and `frame height x rows` must equal the image height.
 Every grid cell becomes a frame with a default duration of 100 milliseconds.
-The overlay updates when the selected PNG or any grid value changes. A warning
-appears when the frame size does not divide the image evenly, when settings
-leave pixels outside the grid, or when the grid exceeds the image dimensions.
+The overlay and its dimension summary update when the selected PNG or any grid
+value changes. Calculated values use `floor` when dimensions do not divide
+evenly, and a warning explains that edge pixels may be ignored. A warning also
+appears when settings leave pixels outside the grid or exceed the image
+dimensions.
 
 ## Spritesheet PNG + JSON
 

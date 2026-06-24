@@ -78,17 +78,78 @@ export type GridAutoCalculation = {
   warning: string | null;
 };
 
-export type GridPreviewState = {
-  canConvert: boolean;
-  description: string;
+export type FrameAutoCalculation = {
+  frameHeight: number | null;
+  frameWidth: number | null;
   warning: string | null;
 };
 
-const UNEVEN_GRID_WARNING =
-  "The image size is not evenly divisible by the frame size. Adjust the frame size before converting so no edge pixels are left outside the grid.";
+export type GridUpdateSource =
+  | "frame-size"
+  | "grid-size"
+  | "image-change"
+  | "manual";
+
+export type GridUpdateGuard = {
+  run(source: GridUpdateSource, update: () => void): boolean;
+};
+
+export type GridPreviewState = {
+  canConvert: boolean;
+  description: string;
+  details: {
+    frameSize: string;
+    gridSize: string;
+    imageSize: string;
+    totalFrames: string;
+  };
+  warning: string | null;
+};
 
 function isPositiveInteger(value: number): boolean {
   return Number.isSafeInteger(value) && value > 0;
+}
+
+function getUnevenFrameWarning(
+  imageWidth: number,
+  imageHeight: number,
+  frameWidth: number,
+  frameHeight: number,
+): string {
+  return (
+    `Warning: ${imageWidth} × ${imageHeight} px is not evenly divisible by ` +
+    `${frameWidth} × ${frameHeight} px frames; edge pixels may be ignored.`
+  );
+}
+
+function getUnevenGridWarning(
+  imageWidth: number,
+  imageHeight: number,
+  columns: number,
+  rows: number,
+): string {
+  return (
+    `Warning: ${imageWidth} × ${imageHeight} px is not evenly divisible by ` +
+    `${columns} columns × ${rows} rows; edge pixels may be ignored.`
+  );
+}
+
+export function createGridUpdateGuard(): GridUpdateGuard {
+  let activeSource: GridUpdateSource | null = null;
+  return {
+    run(source: GridUpdateSource, update: () => void): boolean {
+      if (activeSource !== null) {
+        return false;
+      }
+      activeSource = source;
+      try {
+        update();
+      } finally {
+        activeSource = null;
+      }
+      return true;
+    },
+  };
 }
 
 export function calculateGridFromImage(
@@ -120,7 +181,45 @@ export function calculateGridFromImage(
     warning:
       imageWidth % frameWidth === 0 && imageHeight % frameHeight === 0
         ? null
-        : UNEVEN_GRID_WARNING,
+        : getUnevenFrameWarning(
+            imageWidth,
+            imageHeight,
+            frameWidth,
+            frameHeight,
+          ),
+  };
+}
+
+export function calculateFrameSizeFromGrid(
+  imageWidth: number,
+  imageHeight: number,
+  columns: number,
+  rows: number,
+): FrameAutoCalculation {
+  if (!isPositiveInteger(columns) || !isPositiveInteger(rows)) {
+    return {
+      frameHeight: null,
+      frameWidth: null,
+      warning: "Columns and rows must be positive whole numbers.",
+    };
+  }
+
+  const frameWidth = Math.floor(imageWidth / columns);
+  const frameHeight = Math.floor(imageHeight / rows);
+  if (frameWidth === 0 || frameHeight === 0) {
+    return {
+      frameHeight,
+      frameWidth,
+      warning: "The selected columns or rows exceed the image dimensions.",
+    };
+  }
+  return {
+    frameHeight,
+    frameWidth,
+    warning:
+      imageWidth % columns === 0 && imageHeight % rows === 0
+        ? null
+        : getUnevenGridWarning(imageWidth, imageHeight, columns, rows),
   };
 }
 
@@ -128,7 +227,14 @@ export function getGridPreviewState(
   imageWidth: number,
   imageHeight: number,
   options: SpritesheetGridImportOptions,
+  updateSource: GridUpdateSource = "manual",
 ): GridPreviewState {
+  const details = {
+    frameSize: `Frame size: ${options.frameWidth} × ${options.frameHeight} px`,
+    gridSize: `Grid: ${options.columns} columns × ${options.rows} rows`,
+    imageSize: `Image size: ${imageWidth} × ${imageHeight} px`,
+    totalFrames: `Total frames: ${options.columns * options.rows}`,
+  };
   const values = [
     options.frameWidth,
     options.frameHeight,
@@ -138,37 +244,69 @@ export function getGridPreviewState(
   if (!values.every(isPositiveInteger)) {
     return {
       canConvert: false,
-      description: "Grid preview is waiting for positive whole-number settings.",
+      description:
+        "Grid preview unavailable: choose one PNG and enter valid grid settings.",
+      details,
       warning: "Frame width, frame height, rows, and columns must be positive whole numbers.",
     };
   }
 
   const description =
-    `Grid preview: ${options.columns} columns by ${options.rows} rows, ` +
-    `${options.columns * options.rows} frames.`;
+    `Grid preview: ${options.columns} columns × ${options.rows} rows, ` +
+    `${options.columns * options.rows} frames, ` +
+    `${options.frameWidth} × ${options.frameHeight} px each.`;
   const gridWidth = options.frameWidth * options.columns;
   const gridHeight = options.frameHeight * options.rows;
   if (gridWidth > imageWidth || gridHeight > imageHeight) {
     return {
       canConvert: false,
       description,
+      details,
       warning: "The configured grid exceeds the selected image dimensions.",
     };
   }
   if (
-    imageWidth % options.frameWidth !== 0 ||
-    imageHeight % options.frameHeight !== 0
+    updateSource === "grid-size" &&
+    (imageWidth % options.columns !== 0 || imageHeight % options.rows !== 0)
   ) {
-    return { canConvert: false, description, warning: UNEVEN_GRID_WARNING };
+    return {
+      canConvert: false,
+      description,
+      details,
+      warning: getUnevenGridWarning(
+        imageWidth,
+        imageHeight,
+        options.columns,
+        options.rows,
+      ),
+    };
+  }
+  if (
+    (imageWidth % options.frameWidth !== 0 ||
+      imageHeight % options.frameHeight !== 0) &&
+    updateSource !== "grid-size"
+  ) {
+    return {
+      canConvert: false,
+      description,
+      details,
+      warning: getUnevenFrameWarning(
+        imageWidth,
+        imageHeight,
+        options.frameWidth,
+        options.frameHeight,
+      ),
+    };
   }
   if (gridWidth !== imageWidth || gridHeight !== imageHeight) {
     return {
       canConvert: false,
       description,
+      details,
       warning: "The configured rows and columns do not cover the complete image.",
     };
   }
-  return { canConvert: true, description, warning: null };
+  return { canConvert: true, description, details, warning: null };
 }
 
 export function getSourceSelectionState(
@@ -408,6 +546,11 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   const gridPreviewImage = document.createElement("img");
   const gridOverlay = document.createElement("div");
   const gridPreviewStatus = document.createElement("p");
+  const gridPreviewDetails = document.createElement("div");
+  const gridImageSize = document.createElement("p");
+  const gridSize = document.createElement("p");
+  const gridFrameSize = document.createElement("p");
+  const gridTotalFrames = document.createElement("p");
   const gridPreviewWarning = document.createElement("p");
   gridPreview.className = "grid-preview";
   gridPreviewHeading.textContent = "Grid overlay preview";
@@ -417,6 +560,13 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   gridOverlay.setAttribute("aria-hidden", "true");
   gridPreviewStatus.setAttribute("role", "status");
   gridPreviewStatus.setAttribute("aria-live", "polite");
+  gridPreviewDetails.className = "grid-preview-details";
+  gridPreviewDetails.append(
+    gridImageSize,
+    gridSize,
+    gridFrameSize,
+    gridTotalFrames,
+  );
   gridPreviewWarning.className = "grid-warning";
   gridPreviewWarning.setAttribute("role", "status");
   gridPreviewWarning.setAttribute("aria-live", "polite");
@@ -425,6 +575,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
     gridPreviewHeading,
     gridPreviewFrame,
     gridPreviewStatus,
+    gridPreviewDetails,
     gridPreviewWarning,
   );
   controls.append(controlsHeading, modeLabel, gridFields, gridPreview);
@@ -532,6 +683,8 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   let gridImageWidth: number | null = null;
   let gridImageHeight: number | null = null;
   let gridImageError: string | null = null;
+  let lastGridUpdateSource: GridUpdateSource = "image-change";
+  const gridUpdateGuard = createGridUpdateGuard();
   const previewUrls = createSourcePreviewUrlStore();
 
   const conversionElements: ConversionUiElements = {
@@ -648,6 +801,10 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
     gridPreview.hidden = mode !== "spritesheet-grid" || source === null;
     if (mode !== "spritesheet-grid" || source === null) {
       gridPreviewStatus.textContent = "";
+      gridImageSize.textContent = "";
+      gridSize.textContent = "";
+      gridFrameSize.textContent = "";
+      gridTotalFrames.textContent = "";
       gridPreviewWarning.textContent = "";
       gridPreviewWarning.hidden = true;
       return null;
@@ -658,6 +815,10 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
         gridImageError === null
           ? "Reading the selected spritesheet dimensions browser-locally."
           : "Grid preview is unavailable for the selected PNG.";
+      gridImageSize.textContent = "";
+      gridSize.textContent = "";
+      gridFrameSize.textContent = "";
+      gridTotalFrames.textContent = "";
       gridPreviewWarning.textContent = gridImageError ?? "";
       gridPreviewWarning.hidden = gridImageError === null;
       return null;
@@ -668,8 +829,13 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
       gridImageWidth,
       gridImageHeight,
       options,
+      lastGridUpdateSource,
     );
     gridPreviewStatus.textContent = previewState.description;
+    gridImageSize.textContent = previewState.details.imageSize;
+    gridSize.textContent = previewState.details.gridSize;
+    gridFrameSize.textContent = previewState.details.frameSize;
+    gridTotalFrames.textContent = previewState.details.totalFrames;
     gridPreviewWarning.textContent = previewState.warning ?? "";
     gridPreviewWarning.hidden = previewState.warning === null;
     if (isPositiveInteger(options.columns) && isPositiveInteger(options.rows)) {
@@ -712,20 +878,41 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
     });
   };
 
-  const autoFillGrid = (): void => {
+  const synchronizeGridInputs = (source: GridUpdateSource): boolean => {
     if (gridImageWidth === null || gridImageHeight === null) {
-      return;
+      return false;
     }
-    const calculation = calculateGridFromImage(
-      gridImageWidth,
-      gridImageHeight,
-      Number(frameWidth.input.value),
-      Number(frameHeight.input.value),
-    );
-    if (calculation.columns !== null && calculation.rows !== null) {
-      columns.input.value = String(calculation.columns);
-      rows.input.value = String(calculation.rows);
-    }
+    return gridUpdateGuard.run(source, () => {
+      lastGridUpdateSource = source;
+      if (source === "frame-size" || source === "image-change") {
+        const calculation = calculateGridFromImage(
+          gridImageWidth!,
+          gridImageHeight!,
+          Number(frameWidth.input.value),
+          Number(frameHeight.input.value),
+        );
+        if (calculation.columns !== null && calculation.rows !== null) {
+          columns.input.value = String(calculation.columns);
+          rows.input.value = String(calculation.rows);
+        }
+        return;
+      }
+      if (source === "grid-size") {
+        const calculation = calculateFrameSizeFromGrid(
+          gridImageWidth!,
+          gridImageHeight!,
+          Number(columns.input.value),
+          Number(rows.input.value),
+        );
+        if (
+          calculation.frameWidth !== null &&
+          calculation.frameHeight !== null
+        ) {
+          frameWidth.input.value = String(calculation.frameWidth);
+          frameHeight.input.value = String(calculation.frameHeight);
+        }
+      }
+    });
   };
 
   const syncGridSource = (): void => {
@@ -770,7 +957,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
     gridImageWidth = gridPreviewImage.naturalWidth;
     gridImageHeight = gridPreviewImage.naturalHeight;
     gridImageError = null;
-    autoFillGrid();
+    synchronizeGridInputs("image-change");
     renderGridPreview();
     updateReadiness();
   };
@@ -823,13 +1010,21 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
 
   const handleFrameSizeInput = (): void => {
     invalidateConversion();
-    autoFillGrid();
+    synchronizeGridInputs("frame-size");
     renderGridPreview();
     updateReadiness();
   };
 
   const handleGridLayoutInput = (): void => {
     invalidateConversion();
+    synchronizeGridInputs("grid-size");
+    renderGridPreview();
+    updateReadiness();
+  };
+
+  const handleFrameOrderChange = (): void => {
+    invalidateConversion();
+    lastGridUpdateSource = "manual";
     renderGridPreview();
     updateReadiness();
   };
@@ -899,7 +1094,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   frameHeight.input.addEventListener("input", handleFrameSizeInput);
   rows.input.addEventListener("input", handleGridLayoutInput);
   columns.input.addEventListener("input", handleGridLayoutInput);
-  frameOrder.addEventListener("change", handleGridLayoutInput);
+  frameOrder.addEventListener("change", handleFrameOrderChange);
   gridPreviewImage.addEventListener("load", handleGridImageLoad);
   gridPreviewImage.addEventListener("error", handleGridImageError);
   clearFilesButton.addEventListener("click", handleClearFiles);
@@ -915,7 +1110,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
       frameHeight.input.removeEventListener("input", handleFrameSizeInput);
       rows.input.removeEventListener("input", handleGridLayoutInput);
       columns.input.removeEventListener("input", handleGridLayoutInput);
-      frameOrder.removeEventListener("change", handleGridLayoutInput);
+      frameOrder.removeEventListener("change", handleFrameOrderChange);
       gridPreviewImage.removeEventListener("load", handleGridImageLoad);
       gridPreviewImage.removeEventListener("error", handleGridImageError);
       clearFilesButton.removeEventListener("click", handleClearFiles);

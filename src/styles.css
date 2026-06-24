@@ -99,6 +99,17 @@
   color: #ffd479;
 }
 
+.grid-preview-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem 1rem;
+  margin-top: 0.75rem;
+}
+
+.grid-preview-details p {
+  margin: 0;
+}
+
 @media (max-width: 44rem) {
   .selected-file-card {
     grid-template-columns: 4rem minmax(0, 1fr);
@@ -112,5 +123,9 @@
 
   .selected-file-card button {
     grid-column: 1 / -1;
+  }
+
+  .grid-preview-details {
+    grid-template-columns: 1fr;
   }
 }

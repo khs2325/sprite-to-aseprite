@@ -7,8 +7,10 @@ import {
 } from "../core/importers/piskel";
 import type { SpritesheetGridImportOptions } from "../core/importers/spritesheetGrid";
 import {
+  calculateFrameSizeFromGrid,
   calculateGridFromImage,
   convertSourceFiles,
+  createGridUpdateGuard,
   getConversionErrorMessage,
   getConversionSuccessStatus,
   getGridPreviewState,
@@ -215,6 +217,20 @@ describe("spritesheet grid preview calculations", () => {
     });
   });
 
+  it("calculates frame dimensions from rows and columns", () => {
+    expect(calculateFrameSizeFromGrid(384, 256, 12, 8)).toEqual({
+      frameHeight: 32,
+      frameWidth: 32,
+      warning: null,
+    });
+    expect(calculateFrameSizeFromGrid(384, 250, 12, 8)).toEqual({
+      frameHeight: 31,
+      frameWidth: 32,
+      warning:
+        "Warning: 384 × 250 px is not evenly divisible by 12 columns × 8 rows; edge pixels may be ignored.",
+    });
+  });
+
   it("reports invalid frame sizes and uneven image division", () => {
     expect(calculateGridFromImage(128, 96, 0, 32)).toMatchObject({
       columns: null,
@@ -226,26 +242,93 @@ describe("spritesheet grid preview calculations", () => {
       rows: 3,
       warning: expect.stringContaining("not evenly divisible"),
     });
+    expect(
+      getGridPreviewState(128, 96, { ...gridOptions, frameWidth: 0 }),
+    ).toMatchObject({
+      canConvert: false,
+      description:
+        "Grid preview unavailable: choose one PNG and enter valid grid settings.",
+    });
   });
 
   it("updates accessible preview details for manual row and column changes", () => {
     expect(getGridPreviewState(128, 96, gridOptions)).toMatchObject({
       canConvert: false,
-      description: "Grid preview: 3 columns by 2 rows, 6 frames.",
+      description:
+        "Grid preview: 3 columns × 2 rows, 6 frames, 16 × 16 px each.",
       warning: expect.stringContaining("do not cover"),
     });
     expect(getGridPreviewState(48, 32, gridOptions)).toMatchObject({
       canConvert: true,
-      description: "Grid preview: 3 columns by 2 rows, 6 frames.",
+      description:
+        "Grid preview: 3 columns × 2 rows, 6 frames, 16 × 16 px each.",
+      details: {
+        frameSize: "Frame size: 16 × 16 px",
+        gridSize: "Grid: 3 columns × 2 rows",
+        imageSize: "Image size: 48 × 32 px",
+        totalFrames: "Total frames: 6",
+      },
       warning: null,
     });
     expect(
       getGridPreviewState(48, 32, { ...gridOptions, columns: 4 }),
     ).toMatchObject({
       canConvert: false,
-      description: "Grid preview: 4 columns by 2 rows, 8 frames.",
+      description:
+        "Grid preview: 4 columns × 2 rows, 8 frames, 16 × 16 px each.",
       warning: expect.stringContaining("exceeds"),
     });
+  });
+
+  it("uses source-specific warnings for uneven frame and grid divisions", () => {
+    const fromFrameSize = getGridPreviewState(
+      130,
+      97,
+      { ...gridOptions, columns: 4, rows: 3, frameWidth: 32, frameHeight: 32 },
+      "frame-size",
+    );
+    expect(fromFrameSize.warning).toContain("32 × 32 px frames");
+
+    const fromGridSize = getGridPreviewState(
+      384,
+      250,
+      { ...gridOptions, columns: 12, rows: 8, frameWidth: 32, frameHeight: 31 },
+      "grid-size",
+    );
+    expect(fromGridSize.warning).toBe(
+      "Warning: 384 × 250 px is not evenly divisible by 12 columns × 8 rows; edge pixels may be ignored.",
+    );
+  });
+
+  it("recalculates dimensions and summary when the selected image changes", () => {
+    const firstGrid = calculateGridFromImage(384, 256, 32, 32);
+    const secondGrid = calculateGridFromImage(320, 160, 32, 32);
+    expect(firstGrid).toMatchObject({ columns: 12, rows: 8 });
+    expect(secondGrid).toMatchObject({ columns: 10, rows: 5 });
+
+    expect(
+      getGridPreviewState(320, 160, {
+        ...gridOptions,
+        columns: secondGrid.columns!,
+        rows: secondGrid.rows!,
+        frameWidth: 32,
+        frameHeight: 32,
+      }).description,
+    ).toBe("Grid preview: 10 columns × 5 rows, 50 frames, 32 × 32 px each.");
+  });
+
+  it("blocks nested grid updates to prevent recursive input loops", () => {
+    const guard = createGridUpdateGuard();
+    const updates: string[] = [];
+
+    expect(guard.run("frame-size", () => {
+      updates.push("frame-size");
+      expect(guard.run("grid-size", () => updates.push("grid-size")))
+        .toBe(false);
+    })).toBe(true);
+    expect(updates).toEqual(["frame-size"]);
+    expect(guard.run("grid-size", () => updates.push("later"))).toBe(true);
+    expect(updates).toEqual(["frame-size", "later"]);
   });
 });
 
