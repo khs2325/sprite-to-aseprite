@@ -1,4 +1,4 @@
-import type { SpriteProject } from "../../SpriteProject";
+import type { SpriteFrameTag, SpriteProject } from "../../SpriteProject";
 import {
   detectAtlasJsonFormat,
   getAtlasJsonFormatLabel,
@@ -52,6 +52,7 @@ export type SpritesheetJsonFrameMetadata =
 
 export type SpritesheetJsonMetadata = {
   frames: SpritesheetJsonFrameMetadata[];
+  frameTags?: SpriteFrameTag[];
 };
 
 export type SpritesheetJsonImportOptions = {
@@ -283,12 +284,97 @@ function parseFrame(
   };
 }
 
+function parseAsepriteFrameTags(
+  value: Record<string, unknown>,
+  frameCount: number,
+): SpriteFrameTag[] | undefined {
+  if (!isRecord(value.meta) || value.meta.frameTags === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(value.meta.frameTags)) {
+    fail("invalid-field", "meta.frameTags must be an array when provided.");
+  }
+
+  const names = new Set<string>();
+  return value.meta.frameTags.map((frameTag, index) => {
+    const path = `meta.frameTags[${index}]`;
+    if (!isRecord(frameTag)) {
+      fail("invalid-field", `${path} must be an object.`);
+    }
+    if (typeof frameTag.name !== "string" || frameTag.name.trim().length === 0) {
+      fail(
+        "invalid-field",
+        `${path}.name must contain at least one non-whitespace character.`,
+      );
+    }
+    if (names.has(frameTag.name)) {
+      fail(
+        "invalid-field",
+        `${path}.name duplicates an earlier frame tag name.`,
+      );
+    }
+    names.add(frameTag.name);
+
+    if (!isNonNegativeInteger(frameTag.from)) {
+      fail(
+        "invalid-field",
+        `${path}.from must be a non-negative safe integer.`,
+      );
+    }
+    if (!isNonNegativeInteger(frameTag.to)) {
+      fail(
+        "invalid-field",
+        `${path}.to must be a non-negative safe integer.`,
+      );
+    }
+    if (frameTag.from > frameTag.to) {
+      fail(
+        "invalid-field",
+        `${path}.from must be less than or equal to ${path}.to.`,
+      );
+    }
+    if (frameTag.from >= frameCount) {
+      fail(
+        "invalid-field",
+        `${path}.from must reference an existing frame index from 0 to ${frameCount - 1}.`,
+      );
+    }
+    if (frameTag.to >= frameCount) {
+      fail(
+        "invalid-field",
+        `${path}.to must reference an existing frame index from 0 to ${frameCount - 1}.`,
+      );
+    }
+
+    if (
+      frameTag.direction !== "forward" &&
+      frameTag.direction !== "reverse" &&
+      frameTag.direction !== "pingpong"
+    ) {
+      fail(
+        "invalid-field",
+        `${path}.direction must be "forward", "reverse", or "pingpong".`,
+      );
+    }
+
+    return {
+      name: frameTag.name,
+      from: frameTag.from,
+      to: frameTag.to,
+      direction: frameTag.direction === "pingpong"
+        ? "ping-pong"
+        : frameTag.direction,
+    };
+  });
+}
+
 /**
  * Parses the documented Aseprite-style metadata subset. `frames` may be an
  * ordered array or an object map; each entry needs `frame.{x,y,w,h}` and may
  * provide `duration`. TexturePacker-style frames may use `rotated: true` for
  * the 90-degree clockwise atlas convention. Trimmed frames also need complete
- * `sourceSize` and `spriteSourceSize` placement geometry.
+ * `sourceSize` and `spriteSourceSize` placement geometry. Aseprite metadata
+ * may also provide the supported `meta.frameTags` subset.
  */
 export function parseSpritesheetJsonMetadata(
   json: string,
@@ -384,10 +470,16 @@ export function parseSpritesheetJsonMetadata(
     );
   }
 
+  const frames = frameEntries.map(({ path, value: frame }) =>
+    parseFrame(frame, path, defaultDuration),
+  );
+  const frameTags = detection.family === "aseprite"
+    ? parseAsepriteFrameTags(value, frames.length)
+    : undefined;
+
   return {
-    frames: frameEntries.map(({ path, value: frame }) =>
-      parseFrame(frame, path, defaultDuration),
-    ),
+    frames,
+    ...(frameTags === undefined ? {} : { frameTags }),
   };
 }
 
@@ -564,6 +656,9 @@ export function createSpritesheetJsonProject(
       index,
       durationMs: duration,
     })),
+    ...(metadata.frameTags === undefined
+      ? {}
+      : { frameTags: metadata.frameTags.map((frameTag) => ({ ...frameTag })) }),
     layers: [
       {
         id: "main",

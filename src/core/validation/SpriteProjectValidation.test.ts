@@ -78,6 +78,87 @@ describe("validateSpriteProject", () => {
     );
   });
 
+  it("accepts ordered frame tags and exact case-distinct names", () => {
+    const project = createValidProject();
+    project.frameTags = [
+      { name: "Loop", from: 0, to: 1, direction: "forward" },
+      { name: "loop", from: 1, to: 1, direction: "reverse" },
+      { name: "Bounce", from: 0, to: 1, direction: "ping-pong" },
+    ];
+
+    expect(validateSpriteProject(project)).toEqual([]);
+  });
+
+  it("rejects malformed frame tag fields and duplicate exact names", () => {
+    const project = createValidProject() as unknown as Record<string, unknown>;
+    project.frameTags = [
+      { name: "", from: -1, to: 1, direction: "sideways" },
+      { name: "Loop", from: 1, to: 0, direction: "forward" },
+      { name: "Loop", from: 0, to: 1, direction: "reverse" },
+      { name: "Unsafe", from: Number.MAX_SAFE_INTEGER + 1, to: 1 },
+    ];
+
+    expect(validateSpriteProject(project)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "invalid_frame_tag_name",
+          path: "frameTags[0].name",
+        }),
+        expect.objectContaining({
+          code: "invalid_frame_tag_from",
+          path: "frameTags[0].from",
+        }),
+        expect.objectContaining({
+          code: "invalid_frame_tag_direction",
+          path: "frameTags[0].direction",
+        }),
+        expect.objectContaining({
+          code: "invalid_frame_tag_range",
+          path: "frameTags[1]",
+        }),
+        expect.objectContaining({
+          code: "duplicate_frame_tag_name",
+          path: "frameTags[2].name",
+        }),
+        expect.objectContaining({
+          code: "invalid_frame_tag_from",
+          path: "frameTags[3].from",
+        }),
+      ]),
+    );
+  });
+
+  it("rejects frame tag indexes that do not reference project frames", () => {
+    const project = createValidProject();
+    project.frameTags = [
+      { name: "Missing start", from: 2, to: 2, direction: "forward" },
+    ];
+
+    expect(validateSpriteProject(project)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "invalid_frame_tag_reference",
+          path: "frameTags[0].from",
+        }),
+        expect.objectContaining({
+          code: "invalid_frame_tag_reference",
+          path: "frameTags[0].to",
+        }),
+      ]),
+    );
+  });
+
+  it("rejects a non-array frame tag collection", () => {
+    const project = createValidProject() as unknown as Record<string, unknown>;
+    project.frameTags = "Loop";
+
+    expect(validateSpriteProject(project)).toContainEqual({
+      code: "invalid_frame_tags",
+      path: "frameTags",
+      message: "Project frame tags must be an array when provided.",
+    });
+  });
+
   it.each([Number.NaN, Number.POSITIVE_INFINITY, 65_536])(
     "rejects an out-of-range frame duration %s",
     (durationMs) => {

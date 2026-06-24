@@ -74,6 +74,64 @@ describe("parseSpritesheetJsonMetadata", () => {
     expect(pixi.frames).toEqual([
       { frame: { x: 2, y: 0, w: 2, h: 2 }, duration: 90 },
     ]);
+    expect(aseprite.frameTags).toBeUndefined();
+    expect(pixi.frameTags).toBeUndefined();
+  });
+
+  it("maps ordered Aseprite frame tags into supported model directions", () => {
+    const metadata = parseSpritesheetJsonMetadata(JSON.stringify({
+      frames: [
+        { frame: { x: 0, y: 0, w: 1, h: 1 } },
+        { frame: { x: 1, y: 0, w: 1, h: 1 } },
+        { frame: { x: 2, y: 0, w: 1, h: 1 } },
+      ],
+      meta: {
+        app: "https://www.aseprite.org/",
+        frameTags: [
+          { name: "Walk", from: 0, to: 2, direction: "forward" },
+          { name: "Back", from: 1, to: 2, direction: "reverse" },
+          { name: "Idle", from: 0, to: 1, direction: "pingpong" },
+        ],
+      },
+    }));
+
+    expect(metadata.frameTags).toEqual([
+      { name: "Walk", from: 0, to: 2, direction: "forward" },
+      { name: "Back", from: 1, to: 2, direction: "reverse" },
+      { name: "Idle", from: 0, to: 1, direction: "ping-pong" },
+    ]);
+  });
+
+  it.each([
+    ["not an array", "meta.frameTags must be an array"],
+    [[null], "meta.frameTags[0] must be an object"],
+    [[{ name: "", from: 0, to: 0, direction: "forward" }], "frameTags[0].name"],
+    [[{ name: "Bad", from: -1, to: 0, direction: "forward" }], "frameTags[0].from"],
+    [[{ name: "Bad", from: 0, to: 0.5, direction: "forward" }], "frameTags[0].to"],
+    [[{ name: "Bad", from: 1, to: 0, direction: "forward" }], "less than or equal"],
+    [[{ name: "Bad", from: 0, to: 2, direction: "forward" }], "existing frame index"],
+    [[{ name: "Bad", from: 0, to: 0, direction: "ping-pong" }], "direction"],
+    [[
+      { name: "Same", from: 0, to: 0, direction: "forward" },
+      { name: "Same", from: 0, to: 0, direction: "reverse" },
+    ], "duplicates an earlier frame tag name"],
+  ])("rejects malformed Aseprite frame tags %#", (frameTags, error) => {
+    expect(() => parseSpritesheetJsonMetadata(JSON.stringify({
+      frames: [{ frame: { x: 0, y: 0, w: 1, h: 1 } }],
+      meta: { app: "Aseprite", frameTags },
+    }))).toThrow(error);
+  });
+
+  it("does not interpret non-Aseprite atlas metadata as frame tags", () => {
+    const metadata = parseSpritesheetJsonMetadata(JSON.stringify({
+      frames: [{ frame: { x: 0, y: 0, w: 1, h: 1 } }],
+      meta: {
+        app: "TexturePacker",
+        frameTags: [{ name: "Atlas data", from: 0, to: 0, direction: "forward" }],
+      },
+    }));
+
+    expect(metadata.frameTags).toBeUndefined();
   });
 
   it("preserves array order and provided durations", () => {
@@ -334,6 +392,34 @@ describe("createSpritesheetJsonProject", () => {
     expect(project.layers[0].cels.map((cel) =>
       Array.from(cel.imageData.data).filter((_, index) => index % 4 === 0),
     )).toEqual([[3, 4, 7, 8], [1, 2, 5, 6]]);
+    expect(project.frameTags).toBeUndefined();
+  });
+
+  it("copies parsed frame tags into the SpriteProject in source order", () => {
+    const metadata = parseSpritesheetJsonMetadata(JSON.stringify({
+      frames: [
+        { frame: { x: 0, y: 0, w: 1, h: 1 } },
+        { frame: { x: 1, y: 0, w: 1, h: 1 } },
+      ],
+      meta: {
+        app: "Aseprite",
+        frameTags: [
+          { name: "Second", from: 1, to: 1, direction: "reverse" },
+          { name: "First", from: 0, to: 1, direction: "pingpong" },
+        ],
+      },
+    }));
+
+    const project = createSpritesheetJsonProject(
+      createSpritesheet(2, 1),
+      metadata,
+    );
+
+    expect(project.frameTags).toEqual([
+      { name: "Second", from: 1, to: 1, direction: "reverse" },
+      { name: "First", from: 0, to: 1, direction: "ping-pong" },
+    ]);
+    expect(project.frameTags).not.toBe(metadata.frameTags);
   });
 
   it("places trimmed pixels on a transparent full-size canvas", () => {

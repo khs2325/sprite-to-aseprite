@@ -63,6 +63,29 @@ describe("SpriteProject", () => {
       ],
     });
     expect(project.layers[0].cels[0].imageData).toBe(imageData);
+    expect(project.frameTags).toBeUndefined();
+  });
+
+  it("represents optional ordered frame tags", () => {
+    const project: SpriteProject = {
+      width: 1,
+      height: 1,
+      colorMode: "rgba",
+      frames: [
+        { index: 0, durationMs: 100 },
+        { index: 1, durationMs: 100 },
+      ],
+      frameTags: [
+        { name: "Walk", from: 0, to: 1, direction: "forward" },
+        { name: "Return", from: 0, to: 1, direction: "ping-pong" },
+      ],
+      layers: [],
+    };
+
+    expect(project.frameTags).toEqual([
+      { name: "Walk", from: 0, to: 1, direction: "forward" },
+      { name: "Return", from: 0, to: 1, direction: "ping-pong" },
+    ]);
   });
 
   it("updates only the selected frame duration without changing timeline order", () => {

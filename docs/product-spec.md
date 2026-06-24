@@ -50,8 +50,9 @@ claiming support before implementation is tested:
 
 1. TexturePacker trimmed frames, followed by rotated frames and clearer atlas
    format diagnostics.
-2. Optional SpriteProject frame tags mapped from supported Aseprite JSON, then
-   encoded by a separately tested `.aseprite` writer change.
+2. Optional SpriteProject frame tags are mapped from supported Aseprite JSON.
+   Encoding those tags in `.aseprite` output remains a separate planned writer
+   change.
 3. GIF and APNG research plus synthetic fixtures before core importers are
    implemented, because timing, blending, and disposal require explicit
    compatibility boundaries.
