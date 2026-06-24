@@ -249,6 +249,13 @@ describe("importer to Aseprite export integration", () => {
           { duration: 90, frame: { h: 1, w: 1, x: 1, y: 0 } },
           { duration: 120, frame: { h: 1, w: 1, x: 0, y: 0 } },
         ],
+        meta: {
+          app: "Aseprite",
+          frameTags: [
+            { name: "Loop", from: 0, to: 1, direction: "pingpong" },
+            { name: "End", from: 1, to: 1, direction: "reverse" },
+          ],
+        },
       }),
       "application/json",
     );
@@ -260,6 +267,10 @@ describe("importer to Aseprite export integration", () => {
     );
 
     expectTwoFrameAseprite(project, [90, 120], [60, 50]);
+    expect(project.frameTags).toEqual([
+      { name: "Loop", from: 0, to: 1, direction: "ping-pong" },
+      { name: "End", from: 1, to: 1, direction: "reverse" },
+    ]);
   });
 
   it("rebuilds trimmed atlas frames before Aseprite export", async () => {

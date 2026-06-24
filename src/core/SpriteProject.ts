@@ -3,12 +3,22 @@ export type SpriteProject = {
   height: number;
   colorMode: "rgba";
   frames: SpriteFrame[];
+  frameTags?: SpriteFrameTag[];
   layers: SpriteLayer[];
 };
 
 export type SpriteFrame = {
   index: number;
   durationMs: number;
+};
+
+export type SpriteFrameTagDirection = "forward" | "reverse" | "ping-pong";
+
+export type SpriteFrameTag = {
+  name: string;
+  from: number;
+  to: number;
+  direction: SpriteFrameTagDirection;
 };
 
 export type SpriteLayer = {
@@ -32,6 +42,23 @@ export const MAX_FRAME_DURATION_MS = 65_535;
 
 export const LAYER_NAME_REQUIRED_MESSAGE =
   "Layer name must contain at least one non-whitespace character.";
+
+export const FRAME_TAG_NAME_REQUIRED_MESSAGE =
+  "Frame tag name must contain at least one non-whitespace character.";
+
+export function isValidFrameTagName(name: unknown): name is string {
+  return typeof name === "string" && name.trim().length > 0;
+}
+
+export function isValidFrameTagDirection(
+  direction: unknown,
+): direction is SpriteFrameTagDirection {
+  return (
+    direction === "forward" ||
+    direction === "reverse" ||
+    direction === "ping-pong"
+  );
+}
 
 export function isValidLayerName(name: unknown): name is string {
   return typeof name === "string" && name.trim().length > 0;

@@ -178,6 +178,29 @@ Every resulting frame canvas must have the same dimensions. Missing, malformed,
 negative, out-of-bounds, or inconsistent trim geometry is rejected rather than
 treating the cropped atlas rectangle as a complete frame.
 
+Aseprite JSON identified by an Aseprite `meta.app` value may also provide an
+ordered `meta.frameTags` array. Each tag needs a non-empty, case-sensitive
+`name`, inclusive zero-based `from` and `to` frame indexes, and a `direction`
+of `"forward"`, `"reverse"`, or `"pingpong"`:
+
+```json
+{
+  "meta": {
+    "app": "https://www.aseprite.org/",
+    "frameTags": [
+      { "name": "Walk", "from": 0, "to": 3, "direction": "forward" },
+      { "name": "Idle", "from": 4, "to": 5, "direction": "pingpong" }
+    ]
+  }
+}
+```
+
+Tag order is preserved. Both indexes must reference imported frames, `from`
+must not exceed `to`, and exact duplicate names are rejected. Frame tags are
+currently retained in the browser-local `SpriteProject` conversion model;
+generated `.aseprite` files do not encode them yet. Non-Aseprite atlas metadata
+is not interpreted as Aseprite frame tags.
+
 ### Atlas JSON detection and diagnostics
 
 Format detection is browser-local and uses JSON structure plus fixed producer

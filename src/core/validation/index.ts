@@ -1,8 +1,11 @@
 import {
+  FRAME_TAG_NAME_REQUIRED_MESSAGE,
   LAYER_NAME_REQUIRED_MESSAGE,
   MAX_FRAME_DURATION_MS,
   MIN_FRAME_DURATION_MS,
   isValidFrameDuration,
+  isValidFrameTagDirection,
+  isValidFrameTagName,
   isValidLayerName,
   type SpriteProject,
 } from "../SpriteProject";
@@ -117,6 +120,109 @@ export function validateSpriteProject(
         );
       }
     });
+  }
+
+  const frameTagNames = new Set<string>();
+  if (project.frameTags !== undefined) {
+    if (!Array.isArray(project.frameTags)) {
+      addError(
+        errors,
+        "invalid_frame_tags",
+        "frameTags",
+        "Project frame tags must be an array when provided.",
+      );
+    } else {
+      project.frameTags.forEach((frameTag, position) => {
+        const path = `frameTags[${position}]`;
+        if (!isRecord(frameTag)) {
+          addError(
+            errors,
+            "invalid_frame_tag",
+            path,
+            "Frame tag must be an object.",
+          );
+          return;
+        }
+
+        if (!isValidFrameTagName(frameTag.name)) {
+          addError(
+            errors,
+            "invalid_frame_tag_name",
+            `${path}.name`,
+            FRAME_TAG_NAME_REQUIRED_MESSAGE,
+          );
+        } else if (frameTagNames.has(frameTag.name)) {
+          addError(
+            errors,
+            "duplicate_frame_tag_name",
+            `${path}.name`,
+            `Frame tag name "${frameTag.name}" is duplicated.`,
+          );
+        } else {
+          frameTagNames.add(frameTag.name);
+        }
+
+        const fromIsValid =
+          Number.isSafeInteger(frameTag.from) &&
+          (frameTag.from as number) >= 0;
+        const toIsValid =
+          Number.isSafeInteger(frameTag.to) && (frameTag.to as number) >= 0;
+
+        if (!fromIsValid) {
+          addError(
+            errors,
+            "invalid_frame_tag_from",
+            `${path}.from`,
+            "Frame tag from index must be a non-negative safe integer.",
+          );
+        } else if (!frameIndexes.has(frameTag.from as number)) {
+          addError(
+            errors,
+            "invalid_frame_tag_reference",
+            `${path}.from`,
+            "Frame tag from index must reference an existing project frame.",
+          );
+        }
+
+        if (!toIsValid) {
+          addError(
+            errors,
+            "invalid_frame_tag_to",
+            `${path}.to`,
+            "Frame tag to index must be a non-negative safe integer.",
+          );
+        } else if (!frameIndexes.has(frameTag.to as number)) {
+          addError(
+            errors,
+            "invalid_frame_tag_reference",
+            `${path}.to`,
+            "Frame tag to index must reference an existing project frame.",
+          );
+        }
+
+        if (
+          fromIsValid &&
+          toIsValid &&
+          (frameTag.from as number) > (frameTag.to as number)
+        ) {
+          addError(
+            errors,
+            "invalid_frame_tag_range",
+            path,
+            "Frame tag from index must be less than or equal to its to index.",
+          );
+        }
+
+        if (!isValidFrameTagDirection(frameTag.direction)) {
+          addError(
+            errors,
+            "invalid_frame_tag_direction",
+            `${path}.direction`,
+            'Frame tag direction must be "forward", "reverse", or "ping-pong".',
+          );
+        }
+      });
+    }
   }
 
   const layerIds = new Set<string>();
