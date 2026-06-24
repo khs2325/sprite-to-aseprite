@@ -238,6 +238,58 @@ describe("synthetic sprite fixtures", () => {
     expect(pixel(leftColumn, 1, 0)).toEqual([0, 0, 0, 0]);
   });
 
+  it("provides asymmetric rotated atlas frames with and without trimming", () => {
+    const sheet = decodeFixturePng("spritesheet/rotated-atlas.png");
+    const metadata = parseSpritesheetJsonMetadata(
+      readFileSync(
+        join(fixtureDirectory, "spritesheet/rotated-atlas.json"),
+        "utf8",
+      ),
+    );
+    const project = createSpritesheetJsonProject(sheet, metadata);
+    const [untrimmed, trimmed] = project.layers[0].cels.map(
+      ({ imageData }) => imageData,
+    );
+
+    expect(sheet).toMatchObject({ width: 3, height: 3 });
+    expect(project).toMatchObject({ width: 3, height: 2 });
+    expect(project.frames.map(({ durationMs }) => durationMs))
+      .toEqual([110, 65]);
+    expect([
+      pixel(untrimmed, 0, 0),
+      pixel(untrimmed, 1, 0),
+      pixel(untrimmed, 2, 0),
+      pixel(untrimmed, 0, 1),
+      pixel(untrimmed, 1, 1),
+      pixel(untrimmed, 2, 1),
+    ]).toEqual([
+      [239, 71, 111, 255],
+      [255, 209, 102, 255],
+      [0, 0, 0, 0],
+      [17, 138, 178, 255],
+      [230, 57, 70, 255],
+      [42, 157, 143, 255],
+    ]);
+    expect(pixel(trimmed, 1, 1)).toEqual([69, 123, 157, 255]);
+    expect(pixel(trimmed, 2, 1)).toEqual([255, 255, 255, 255]);
+    expect(pixel(trimmed, 0, 1)).toEqual([0, 0, 0, 0]);
+    expect(pixel(trimmed, 1, 0)).toEqual([0, 0, 0, 0]);
+  });
+
+  it("provides unsupported numeric rotation metadata for rejection coverage", () => {
+    const metadata = readFileSync(
+      join(
+        fixtureDirectory,
+        "spritesheet/rotated-atlas-unsupported.json",
+      ),
+      "utf8",
+    );
+
+    expect(() => parseSpritesheetJsonMetadata(metadata)).toThrow(
+      "frames[0].rotated must be a boolean; true uses TexturePacker's 90-degree clockwise atlas convention.",
+    );
+  });
+
   it("provides invalid trimmed metadata without placement geometry", () => {
     const metadata = readFileSync(
       join(

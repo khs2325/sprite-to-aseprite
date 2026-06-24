@@ -163,6 +163,43 @@ const green = [42, 157, 143, 255];
 const blue = [69, 123, 157, 255];
 const white = [255, 255, 255, 255];
 
+const rotatedAtlas = [
+  cyan, coral, blue,
+  red, yellow, white,
+  green, transparent, transparent,
+];
+const rotatedFrames = {
+  "rotated-untrimmed": {
+    frame: { x: 0, y: 0, w: 2, h: 3 },
+    duration: 110,
+    rotated: true,
+    trimmed: false,
+  },
+  "rotated-trimmed": {
+    frame: { x: 2, y: 0, w: 1, h: 2 },
+    duration: 65,
+    rotated: true,
+    trimmed: true,
+    spriteSourceSize: { x: 1, y: 1, w: 2, h: 1 },
+    sourceSize: { w: 3, h: 2 },
+  },
+};
+
+outputs.set("spritesheet/rotated-atlas.png", encodePng(3, 3, rotatedAtlas));
+outputs.set(
+  "spritesheet/rotated-atlas.json",
+  `${JSON.stringify({ frames: rotatedFrames }, null, 2)}\n`,
+);
+outputs.set(
+  "spritesheet/rotated-atlas-unsupported.json",
+  `${JSON.stringify({
+    frames: [{
+      frame: { x: 0, y: 0, w: 1, h: 1 },
+      rotated: 90,
+    }],
+  }, null, 2)}\n`,
+);
+
 const motionFrames = [
   [red, transparent, transparent, yellow],
   [transparent, green, yellow, transparent],

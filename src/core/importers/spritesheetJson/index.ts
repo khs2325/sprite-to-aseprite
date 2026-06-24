@@ -21,12 +21,14 @@ export type SpritesheetJsonSourceSize = {
 type SpritesheetJsonUntrimmedFrameMetadata = {
   frame: SpritesheetJsonFrameRectangle;
   duration: number;
+  rotated?: boolean;
   trimmed?: false;
 };
 
 type SpritesheetJsonTrimmedFrameMetadata = {
   frame: SpritesheetJsonFrameRectangle;
   duration: number;
+  rotated?: boolean;
   trimmed: true;
   sourceSize: SpritesheetJsonSourceSize;
   spriteSourceSize: SpritesheetJsonFrameRectangle;
@@ -81,8 +83,11 @@ function parseFrame(
   if (!isRecord(value)) {
     throw new Error(`${path} must be an object.`);
   }
-  if (value.rotated !== undefined && value.rotated !== false) {
-    throw new Error(`${path}.rotated must be false; rotated frames are unsupported.`);
+  if (value.rotated !== undefined && typeof value.rotated !== "boolean") {
+    throw new Error(
+      `${path}.rotated must be a boolean; true uses TexturePacker's ` +
+        "90-degree clockwise atlas convention.",
+    );
   }
   if (value.trimmed !== undefined && typeof value.trimmed !== "boolean") {
     throw new Error(`${path}.trimmed must be a boolean.`);
@@ -144,14 +149,20 @@ function parseFrame(
     if (!isPositiveInteger(value.spriteSourceSize.h)) {
       throw new Error(`${path}.spriteSourceSize.h must be a positive integer.`);
     }
-    if (value.spriteSourceSize.w !== frame.w) {
+    const restoredWidth = value.rotated === true ? frame.h : frame.w;
+    const restoredHeight = value.rotated === true ? frame.w : frame.h;
+    if (value.spriteSourceSize.w !== restoredWidth) {
       throw new Error(
-        `${path}.spriteSourceSize.w must match ${path}.frame.w for an unrotated trimmed frame.`,
+        value.rotated === true
+          ? `${path}.spriteSourceSize.w must match ${path}.frame.h when rotated is true.`
+          : `${path}.spriteSourceSize.w must match ${path}.frame.w for an unrotated trimmed frame.`,
       );
     }
-    if (value.spriteSourceSize.h !== frame.h) {
+    if (value.spriteSourceSize.h !== restoredHeight) {
       throw new Error(
-        `${path}.spriteSourceSize.h must match ${path}.frame.h for an unrotated trimmed frame.`,
+        value.rotated === true
+          ? `${path}.spriteSourceSize.h must match ${path}.frame.w when rotated is true.`
+          : `${path}.spriteSourceSize.h must match ${path}.frame.h for an unrotated trimmed frame.`,
       );
     }
     if (
@@ -179,6 +190,7 @@ function parseFrame(
     return {
       frame,
       duration,
+      ...(value.rotated === true ? { rotated: true } : {}),
       trimmed: true,
       sourceSize: {
         w: value.sourceSize.w,
@@ -196,14 +208,16 @@ function parseFrame(
   return {
     frame,
     duration,
+    ...(value.rotated === true ? { rotated: true } : {}),
   };
 }
 
 /**
  * Parses the documented Aseprite-style metadata subset. `frames` may be an
  * ordered array or an object map; each entry needs `frame.{x,y,w,h}` and may
- * provide `duration`. Unrotated TexturePacker-style trimmed frames also need
- * complete `sourceSize` and `spriteSourceSize` placement geometry.
+ * provide `duration`. TexturePacker-style frames may use `rotated: true` for
+ * the 90-degree clockwise atlas convention. Trimmed frames also need complete
+ * `sourceSize` and `spriteSourceSize` placement geometry.
  */
 export function parseSpritesheetJsonMetadata(
   json: string,
@@ -285,31 +299,86 @@ function sliceFrame(
   };
 }
 
-function rebuildTrimmedFrame(
-  spritesheet: ImageData,
+function restoreTexturePackerRotation(frame: ImageData): ImageData {
+  const data = new Uint8ClampedArray(frame.width * frame.height * 4);
+  const width = frame.height;
+  const height = frame.width;
+
+  for (let sourceY = 0; sourceY < frame.height; sourceY += 1) {
+    for (let sourceX = 0; sourceX < frame.width; sourceX += 1) {
+      const destinationX = sourceY;
+      const destinationY = frame.width - sourceX - 1;
+      const sourceOffset = (sourceY * frame.width + sourceX) * 4;
+      const destinationOffset = (destinationY * width + destinationX) * 4;
+      data.set(
+        frame.data.subarray(sourceOffset, sourceOffset + 4),
+        destinationOffset,
+      );
+    }
+  }
+
+  return {
+    colorSpace: frame.colorSpace,
+    data,
+    height,
+    width,
+  };
+}
+
+function placeTrimmedFrame(
+  frame: ImageData,
   metadata: SpritesheetJsonTrimmedFrameMetadata,
 ): ImageData {
-  const { frame, sourceSize, spriteSourceSize } = metadata;
+  const { sourceSize, spriteSourceSize } = metadata;
   const data = new Uint8ClampedArray(sourceSize.w * sourceSize.h * 4);
-  const rowLength = frame.w * 4;
+  const rowLength = frame.width * 4;
 
-  for (let row = 0; row < frame.h; row += 1) {
-    const sourceOffset =
-      ((frame.y + row) * spritesheet.width + frame.x) * 4;
+  for (let row = 0; row < frame.height; row += 1) {
+    const sourceOffset = row * rowLength;
     const destinationOffset =
       ((spriteSourceSize.y + row) * sourceSize.w + spriteSourceSize.x) * 4;
     data.set(
-      spritesheet.data.subarray(sourceOffset, sourceOffset + rowLength),
+      frame.data.subarray(sourceOffset, sourceOffset + rowLength),
       destinationOffset,
     );
   }
 
   return {
-    colorSpace: spritesheet.colorSpace,
+    colorSpace: frame.colorSpace,
     data,
     height: sourceSize.h,
     width: sourceSize.w,
   };
+}
+
+function rebuildFrame(
+  spritesheet: ImageData,
+  metadata: SpritesheetJsonFrameMetadata,
+): ImageData {
+  const atlasFrame = sliceFrame(spritesheet, metadata.frame);
+  const restoredFrame = metadata.rotated === true
+    ? restoreTexturePackerRotation(atlasFrame)
+    : atlasFrame;
+
+  return metadata.trimmed === true
+    ? placeTrimmedFrame(restoredFrame, metadata)
+    : restoredFrame;
+}
+
+function getFrameDimensions(metadata: SpritesheetJsonFrameMetadata): {
+  width: number;
+  height: number;
+} {
+  if (metadata.trimmed === true) {
+    return {
+      width: metadata.sourceSize.w,
+      height: metadata.sourceSize.h,
+    };
+  }
+
+  return metadata.rotated === true
+    ? { width: metadata.frame.h, height: metadata.frame.w }
+    : { width: metadata.frame.w, height: metadata.frame.h };
 }
 
 export function createSpritesheetJsonProject(
@@ -324,20 +393,11 @@ export function createSpritesheetJsonProject(
   }
 
   const firstFrame = metadata.frames[0];
-  const firstWidth = firstFrame.trimmed === true
-    ? firstFrame.sourceSize.w
-    : firstFrame.frame.w;
-  const firstHeight = firstFrame.trimmed === true
-    ? firstFrame.sourceSize.h
-    : firstFrame.frame.h;
+  const { width: firstWidth, height: firstHeight } =
+    getFrameDimensions(firstFrame);
   const cels = metadata.frames.map((frameMetadata, frameIndex) => {
     const { frame } = frameMetadata;
-    const width = frameMetadata.trimmed === true
-      ? frameMetadata.sourceSize.w
-      : frame.w;
-    const height = frameMetadata.trimmed === true
-      ? frameMetadata.sourceSize.h
-      : frame.h;
+    const { width, height } = getFrameDimensions(frameMetadata);
     if (
       width !== firstWidth ||
       height !== firstHeight
@@ -358,9 +418,7 @@ export function createSpritesheetJsonProject(
       frameIndex,
       x: 0,
       y: 0,
-      imageData: frameMetadata.trimmed === true
-        ? rebuildTrimmedFrame(spritesheet, frameMetadata)
-        : sliceFrame(spritesheet, frame),
+      imageData: rebuildFrame(spritesheet, frameMetadata),
     };
   });
 

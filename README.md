@@ -17,9 +17,10 @@ The current conversion core supports:
 - **Spritesheet PNG + JSON:** accepts the documented Aseprite-style JSON subset
   where `frames` is an array or object map and each frame has an
   `x`, `y`, `w`, and `h` rectangle. Per-frame durations are supported and
-  default to 100 ms when omitted. Frames must be unrotated and contained within
-  the PNG. TexturePacker-style trimmed frames are rebuilt on transparent
-  full-size canvases when complete, consistent `sourceSize` and
+  default to 100 ms when omitted. Frames must be contained within the PNG.
+  TexturePacker frames using the common 90-degree clockwise atlas convention
+  are restored when `rotated` is `true`. Trimmed frames are rebuilt on
+  transparent full-size canvases when complete, consistent `sourceSize` and
   `spriteSourceSize` placement metadata is present.
 - **Piskel project:** accepts exactly one model-version-2 `.piskel` file in the
   [documented supported subset](docs/piskel-format.md). It converts embedded
@@ -84,8 +85,8 @@ The writer does not currently export:
 - other advanced Aseprite chunks not listed in the supported subset above
 
 Unsupported source features are not silently presented as preserved. For
-example, the spritesheet JSON importer rejects rotated frames and trimmed
-frames with incomplete or impossible placement metadata.
+example, the spritesheet JSON importer rejects unsupported rotation values and
+trimmed frames with incomplete or impossible placement metadata.
 
 ## Development checks
 

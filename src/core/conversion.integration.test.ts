@@ -306,6 +306,54 @@ describe("importer to Aseprite export integration", () => {
       .toEqual([125, 75]);
   });
 
+  it("restores rotated atlas frames before trim placement and Aseprite export", async () => {
+    const atlasBytes = new Uint8Array(readFileSync(new URL(
+      "../../tests/fixtures/spritesheet/rotated-atlas.png",
+      import.meta.url,
+    )));
+    const metadata = readFileSync(new URL(
+      "../../tests/fixtures/spritesheet/rotated-atlas.json",
+      import.meta.url,
+    ), "utf8");
+    const project = await importSpritesheetJson(
+      createFile("rotated-atlas.png", atlasBytes, "image/png"),
+      createFile("rotated-atlas.json", metadata, "application/json"),
+      {},
+      { decodePng: async () => decodeFixturePng(atlasBytes) },
+    );
+
+    expect(project).toMatchObject({
+      width: 3,
+      height: 2,
+      frames: [
+        { index: 0, durationMs: 110 },
+        { index: 1, durationMs: 65 },
+      ],
+    });
+    expect(pixel(project.layers[0].cels[0].imageData, 0, 0))
+      .toEqual([239, 71, 111, 255]);
+    expect(pixel(project.layers[0].cels[0].imageData, 1, 0))
+      .toEqual([255, 209, 102, 255]);
+    expect(pixel(project.layers[0].cels[0].imageData, 2, 0))
+      .toEqual([0, 0, 0, 0]);
+    expect(pixel(project.layers[0].cels[1].imageData, 1, 1))
+      .toEqual([69, 123, 157, 255]);
+    expect(pixel(project.layers[0].cels[1].imageData, 2, 1))
+      .toEqual([255, 255, 255, 255]);
+    expect(pixel(project.layers[0].cels[1].imageData, 1, 0))
+      .toEqual([0, 0, 0, 0]);
+
+    const bytes = exportAseprite(project);
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    expect({
+      frameCount: view.getUint16(6, true),
+      height: view.getUint16(10, true),
+      width: view.getUint16(8, true),
+    }).toEqual({ frameCount: 2, height: 2, width: 3 });
+    expect(parseFrames(bytes).map(({ durationMs }) => durationMs))
+      .toEqual([110, 65]);
+  });
+
   it("preserves supported Piskel layers and timing in Aseprite chunks", async () => {
     const contents = readFileSync(
       new URL("../../tests/fixtures/piskel/multi-layer.piskel", import.meta.url),
