@@ -53,10 +53,11 @@ claiming support before implementation is tested:
 2. Optional SpriteProject frame tags are mapped from supported Aseprite JSON.
    Encoding those tags in `.aseprite` output remains a separate planned writer
    change.
-3. GIF has a documented [browser-local supported subset](gif-format.md) and
-   deterministic synthetic fixtures covering timing, transparency, offsets,
-   and disposal; decoding remains planned. APNG research and fixtures still
-   precede its core importer because blending and disposal require explicit
+3. GIF has a core browser-local importer for the documented
+   [supported subset](gif-format.md), with deterministic synthetic fixtures
+   covering timing, transparency, offsets, disposal, and malformed streams.
+   Browser UI wiring remains planned. APNG research and fixtures still precede
+   its core importer because blending and disposal require explicit
    compatibility boundaries.
 
 Flat atlas, GIF, and APNG sources do not provide editable source-layer data, so

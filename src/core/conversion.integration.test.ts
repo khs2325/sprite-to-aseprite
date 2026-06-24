@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import type { SpriteProject } from "./SpriteProject";
 import { exportAseprite } from "./exporters/aseprite";
+import { importGifBytes } from "./importers/gif";
 import { importPiskel } from "./importers/piskel";
 import { importPngSequence } from "./importers/pngSequence";
 import { importSpritesheetGrid } from "./importers/spritesheetGrid";
@@ -406,6 +407,58 @@ describe("importer to Aseprite export integration", () => {
     }).toEqual({ frameCount: 2, height: 2, width: 3 });
     expect(parseFrames(bytes).map(({ durationMs }) => durationMs))
       .toEqual([110, 65]);
+  });
+
+  it("exports imported GIF snapshots as a full-canvas Aseprite timeline", () => {
+    const gif = readFileSync(
+      new URL(
+        "../../tests/fixtures/gif/timing-transparency-offsets.gif",
+        import.meta.url,
+      ),
+    );
+    const project = importGifBytes(gif);
+    const bytes = exportAseprite(project);
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const frames = parseFrames(bytes);
+
+    expect({
+      frameCount: view.getUint16(6, true),
+      width: view.getUint16(8, true),
+      height: view.getUint16(10, true),
+      colorDepth: view.getUint16(12, true),
+    }).toEqual({ frameCount: 4, width: 3, height: 2, colorDepth: 32 });
+    expect(frames.map(({ durationMs }) => durationMs)).toEqual([
+      100, 20, 120, 65_535,
+    ]);
+
+    const celChunks = frames.map(({ chunks }) =>
+      chunks.find(({ type }) => type === 0x2005),
+    );
+    expect(celChunks.every((chunk) => chunk !== undefined)).toBe(true);
+    expect(
+      celChunks.map((chunk) => {
+        const celView = new DataView(
+          chunk!.bytes.buffer,
+          chunk!.bytes.byteOffset,
+          chunk!.bytes.byteLength,
+        );
+        return {
+          height: celView.getUint16(24, true),
+          pixels: Array.from(inflateSync(chunk!.bytes.slice(26))),
+          width: celView.getUint16(22, true),
+          x: celView.getInt16(8, true),
+          y: celView.getInt16(10, true),
+        };
+      }),
+    ).toEqual(
+      project.layers[0].cels.map(({ imageData }) => ({
+        height: 2,
+        pixels: Array.from(imageData.data),
+        width: 3,
+        x: 0,
+        y: 0,
+      })),
+    );
   });
 
   it("preserves supported Piskel layers and timing in Aseprite chunks", async () => {
