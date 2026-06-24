@@ -120,10 +120,11 @@ The configured grid must exactly cover the PNG: `frame width x columns` must
 equal the image width, and `frame height x rows` must equal the image height.
 Every grid cell becomes a frame with a default duration of 100 milliseconds.
 The overlay and its dimension summary update when the selected PNG or any grid
-value changes. Calculated values use `floor` when dimensions do not divide
-evenly, and a warning explains that edge pixels may be ignored. A warning also
-appears when settings leave pixels outside the grid or exceed the image
-dimensions.
+value changes. When an entered value would leave edge pixels, the controls snap
+to the nearest positive divisor of the image dimension so the grid fits
+exactly. If two divisors are equally close, the larger divisor is used. A status
+near the preview explains whether the values were adjusted or already formed
+an exact fit. Invalid values leave the current grid unavailable until corrected.
 
 ## Spritesheet PNG + JSON
 

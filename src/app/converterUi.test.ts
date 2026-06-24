@@ -7,6 +7,7 @@ import {
 } from "../core/importers/piskel";
 import type { SpritesheetGridImportOptions } from "../core/importers/spritesheetGrid";
 import {
+  calculateExactFitGrid,
   calculateFrameSizeFromGrid,
   calculateGridFromImage,
   convertSourceFiles,
@@ -16,6 +17,7 @@ import {
   getGridPreviewState,
   getSourceSelectionError,
   getSourceSelectionState,
+  findNearestDivisor,
   renderConversionState,
 } from "./converterUi";
 import type { BrowserSourceFile } from "./fileImport";
@@ -204,44 +206,104 @@ describe("getSourceSelectionError", () => {
 });
 
 describe("spritesheet grid preview calculations", () => {
-  it("auto-calculates rows and columns and recalculates for frame-size changes", () => {
+  it("preserves exact frame divisors and snaps frame edits to nearest divisors", () => {
     expect(calculateGridFromImage(128, 96, 32, 32)).toEqual({
       columns: 4,
       rows: 3,
       warning: null,
     });
-    expect(calculateGridFromImage(128, 96, 16, 24)).toEqual({
-      columns: 8,
-      rows: 4,
+    expect(calculateGridFromImage(384, 256, 30, 32)).toEqual({
+      columns: 12,
+      rows: 8,
+      warning: null,
+    });
+    expect(calculateGridFromImage(384, 256, 32, 30)).toEqual({
+      columns: 12,
+      rows: 8,
       warning: null,
     });
   });
 
-  it("calculates frame dimensions from rows and columns", () => {
+  it("snaps row and column edits and updates exact frame dimensions", () => {
     expect(calculateFrameSizeFromGrid(384, 256, 12, 8)).toEqual({
       frameHeight: 32,
       frameWidth: 32,
       warning: null,
     });
-    expect(calculateFrameSizeFromGrid(384, 250, 12, 8)).toEqual({
-      frameHeight: 31,
+    expect(
+      calculateExactFitGrid(
+        384,
+        256,
+        { ...gridOptions, columns: 10, rows: 8 },
+        "grid-size",
+      ).values,
+    ).toEqual({
+      columns: 12,
+      frameHeight: 32,
       frameWidth: 32,
-      warning:
-        "Warning: 384 × 250 px is not evenly divisible by 12 columns × 8 rows; edge pixels may be ignored.",
+      rows: 8,
+    });
+    expect(calculateFrameSizeFromGrid(384, 250, 12, 8)).toEqual({
+      frameHeight: 25,
+      frameWidth: 32,
+      warning: null,
     });
   });
 
-  it("reports invalid frame sizes and uneven image division", () => {
+  it("chooses the larger divisor when nearest divisors are tied", () => {
+    expect(findNearestDivisor(384, 10)).toBe(12);
+    expect(findNearestDivisor(256, 10)).toBe(8);
+  });
+
+  it("returns normalized controls and an adjustment status", () => {
+    expect(
+      calculateExactFitGrid(
+        384,
+        256,
+        { ...gridOptions, frameWidth: 30, frameHeight: 30 },
+        "frame-size",
+      ),
+    ).toEqual({
+      message: "Adjusted to exact fit: 12 columns × 8 rows, 32 × 32 px each.",
+      values: {
+        columns: 12,
+        frameHeight: 32,
+        frameWidth: 32,
+        rows: 8,
+      },
+    });
+    expect(
+      calculateExactFitGrid(
+        384,
+        256,
+        { ...gridOptions, columns: 12, rows: 8, frameWidth: 32, frameHeight: 32 },
+        "grid-size",
+      ).message,
+    ).toBe("Exact fit: 12 columns × 8 rows, 32 × 32 px each.");
+  });
+
+  it("rejects invalid inputs without producing unsafe grid values", () => {
     expect(calculateGridFromImage(128, 96, 0, 32)).toMatchObject({
       columns: null,
       rows: null,
       warning: expect.stringContaining("positive whole numbers"),
     });
-    expect(calculateGridFromImage(130, 97, 32, 32)).toMatchObject({
-      columns: 4,
-      rows: 3,
-      warning: expect.stringContaining("not evenly divisible"),
-    });
+    for (const invalidValue of [
+      0,
+      -1,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.MAX_SAFE_INTEGER + 1,
+    ]) {
+      const result = calculateExactFitGrid(
+        128,
+        96,
+        { ...gridOptions, columns: invalidValue },
+        "grid-size",
+      );
+      expect(result.values).toBeNull();
+      expect(result.message).toContain("Enter a valid");
+    }
     expect(
       getGridPreviewState(128, 96, { ...gridOptions, frameWidth: 0 }),
     ).toMatchObject({
@@ -280,39 +342,55 @@ describe("spritesheet grid preview calculations", () => {
     });
   });
 
-  it("uses source-specific warnings for uneven frame and grid divisions", () => {
-    const fromFrameSize = getGridPreviewState(
-      130,
-      97,
-      { ...gridOptions, columns: 4, rows: 3, frameWidth: 32, frameHeight: 32 },
-      "frame-size",
-    );
-    expect(fromFrameSize.warning).toContain("32 × 32 px frames");
-
-    const fromGridSize = getGridPreviewState(
+  it("shows an exact summary without an uneven warning after snapping", () => {
+    const calculation = calculateExactFitGrid(
       384,
       250,
-      { ...gridOptions, columns: 12, rows: 8, frameWidth: 32, frameHeight: 31 },
+      { ...gridOptions, columns: 12, rows: 8 },
       "grid-size",
     );
-    expect(fromGridSize.warning).toBe(
-      "Warning: 384 × 250 px is not evenly divisible by 12 columns × 8 rows; edge pixels may be ignored.",
+    expect(calculation.values).toEqual({
+      columns: 12,
+      frameHeight: 25,
+      frameWidth: 32,
+      rows: 10,
+    });
+    const preview = getGridPreviewState(384, 250, {
+      ...gridOptions,
+      ...calculation.values!,
+    });
+    expect(preview.warning).toBeNull();
+    expect(preview.description).toBe(
+      "Grid preview: 12 columns × 10 rows, 120 frames, 32 × 25 px each.",
     );
+    expect(preview.details).toEqual({
+      frameSize: "Frame size: 32 × 25 px",
+      gridSize: "Grid: 12 columns × 10 rows",
+      imageSize: "Image size: 384 × 250 px",
+      totalFrames: "Total frames: 120",
+    });
   });
 
   it("recalculates dimensions and summary when the selected image changes", () => {
-    const firstGrid = calculateGridFromImage(384, 256, 32, 32);
-    const secondGrid = calculateGridFromImage(320, 160, 32, 32);
-    expect(firstGrid).toMatchObject({ columns: 12, rows: 8 });
-    expect(secondGrid).toMatchObject({ columns: 10, rows: 5 });
+    const firstGrid = calculateExactFitGrid(
+      384,
+      256,
+      { ...gridOptions, frameWidth: 32, frameHeight: 32 },
+      "image-change",
+    );
+    const secondGrid = calculateExactFitGrid(
+      320,
+      160,
+      { ...gridOptions, frameWidth: 32, frameHeight: 32 },
+      "image-change",
+    );
+    expect(firstGrid.values).toMatchObject({ columns: 12, rows: 8 });
+    expect(secondGrid.values).toMatchObject({ columns: 10, rows: 5 });
 
     expect(
       getGridPreviewState(320, 160, {
         ...gridOptions,
-        columns: secondGrid.columns!,
-        rows: secondGrid.rows!,
-        frameWidth: 32,
-        frameHeight: 32,
+        ...secondGrid.values!,
       }).description,
     ).toBe("Grid preview: 10 columns × 5 rows, 50 frames, 32 × 32 px each.");
   });

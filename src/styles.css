@@ -99,6 +99,14 @@
   color: #ffd479;
 }
 
+.grid-fit-status {
+  color: #9ddfb9;
+}
+
+.grid-fit-status-error {
+  color: #ffd479;
+}
+
 .grid-preview-details {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
