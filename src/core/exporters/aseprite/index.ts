@@ -1,5 +1,6 @@
 import type {
   SpriteCel,
+  SpriteFrameTag,
   SpriteLayer,
   SpriteProject,
 } from "../../SpriteProject";
@@ -14,6 +15,7 @@ const FILE_MAGIC = 0xa5e0;
 const FRAME_MAGIC = 0xf1fa;
 const LAYER_CHUNK_TYPE = 0x2004;
 const CEL_CHUNK_TYPE = 0x2005;
+const FRAME_TAGS_CHUNK_TYPE = 0x2018;
 const RGBA_COLOR_DEPTH = 32;
 const LAYER_OPACITY_IS_VALID = 1;
 const LAYER_VISIBLE = 1;
@@ -26,6 +28,11 @@ const UINT16_MAX = 0xffff;
 const UINT32_MAX = 0xffffffff;
 const INT16_MIN = -0x8000;
 const INT16_MAX = 0x7fff;
+
+type ValidatedFrameTag = Pick<SpriteFrameTag, "from" | "to"> & {
+  direction: number;
+  name: Uint8Array;
+};
 
 export class UnsupportedAsepriteFeatureError extends Error {
   readonly feature: string;
@@ -72,6 +79,110 @@ function encodeString(value: string, field: string): Uint8Array {
   return bytes;
 }
 
+function isWellFormedUnicode(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const nextCodeUnit = value.charCodeAt(index + 1);
+      if (!(nextCodeUnit >= 0xdc00 && nextCodeUnit <= 0xdfff)) {
+        return false;
+      }
+      index += 1;
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function encodeFrameTagDirection(direction: unknown, field: string): number {
+  switch (direction) {
+    case "forward":
+      return 0;
+    case "reverse":
+      return 1;
+    case "ping-pong":
+      return 2;
+    default:
+      throw new RangeError(
+        `${field} must be "forward", "reverse", or "ping-pong".`,
+      );
+  }
+}
+
+function validateFrameTags(
+  frameTags: unknown,
+  frameCount: number,
+): ValidatedFrameTag[] {
+  if (frameTags === undefined) {
+    return [];
+  }
+  if (!Array.isArray(frameTags)) {
+    throw new TypeError("Project frame tags must be an array when provided.");
+  }
+  if (frameTags.length > UINT16_MAX) {
+    throw new RangeError(
+      `Project must contain at most ${UINT16_MAX} frame tags.`,
+    );
+  }
+
+  const names = new Set<string>();
+  let chunkSize = 6 + 2 + 8;
+  const validated = frameTags.map((frameTag, index): ValidatedFrameTag => {
+    const field = `Frame tag ${index}`;
+    if (typeof frameTag !== "object" || frameTag === null) {
+      throw new TypeError(`${field} must be an object.`);
+    }
+
+    const { direction, from, name, to } = frameTag as Record<string, unknown>;
+    if (typeof name !== "string") {
+      throw new TypeError(`${field} name must be a string.`);
+    }
+    if (name.trim().length === 0) {
+      throw new RangeError(`${field} name must not be empty or whitespace.`);
+    }
+    if (!isWellFormedUnicode(name)) {
+      throw new RangeError(`${field} name must contain valid Unicode.`);
+    }
+    if (names.has(name)) {
+      throw new RangeError(`${field} name "${name}" is duplicated.`);
+    }
+    names.add(name);
+
+    const encodedName = encodeString(name, `${field} name`);
+    assertIntegerInRange(
+      from as number,
+      0,
+      frameCount - 1,
+      `${field} from frame`,
+    );
+    assertIntegerInRange(
+      to as number,
+      0,
+      frameCount - 1,
+      `${field} to frame`,
+    );
+    if ((from as number) > (to as number)) {
+      throw new RangeError(
+        `${field} from frame must be less than or equal to its to frame.`,
+      );
+    }
+
+    chunkSize += 19 + encodedName.length;
+    return {
+      direction: encodeFrameTagDirection(direction, `${field} direction`),
+      from: from as number,
+      name: encodedName,
+      to: to as number,
+    };
+  });
+
+  if (chunkSize > UINT32_MAX) {
+    throw new RangeError("Aseprite frame-tags chunk exceeds the DWORD range.");
+  }
+  return validated;
+}
+
 function validateCel(
   cel: SpriteCel,
   layerIndex: number,
@@ -101,7 +212,7 @@ function validateCel(
   }
 }
 
-function validateProjectFields(project: SpriteProject): void {
+function validateProjectFields(project: SpriteProject): ValidatedFrameTag[] {
   assertPositiveUint16(project.width, "Project width");
   assertPositiveUint16(project.height, "Project height");
   assertPositiveUint16(project.frames.length, "Project frame count");
@@ -148,6 +259,8 @@ function validateProjectFields(project: SpriteProject): void {
       frameIndexes.add(cel.frameIndex);
     });
   });
+
+  return validateFrameTags(project.frameTags, project.frames.length);
 }
 
 function writeFileHeader(
@@ -199,6 +312,26 @@ function createLayerChunk(layer: SpriteLayer): Uint8Array {
   data.writeUint16LE(name.length);
   data.writeBytes(name);
   return createChunk(LAYER_CHUNK_TYPE, data.toUint8Array());
+}
+
+function createFrameTagsChunk(frameTags: ValidatedFrameTag[]): Uint8Array {
+  const data = new BinaryWriter();
+  data.writeUint16LE(frameTags.length);
+  data.writeBytes(new Uint8Array(8));
+
+  frameTags.forEach((frameTag) => {
+    data.writeUint16LE(frameTag.from);
+    data.writeUint16LE(frameTag.to);
+    data.writeUint8(frameTag.direction);
+    data.writeUint16LE(0); // No repeat count specified.
+    data.writeBytes(new Uint8Array(6));
+    data.writeBytes(new Uint8Array(3)); // Deprecated tag color.
+    data.writeUint8(0);
+    data.writeUint16LE(frameTag.name.length);
+    data.writeBytes(frameTag.name);
+  });
+
+  return createChunk(FRAME_TAGS_CHUNK_TYPE, data.toUint8Array());
 }
 
 function adler32(bytes: Uint8Array): number {
@@ -289,12 +422,15 @@ export function exportAseprite(project: SpriteProject): Uint8Array {
     );
   }
 
-  validateProjectFields(project);
+  const frameTags = validateProjectFields(project);
 
   const frameChunks = project.frames.map(() => [] as Uint8Array[]);
   project.layers.forEach((layer) => {
     frameChunks[0].push(createLayerChunk(layer));
   });
+  if (frameTags.length > 0) {
+    frameChunks[0].push(createFrameTagsChunk(frameTags));
+  }
   project.layers.forEach((layer, layerIndex) => {
     layer.cels.forEach((cel) => {
       frameChunks[cel.frameIndex].push(createCelChunk(cel, layerIndex));

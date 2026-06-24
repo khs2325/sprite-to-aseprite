@@ -142,6 +142,34 @@ function parseFrames(bytes: Uint8Array): ParsedFrame[] {
   return frames;
 }
 
+function parseFrameTags(bytes: Uint8Array): Array<{
+  direction: number;
+  from: number;
+  name: string;
+  to: number;
+}> {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const tagCount = view.getUint16(6, true);
+  const tags = [];
+  let offset = 16;
+
+  for (let index = 0; index < tagCount; index += 1) {
+    const nameLength = view.getUint16(offset + 17, true);
+    tags.push({
+      direction: view.getUint8(offset + 4),
+      from: view.getUint16(offset, true),
+      name: new TextDecoder().decode(
+        bytes.slice(offset + 19, offset + 19 + nameLength),
+      ),
+      to: view.getUint16(offset + 2, true),
+    });
+    offset += 19 + nameLength;
+  }
+
+  expect(offset).toBe(bytes.length);
+  return tags;
+}
+
 function expectTwoFrameAseprite(
   project: SpriteProject,
   expectedDurations: number[],
@@ -170,7 +198,13 @@ function expectTwoFrameAseprite(
     expectedDurations.map((durationMs) => ({ durationMs, magic: 0xf1fa })),
   );
   expect(frames.map(({ chunks }) => chunks.map(({ type }) => type))).toEqual([
-    [0x2004, 0x2005],
+    [
+      0x2004,
+      ...(project.frameTags !== undefined && project.frameTags.length > 0
+        ? [0x2018]
+        : []),
+      0x2005,
+    ],
     [0x2005],
   ]);
 
@@ -270,6 +304,15 @@ describe("importer to Aseprite export integration", () => {
     expect(project.frameTags).toEqual([
       { name: "Loop", from: 0, to: 1, direction: "ping-pong" },
       { name: "End", from: 1, to: 1, direction: "reverse" },
+    ]);
+
+    const tagChunk = parseFrames(exportAseprite(project))[0].chunks.find(
+      ({ type }) => type === 0x2018,
+    );
+    expect(tagChunk).toBeDefined();
+    expect(parseFrameTags(tagChunk!.bytes)).toEqual([
+      { name: "Loop", from: 0, to: 1, direction: 2 },
+      { name: "End", from: 1, to: 1, direction: 1 },
     ]);
   });
 
