@@ -1,0 +1,51 @@
+id: "046"
+title: Research APNG import and add deterministic fixtures
+status: backlog
+priority: medium
+goal: Define a minimum safe APNG subset and deterministic fixture strategy before implementing decoding.
+context: >
+  APNG requires correct PNG chunk validation, frame timing, subframe placement, blending,
+  and disposal. This task records the contract before production code is added.
+scope:
+  summary: Document browser-local APNG decoding and add tiny synthetic fixtures for timing, blend, and dispose behavior.
+  allowed_paths:
+    - docs/apng-format.md
+    - docs/roadmap.md
+    - docs/product-spec.md
+    - tests/fixtures/apng/**
+    - tests/fixtures/README.md
+    - tests/fixtures/fixtures.test.ts
+    - tests/fixtures/generate.mjs
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+non_goals:
+  - Do not implement an APNG importer or add APNG UI support.
+  - Do not add a generic PNG codec dependency.
+  - Do not use external or user artwork as fixtures.
+requirements:
+  - Document required PNG and APNG chunks, sequence rules, canvas/frame bounds, and static-PNG fallback policy.
+  - Define deterministic delay numerator/denominator conversion and bounded SpriteProject durations.
+  - Specify source and over blend operations plus none, background, and previous disposal behavior.
+  - Evaluate browser-local decoding strategies that do not require a new production dependency.
+  - Define malformed, unsupported, oversized, or ambiguous cases that must be rejected.
+  - Add or specify deterministic tiny fixtures for offsets, alpha blending, timing, and disposal operations.
+acceptance_criteria:
+  - The documented subset and fixtures are sufficient to implement and review task 047 without guessing animation semantics.
+  - High-risk blend/dispose/timing expectations are explicit and testable.
+  - No importer, UI behavior, dependency, upload, or server processing is added.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 7
+  forbidden_paths: *forbidden

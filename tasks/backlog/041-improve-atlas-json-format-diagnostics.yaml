@@ -1,0 +1,51 @@
+id: "041"
+title: Improve atlas JSON format detection and diagnostics
+status: backlog
+priority: medium
+goal: Identify recognizable atlas JSON families and provide precise compatibility errors without broadly changing conversion behavior.
+context: >
+  Basic Aseprite-style frames already import, and tasks 039-040 add focused TexturePacker
+  geometry support. This task is deliberately limited to format classification and diagnostics.
+scope:
+  summary: Add small atlas-shape detection helpers, content-safe errors, focused tests, and diagnostic documentation.
+  allowed_paths:
+    - src/core/importers/spritesheetJson/**
+    - src/app/converterUi.ts
+    - src/app/converterUi.test.ts
+    - src/app/fileImport.ts
+    - src/app/fileImport.test.ts
+    - docs/manual-usage-guide.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/core/exporters/**
+    - src/core/SpriteProject.ts
+non_goals:
+  - Do not duplicate basic frame array or object-map parsing.
+  - Do not add new atlas geometry semantics beyond tasks 039-040.
+  - Do not expose source JSON, filenames containing private data, or stack traces in errors.
+requirements:
+  - Recognize structural signals for Aseprite JSON, TexturePacker Array, TexturePacker Hash, and common Phaser/Pixi-compatible atlas shapes.
+  - Distinguish a recognized-but-unsupported variant from malformed JSON and an unknown schema.
+  - Keep detection deterministic, structural, and independent from filenames or remote services.
+  - Improve core and user-facing messages while preserving content-safe error handling.
+  - Add focused tests for supported shapes, recognizable unsupported shapes, malformed fields, and unknown schemas.
+  - Document detection as diagnostic guidance, not as a claim that every recognized variant converts.
+acceptance_criteria:
+  - Users receive a concise format-specific reason when a recognizable atlas shape is unsupported or incomplete.
+  - Existing supported atlas inputs convert exactly as before.
+  - Errors do not include raw metadata or stack traces.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 7
+  forbidden_paths: *forbidden

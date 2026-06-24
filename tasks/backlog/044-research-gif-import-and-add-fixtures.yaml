@@ -1,0 +1,51 @@
+id: "044"
+title: Research GIF import and add deterministic fixtures
+status: backlog
+priority: medium
+goal: Define a minimum safe animated GIF import subset and fixture strategy before implementing decoding.
+context: >
+  GIF animation requires explicit decisions for timing, transparency, frame rectangles,
+  disposal, and browser API availability. This task is research and fixtures only.
+scope:
+  summary: Document browser-local GIF decoding choices and add tiny synthetic fixtures covering essential animation semantics.
+  allowed_paths:
+    - docs/gif-format.md
+    - docs/roadmap.md
+    - docs/product-spec.md
+    - tests/fixtures/gif/**
+    - tests/fixtures/README.md
+    - tests/fixtures/fixtures.test.ts
+    - tests/fixtures/generate.mjs
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+non_goals:
+  - Do not implement a GIF importer or wire GIF into the UI.
+  - Do not use downloaded, copyrighted, or private artwork as fixtures.
+  - Do not claim that GIF contains recoverable source layers.
+requirements:
+  - Evaluate browser-local decoding options available without a production dependency and record compatibility tradeoffs.
+  - Define the supported GIF version, animation timing normalization, transparency, frame bounds, interlacing policy, loop metadata policy, and size limits.
+  - Document disposal methods and compositing behavior required for correct full-canvas frames.
+  - Identify unsupported or ambiguous features that the importer must reject precisely.
+  - Add or specify deterministic generation for tiny multi-frame fixtures covering transparency, offsets, timing, and disposal where practical.
+  - Keep fixtures synthetic and verify their signatures and expected structural metadata without implementing full conversion.
+acceptance_criteria:
+  - The document provides an implementation-ready supported subset and decoding strategy for task 045.
+  - Fixtures or deterministic fixture builders cover the highest-risk timing and disposal cases.
+  - No production importer, UI behavior, dependency, network fetch, or upload is added.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 7
+  forbidden_paths: *forbidden

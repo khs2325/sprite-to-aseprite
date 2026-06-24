@@ -1,0 +1,55 @@
+id: "039"
+title: Support TexturePacker trimmed atlas frames
+status: backlog
+priority: high
+goal: Import TexturePacker-style trimmed atlas frames when complete placement metadata is present.
+context: >
+  Basic spritesheet JSON array and object-map frames already work. This task extends only
+  trimmed-frame handling and must keep processing browser-local.
+scope:
+  summary: Reconstruct trimmed atlas frames on transparent full-size canvases with focused fixtures and documentation.
+  allowed_paths:
+    - src/core/importers/spritesheetJson/**
+    - src/core/conversion.integration.test.ts
+    - tests/fixtures/spritesheet/**
+    - tests/fixtures/fixtures.test.ts
+    - tests/fixtures/generate.mjs
+    - docs/manual-usage-guide.md
+    - README.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/core/exporters/**
+    - src/core/importers/pngSequence/**
+    - src/core/importers/spritesheetGrid/**
+    - src/core/importers/piskel/**
+non_goals:
+  - Do not implement rotated atlas frames; task 040 covers rotation.
+  - Do not add server processing, uploads, or production dependencies.
+  - Do not claim that a flat atlas contains recoverable source layers.
+requirements:
+  - Accept trimmed frames only when sourceSize and spriteSourceSize provide complete positive-integer source and placement geometry.
+  - Decode the atlas rectangle and place it at the declared offset in a transparent full-frame ImageData canvas.
+  - Preserve declared frame duration and existing array or object-map ordering.
+  - Reject missing, malformed, negative, out-of-bounds, or inconsistent trim metadata with precise errors.
+  - Never silently emit the cropped atlas rectangle as a complete frame when trimmed is true.
+  - Add tiny deterministic synthetic fixtures and tests for transparent padding, placement, duration, and invalid metadata.
+  - Update supported-subset documentation without describing the conversion as lossless.
+acceptance_criteria:
+  - Supported trimmed TexturePacker frames produce correctly sized SpriteProject cels with exact pixel placement and transparency.
+  - Incomplete or impossible trim metadata is rejected deterministically.
+  - Untrimmed array and object-map behavior remains passing and unchanged.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: false
+  max_changed_files: 8
+  forbidden_paths: *forbidden

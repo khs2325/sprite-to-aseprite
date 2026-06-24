@@ -1,0 +1,53 @@
+id: "045"
+title: Implement animated GIF importer
+status: backlog
+priority: medium
+goal: Decode the documented animated GIF subset into full-canvas SpriteProject frames.
+context: >
+  This task follows the format decisions and synthetic fixtures from task 044.
+  It is core-only so decoding, compositing, and validation remain a reviewable unit.
+scope:
+  summary: Add a browser-local GIF parser/decoder boundary, compositing logic, precise errors, and focused tests.
+  allowed_paths:
+    - src/core/importers/gif/**
+    - src/core/conversion.integration.test.ts
+    - tests/fixtures/gif/**
+    - tests/fixtures/fixtures.test.ts
+    - docs/gif-format.md
+    - docs/product-spec.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/core/exporters/**
+    - src/app/**
+    - src/core/importers/piskel/**
+non_goals:
+  - Do not wire GIF selection into the browser UI in this core importer task.
+  - Do not preserve or claim source layers from a flat GIF.
+  - Do not support features excluded by the documented subset merely by guessing.
+requirements:
+  - Keep parsing, decoding, and compositing browser-local with no uploads or remote fetches.
+  - Preserve supported frame order and normalize source delays to valid SpriteProject durations deterministically.
+  - Produce full-canvas RGBA frames with correct transparency, offsets, and supported disposal behavior.
+  - Enforce documented dimensions, frame-count, allocation, and malformed-stream limits before large allocations.
+  - Reject unsupported versions, disposal modes, truncated data, invalid indexes, and ambiguous streams with content-safe errors.
+  - Create one generated layer because GIF does not contain editable source-layer structure.
+  - Add focused unit and conversion integration tests using task 044 fixtures.
+acceptance_criteria:
+  - Supported animated GIF fixtures import with exact canvas size, frame pixels, order, and durations.
+  - Disposal and transparency cases match documented expected full-frame output.
+  - Unsupported or malformed files fail deterministically without network or UI coupling.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: false
+  max_changed_files: 8
+  forbidden_paths: *forbidden

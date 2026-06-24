@@ -94,6 +94,16 @@ export type GridUpdateGuard = {
   run(source: GridUpdateSource, update: () => void): boolean;
 };
 
+export type ExactFitGridCalculation = {
+  message: string;
+  values: {
+    columns: number;
+    frameHeight: number;
+    frameWidth: number;
+    rows: number;
+  } | null;
+};
+
 export type GridPreviewState = {
   canConvert: boolean;
   description: string;
@@ -108,30 +118,6 @@ export type GridPreviewState = {
 
 function isPositiveInteger(value: number): boolean {
   return Number.isSafeInteger(value) && value > 0;
-}
-
-function getUnevenFrameWarning(
-  imageWidth: number,
-  imageHeight: number,
-  frameWidth: number,
-  frameHeight: number,
-): string {
-  return (
-    `Warning: ${imageWidth} × ${imageHeight} px is not evenly divisible by ` +
-    `${frameWidth} × ${frameHeight} px frames; edge pixels may be ignored.`
-  );
-}
-
-function getUnevenGridWarning(
-  imageWidth: number,
-  imageHeight: number,
-  columns: number,
-  rows: number,
-): string {
-  return (
-    `Warning: ${imageWidth} × ${imageHeight} px is not evenly divisible by ` +
-    `${columns} columns × ${rows} rows; edge pixels may be ignored.`
-  );
 }
 
 export function createGridUpdateGuard(): GridUpdateGuard {
@@ -152,6 +138,98 @@ export function createGridUpdateGuard(): GridUpdateGuard {
   };
 }
 
+export function findNearestDivisor(
+  dimension: number,
+  desiredCount: number,
+): number | null {
+  if (!isPositiveInteger(dimension) || !Number.isFinite(desiredCount) || desiredCount <= 0) {
+    return null;
+  }
+
+  let nearest = 1;
+  let nearestDistance = Math.abs(desiredCount - 1);
+  const consider = (divisor: number): void => {
+    const distance = Math.abs(desiredCount - divisor);
+    // A larger divisor means a smaller frame. Prefer it on an exact tie.
+    if (distance < nearestDistance || (distance === nearestDistance && divisor > nearest)) {
+      nearest = divisor;
+      nearestDistance = distance;
+    }
+  };
+
+  for (let divisor = 1; divisor * divisor <= dimension; divisor += 1) {
+    if (dimension % divisor === 0) {
+      consider(divisor);
+      consider(dimension / divisor);
+    }
+  }
+  return nearest;
+}
+
+export function calculateExactFitGrid(
+  imageWidth: number,
+  imageHeight: number,
+  options: SpritesheetGridImportOptions,
+  source: GridUpdateSource,
+): ExactFitGridCalculation {
+  if (!isPositiveInteger(imageWidth) || !isPositiveInteger(imageHeight)) {
+    return {
+      message: "Enter a valid frame size or grid size to calculate an exact-fit grid.",
+      values: null,
+    };
+  }
+
+  const useGridSize = source === "grid-size";
+  const horizontalInput = useGridSize
+    ? options.columns
+    : imageWidth / options.frameWidth;
+  const verticalInput = useGridSize ? options.rows : imageHeight / options.frameHeight;
+  if (
+    (useGridSize &&
+      (!isPositiveInteger(options.columns) || !isPositiveInteger(options.rows))) ||
+    (!useGridSize &&
+      (!isPositiveInteger(options.frameWidth) ||
+        !isPositiveInteger(options.frameHeight)))
+  ) {
+    return {
+      message: "Enter a valid frame size or grid size to calculate an exact-fit grid.",
+      values: null,
+    };
+  }
+
+  const columns = findNearestDivisor(imageWidth, horizontalInput);
+  const rows = findNearestDivisor(imageHeight, verticalInput);
+  if (
+    columns === null ||
+    rows === null ||
+    !Number.isSafeInteger(columns * rows)
+  ) {
+    return {
+      message: "Enter a valid frame size or grid size to calculate an exact-fit grid.",
+      values: null,
+    };
+  }
+
+  const values = {
+    columns,
+    frameHeight: imageHeight / rows,
+    frameWidth: imageWidth / columns,
+    rows,
+  };
+  const adjusted =
+    values.columns !== options.columns ||
+    values.rows !== options.rows ||
+    values.frameWidth !== options.frameWidth ||
+    values.frameHeight !== options.frameHeight;
+  const prefix = adjusted ? "Adjusted to exact fit" : "Exact fit";
+  return {
+    message:
+      `${prefix}: ${values.columns} columns × ${values.rows} rows, ` +
+      `${values.frameWidth} × ${values.frameHeight} px each.`,
+    values,
+  };
+}
+
 export function calculateGridFromImage(
   imageWidth: number,
   imageHeight: number,
@@ -166,28 +244,16 @@ export function calculateGridFromImage(
     };
   }
 
-  const columns = Math.floor(imageWidth / frameWidth);
-  const rows = Math.floor(imageHeight / frameHeight);
-  if (columns === 0 || rows === 0) {
+  const columns = findNearestDivisor(imageWidth, imageWidth / frameWidth);
+  const rows = findNearestDivisor(imageHeight, imageHeight / frameHeight);
+  if (columns === null || rows === null) {
     return {
-      columns,
-      rows,
-      warning: "The frame size exceeds the selected image dimensions.",
+      columns: null,
+      rows: null,
+      warning: "Enter a valid frame size or grid size to calculate an exact-fit grid.",
     };
   }
-  return {
-    columns,
-    rows,
-    warning:
-      imageWidth % frameWidth === 0 && imageHeight % frameHeight === 0
-        ? null
-        : getUnevenFrameWarning(
-            imageWidth,
-            imageHeight,
-            frameWidth,
-            frameHeight,
-          ),
-  };
+  return { columns, rows, warning: null };
 }
 
 export function calculateFrameSizeFromGrid(
@@ -204,22 +270,19 @@ export function calculateFrameSizeFromGrid(
     };
   }
 
-  const frameWidth = Math.floor(imageWidth / columns);
-  const frameHeight = Math.floor(imageHeight / rows);
-  if (frameWidth === 0 || frameHeight === 0) {
+  const snappedColumns = findNearestDivisor(imageWidth, columns);
+  const snappedRows = findNearestDivisor(imageHeight, rows);
+  if (snappedColumns === null || snappedRows === null) {
     return {
-      frameHeight,
-      frameWidth,
-      warning: "The selected columns or rows exceed the image dimensions.",
+      frameHeight: null,
+      frameWidth: null,
+      warning: "Enter a valid frame size or grid size to calculate an exact-fit grid.",
     };
   }
   return {
-    frameHeight,
-    frameWidth,
-    warning:
-      imageWidth % columns === 0 && imageHeight % rows === 0
-        ? null
-        : getUnevenGridWarning(imageWidth, imageHeight, columns, rows),
+    frameHeight: imageHeight / snappedRows,
+    frameWidth: imageWidth / snappedColumns,
+    warning: null,
   };
 }
 
@@ -227,7 +290,6 @@ export function getGridPreviewState(
   imageWidth: number,
   imageHeight: number,
   options: SpritesheetGridImportOptions,
-  updateSource: GridUpdateSource = "manual",
 ): GridPreviewState {
   const details = {
     frameSize: `Frame size: ${options.frameWidth} × ${options.frameHeight} px`,
@@ -241,7 +303,10 @@ export function getGridPreviewState(
     options.rows,
     options.columns,
   ];
-  if (!values.every(isPositiveInteger)) {
+  if (
+    !values.every(isPositiveInteger) ||
+    !Number.isSafeInteger(options.columns * options.rows)
+  ) {
     return {
       canConvert: false,
       description:
@@ -263,39 +328,6 @@ export function getGridPreviewState(
       description,
       details,
       warning: "The configured grid exceeds the selected image dimensions.",
-    };
-  }
-  if (
-    updateSource === "grid-size" &&
-    (imageWidth % options.columns !== 0 || imageHeight % options.rows !== 0)
-  ) {
-    return {
-      canConvert: false,
-      description,
-      details,
-      warning: getUnevenGridWarning(
-        imageWidth,
-        imageHeight,
-        options.columns,
-        options.rows,
-      ),
-    };
-  }
-  if (
-    (imageWidth % options.frameWidth !== 0 ||
-      imageHeight % options.frameHeight !== 0) &&
-    updateSource !== "grid-size"
-  ) {
-    return {
-      canConvert: false,
-      description,
-      details,
-      warning: getUnevenFrameWarning(
-        imageWidth,
-        imageHeight,
-        options.frameWidth,
-        options.frameHeight,
-      ),
     };
   }
   if (gridWidth !== imageWidth || gridHeight !== imageHeight) {
@@ -551,6 +583,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   const gridSize = document.createElement("p");
   const gridFrameSize = document.createElement("p");
   const gridTotalFrames = document.createElement("p");
+  const gridExactFitStatus = document.createElement("p");
   const gridPreviewWarning = document.createElement("p");
   gridPreview.className = "grid-preview";
   gridPreviewHeading.textContent = "Grid overlay preview";
@@ -567,6 +600,9 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
     gridFrameSize,
     gridTotalFrames,
   );
+  gridExactFitStatus.className = "grid-fit-status";
+  gridExactFitStatus.setAttribute("role", "status");
+  gridExactFitStatus.setAttribute("aria-live", "polite");
   gridPreviewWarning.className = "grid-warning";
   gridPreviewWarning.setAttribute("role", "status");
   gridPreviewWarning.setAttribute("aria-live", "polite");
@@ -576,6 +612,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
     gridPreviewFrame,
     gridPreviewStatus,
     gridPreviewDetails,
+    gridExactFitStatus,
     gridPreviewWarning,
   );
   controls.append(controlsHeading, modeLabel, gridFields, gridPreview);
@@ -683,7 +720,8 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   let gridImageWidth: number | null = null;
   let gridImageHeight: number | null = null;
   let gridImageError: string | null = null;
-  let lastGridUpdateSource: GridUpdateSource = "image-change";
+  let gridFitMessage = "";
+  let gridFitIsError = false;
   const gridUpdateGuard = createGridUpdateGuard();
   const previewUrls = createSourcePreviewUrlStore();
 
@@ -805,6 +843,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
       gridSize.textContent = "";
       gridFrameSize.textContent = "";
       gridTotalFrames.textContent = "";
+      gridExactFitStatus.textContent = "";
       gridPreviewWarning.textContent = "";
       gridPreviewWarning.hidden = true;
       return null;
@@ -819,6 +858,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
       gridSize.textContent = "";
       gridFrameSize.textContent = "";
       gridTotalFrames.textContent = "";
+      gridExactFitStatus.textContent = "";
       gridPreviewWarning.textContent = gridImageError ?? "";
       gridPreviewWarning.hidden = gridImageError === null;
       return null;
@@ -829,13 +869,16 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
       gridImageWidth,
       gridImageHeight,
       options,
-      lastGridUpdateSource,
     );
     gridPreviewStatus.textContent = previewState.description;
     gridImageSize.textContent = previewState.details.imageSize;
     gridSize.textContent = previewState.details.gridSize;
     gridFrameSize.textContent = previewState.details.frameSize;
     gridTotalFrames.textContent = previewState.details.totalFrames;
+    gridExactFitStatus.textContent = gridFitMessage;
+    gridExactFitStatus.className = gridFitIsError
+      ? "grid-fit-status grid-fit-status-error"
+      : "grid-fit-status";
     gridPreviewWarning.textContent = previewState.warning ?? "";
     gridPreviewWarning.hidden = previewState.warning === null;
     if (isPositiveInteger(options.columns) && isPositiveInteger(options.rows)) {
@@ -883,34 +926,19 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
       return false;
     }
     return gridUpdateGuard.run(source, () => {
-      lastGridUpdateSource = source;
-      if (source === "frame-size" || source === "image-change") {
-        const calculation = calculateGridFromImage(
-          gridImageWidth!,
-          gridImageHeight!,
-          Number(frameWidth.input.value),
-          Number(frameHeight.input.value),
-        );
-        if (calculation.columns !== null && calculation.rows !== null) {
-          columns.input.value = String(calculation.columns);
-          rows.input.value = String(calculation.rows);
-        }
-        return;
-      }
-      if (source === "grid-size") {
-        const calculation = calculateFrameSizeFromGrid(
-          gridImageWidth!,
-          gridImageHeight!,
-          Number(columns.input.value),
-          Number(rows.input.value),
-        );
-        if (
-          calculation.frameWidth !== null &&
-          calculation.frameHeight !== null
-        ) {
-          frameWidth.input.value = String(calculation.frameWidth);
-          frameHeight.input.value = String(calculation.frameHeight);
-        }
+      const calculation = calculateExactFitGrid(
+        gridImageWidth!,
+        gridImageHeight!,
+        readGridOptions(),
+        source,
+      );
+      gridFitMessage = calculation.message;
+      gridFitIsError = calculation.values === null;
+      if (calculation.values !== null) {
+        columns.input.value = String(calculation.values.columns);
+        rows.input.value = String(calculation.values.rows);
+        frameWidth.input.value = String(calculation.values.frameWidth);
+        frameHeight.input.value = String(calculation.values.frameHeight);
       }
     });
   };
@@ -930,6 +958,8 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
     gridImageWidth = null;
     gridImageHeight = null;
     gridImageError = null;
+    gridFitMessage = "";
+    gridFitIsError = false;
     gridPreviewImage.removeAttribute("src");
     if (source !== null) {
       gridPreviewImage.alt = `Spritesheet grid preview of ${source.file.name}`;
@@ -1024,7 +1054,6 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
 
   const handleFrameOrderChange = (): void => {
     invalidateConversion();
-    lastGridUpdateSource = "manual";
     renderGridPreview();
     updateReadiness();
   };

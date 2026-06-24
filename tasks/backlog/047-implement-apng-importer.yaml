@@ -1,0 +1,53 @@
+id: "047"
+title: Implement APNG importer
+status: backlog
+priority: medium
+goal: Decode the documented APNG subset into composited full-canvas SpriteProject frames.
+context: >
+  This task follows the APNG format contract and fixtures from task 046. It remains
+  core-only so animation chunk parsing and compositing can be verified independently.
+scope:
+  summary: Add browser-local APNG parsing, frame decoding/compositing, validation, and conversion tests.
+  allowed_paths:
+    - src/core/importers/apng/**
+    - src/core/conversion.integration.test.ts
+    - tests/fixtures/apng/**
+    - tests/fixtures/fixtures.test.ts
+    - docs/apng-format.md
+    - docs/product-spec.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/core/exporters/**
+    - src/app/**
+    - src/core/importers/piskel/**
+non_goals:
+  - Do not wire APNG selection into the browser UI in this core importer task.
+  - Do not treat every PNG as animated or claim editable source-layer preservation.
+  - Do not guess behavior for chunks excluded by the documented subset.
+requirements:
+  - Validate PNG/APNG signatures, chunk ordering, sequence numbers, CRC policy, dimensions, bounds, and allocation limits.
+  - Decode supported frame image data browser-locally and preserve RGBA transparency.
+  - Composite full-canvas frames using documented source/over blend and none/background/previous disposal operations.
+  - Convert APNG timing fractions to valid whole-millisecond SpriteProject durations deterministically.
+  - Reject malformed, truncated, unsupported, oversized, or ambiguous animations with precise content-safe errors.
+  - Create one generated layer because APNG does not contain editable source-layer structure.
+  - Add focused unit and conversion integration tests using task 046 fixtures.
+acceptance_criteria:
+  - Supported APNG fixtures import with exact dimensions, pixels, frame order, and durations.
+  - Blend and disposal tests prove correct composited full-frame output.
+  - Unsupported inputs fail deterministically without network, upload, UI, or exporter changes.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: false
+  max_changed_files: 8
+  forbidden_paths: *forbidden
