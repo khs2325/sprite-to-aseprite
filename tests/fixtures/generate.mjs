@@ -74,6 +74,110 @@ function pngDataUrl(width, height, pixels) {
   return `data:image/png;base64,${encodePng(width, height, pixels).toString("base64")}`;
 }
 
+function uint16LittleEndian(value) {
+  const bytes = Buffer.alloc(2);
+  bytes.writeUInt16LE(value);
+  return bytes;
+}
+
+function gifSubBlocks(data) {
+  const blocks = [];
+  for (let offset = 0; offset < data.length; offset += 255) {
+    const block = data.subarray(offset, offset + 255);
+    blocks.push(Buffer.from([block.length]), block);
+  }
+  blocks.push(Buffer.from([0]));
+  return Buffer.concat(blocks);
+}
+
+function encodeGifLzw(indexes, minimumCodeSize = 2) {
+  const clearCode = 1 << minimumCodeSize;
+  const endCode = clearCode + 1;
+  const codeSize = minimumCodeSize + 1;
+  const codes = [clearCode];
+  for (const index of indexes) {
+    codes.push(index, clearCode);
+  }
+  codes.push(endCode);
+
+  const bytes = [];
+  let bits = 0;
+  let bitCount = 0;
+  for (const code of codes) {
+    bits |= code << bitCount;
+    bitCount += codeSize;
+    while (bitCount >= 8) {
+      bytes.push(bits & 0xff);
+      bits >>>= 8;
+      bitCount -= 8;
+    }
+  }
+  if (bitCount > 0) {
+    bytes.push(bits & 0xff);
+  }
+  return Buffer.from(bytes);
+}
+
+function gifFrame({
+  delay,
+  disposal,
+  height,
+  indexes,
+  left,
+  top,
+  transparentIndex,
+  width,
+}) {
+  const transparencyFlag = transparentIndex === undefined ? 0 : 1;
+  const control = Buffer.concat([
+    Buffer.from([0x21, 0xf9, 0x04, (disposal << 2) | transparencyFlag]),
+    uint16LittleEndian(delay),
+    Buffer.from([transparentIndex ?? 0, 0]),
+  ]);
+  const descriptor = Buffer.concat([
+    Buffer.from([0x2c]),
+    uint16LittleEndian(left),
+    uint16LittleEndian(top),
+    uint16LittleEndian(width),
+    uint16LittleEndian(height),
+    Buffer.from([0]),
+  ]);
+  const imageData = encodeGifLzw(indexes);
+  return Buffer.concat([
+    control,
+    descriptor,
+    Buffer.from([2]),
+    gifSubBlocks(imageData),
+  ]);
+}
+
+function encodeGif(width, height, frames, { loopCount } = {}) {
+  const globalColorTable = Buffer.from([
+    0, 0, 0,
+    230, 57, 70,
+    42, 157, 143,
+    69, 123, 157,
+  ]);
+  const blocks = [
+    Buffer.from("GIF89a", "ascii"),
+    uint16LittleEndian(width),
+    uint16LittleEndian(height),
+    Buffer.from([0x91, 0, 0]),
+    globalColorTable,
+  ];
+  if (loopCount !== undefined) {
+    blocks.push(Buffer.concat([
+      Buffer.from([0x21, 0xff, 0x0b]),
+      Buffer.from("NETSCAPE2.0", "ascii"),
+      Buffer.from([0x03, 0x01]),
+      uint16LittleEndian(loopCount),
+      Buffer.from([0]),
+    ]));
+  }
+  blocks.push(...frames.map(gifFrame), Buffer.from([0x3b]));
+  return Buffer.concat(blocks);
+}
+
 function piskelLayer(name, opacity, frames, chunks) {
   return JSON.stringify({
     name,
@@ -118,6 +222,90 @@ for (let y = 0; y < 4; y += 1) {
 outputs.set("png-sequence/spark-01.png", encodePng(4, 4, frameOne));
 outputs.set("png-sequence/spark-02.png", encodePng(4, 4, frameTwo));
 outputs.set("spritesheet/spark-sheet.png", encodePng(8, 4, spritesheet));
+
+outputs.set(
+  "gif/timing-transparency-offsets.gif",
+  encodeGif(3, 2, [
+    {
+      left: 0, top: 0, width: 3, height: 2,
+      delay: 0, disposal: 1, transparentIndex: 0,
+      indexes: [1, 0, 0, 0, 0, 0],
+    },
+    {
+      left: 1, top: 0, width: 2, height: 1,
+      delay: 1, disposal: 1, transparentIndex: 0,
+      indexes: [0, 2],
+    },
+    {
+      left: 2, top: 1, width: 1, height: 1,
+      delay: 12, disposal: 1, transparentIndex: 0,
+      indexes: [3],
+    },
+    {
+      left: 0, top: 1, width: 1, height: 1,
+      delay: 65_535, disposal: 1, transparentIndex: 0,
+      indexes: [1],
+    },
+  ], { loopCount: 0 }),
+);
+
+outputs.set(
+  "gif/disposal-background.gif",
+  encodeGif(3, 2, [
+    {
+      left: 0, top: 0, width: 3, height: 2,
+      delay: 5, disposal: 1,
+      indexes: [1, 1, 1, 1, 1, 1],
+    },
+    {
+      left: 1, top: 0, width: 1, height: 1,
+      delay: 5, disposal: 2,
+      indexes: [2],
+    },
+    {
+      left: 2, top: 0, width: 1, height: 1,
+      delay: 5, disposal: 1,
+      indexes: [3],
+    },
+  ]),
+);
+
+outputs.set(
+  "gif/disposal-previous.gif",
+  encodeGif(3, 2, [
+    {
+      left: 0, top: 0, width: 3, height: 2,
+      delay: 7, disposal: 1,
+      indexes: [1, 1, 1, 1, 1, 1],
+    },
+    {
+      left: 1, top: 0, width: 1, height: 2,
+      delay: 7, disposal: 3,
+      indexes: [2, 2],
+    },
+    {
+      left: 2, top: 1, width: 1, height: 1,
+      delay: 7, disposal: 1,
+      indexes: [3],
+    },
+  ]),
+);
+
+outputs.set(
+  "gif/invalid-frame-bounds.gif",
+  encodeGif(3, 2, [
+    {
+      left: 0, top: 0, width: 3, height: 2,
+      delay: 5, disposal: 1,
+      indexes: [1, 1, 1, 1, 1, 1],
+    },
+    {
+      left: 2, top: 1, width: 2, height: 1,
+      delay: 5, disposal: 1,
+      indexes: [2, 3],
+    },
+  ]),
+);
 
 const trimmedAtlas = [
   coral, yellow, cyan,

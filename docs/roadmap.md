@@ -62,7 +62,7 @@
   1. [ ] SpriteProject model and Aseprite JSON mapping (task 042)
   2. [ ] `.aseprite` frame-tag export (task 043)
 - GIF:
-  1. [ ] supported-subset research and deterministic fixtures (task 044)
+  1. [x] supported-subset research and deterministic fixtures (task 044)
   2. [ ] core animated GIF importer (task 045)
 - APNG:
   1. [ ] supported-subset research and deterministic fixtures (task 046)
