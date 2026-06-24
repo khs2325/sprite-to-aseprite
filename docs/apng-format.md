@@ -1,9 +1,9 @@
 # Animated PNG import format
 
-Task 046 defines this input contract and deterministic fixtures. Task 047 may
-implement the core importer against it. APNG bytes must be parsed and decoded
-in the browser and must never be uploaded. A flat APNG has no recoverable
-source layers, so import will rebuild its timeline on one generated layer.
+Task 046 defines this input contract and deterministic fixtures. The core
+importer implements this contract browser-locally. APNG bytes are parsed and
+decoded in the browser and are never uploaded. A flat APNG has no recoverable
+source layers, so import rebuilds its timeline on one generated layer.
 
 Primary format references are the [APNG specification](https://wiki.mozilla.org/APNG_Specification)
 and the [PNG specification](https://www.w3.org/TR/png-3/).
@@ -22,7 +22,7 @@ semantics under test without adding a production codec dependency.
 | `DecompressionStream("deflate")` plus project-owned parsing | Browser-local and dependency-free. It handles the zlib stream while owned code validates chunks, reverses PNG filters, and composites frames deterministically. Output must be read with a strict byte limit because decompression can expand hostile input. | Canonical strategy. |
 | New generic PNG/APNG package | Could reduce implementation work, but adds production code and does not remove the need to enforce this subset and its resource limits. | Do not add for task 047. |
 
-The core importer should accept an injectable asynchronous zlib inflater so
+The core importer accepts an injectable asynchronous zlib inflater so
 Node tests can use `node:zlib`. The browser default should feature-detect
 `DecompressionStream`; an unavailable API must produce a clear unsupported-
 browser error before decoding, not trigger an upload or server fallback. See

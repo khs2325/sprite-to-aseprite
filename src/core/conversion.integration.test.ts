@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import type { SpriteProject } from "./SpriteProject";
 import { exportAseprite } from "./exporters/aseprite";
+import { importApngBytes } from "./importers/apng";
 import { importGifBytes } from "./importers/gif";
 import { importPiskel } from "./importers/piskel";
 import { importPngSequence } from "./importers/pngSequence";
@@ -458,6 +459,39 @@ describe("importer to Aseprite export integration", () => {
         x: 0,
         y: 0,
       })),
+    );
+  });
+
+  it("exports composited APNG snapshots as a full-canvas Aseprite timeline", async () => {
+    const apng = new Uint8Array(
+      readFileSync(
+        new URL(
+          "../../tests/fixtures/apng/disposal.apng",
+          import.meta.url,
+        ),
+      ),
+    );
+    const project = await importApngBytes(apng, {
+      inflateZlib: async (bytes) => new Uint8Array(inflateSync(bytes)),
+    });
+    const bytes = exportAseprite(project);
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const frames = parseFrames(bytes);
+
+    expect({
+      frameCount: view.getUint16(6, true),
+      width: view.getUint16(8, true),
+      height: view.getUint16(10, true),
+      colorDepth: view.getUint16(12, true),
+    }).toEqual({ frameCount: 4, width: 3, height: 1, colorDepth: 32 });
+    expect(frames.map(({ durationMs }) => durationMs)).toEqual([50, 50, 50, 50]);
+
+    const exportedPixels = frames.map(({ chunks }) => {
+      const cel = chunks.find(({ type }) => type === 0x2005)!;
+      return Array.from(inflateSync(cel.bytes.slice(26)));
+    });
+    expect(exportedPixels).toEqual(
+      project.layers[0].cels.map(({ imageData }) => Array.from(imageData.data)),
     );
   });
 

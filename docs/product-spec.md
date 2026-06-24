@@ -56,10 +56,10 @@ claiming support before implementation is tested:
 3. GIF has a core browser-local importer for the documented
    [supported subset](gif-format.md), with deterministic synthetic fixtures
    covering timing, transparency, offsets, disposal, and malformed streams.
-   Browser UI wiring remains planned. APNG now has a documented
-   [supported subset](apng-format.md) and deterministic synthetic fixtures for
-   timing, offsets, alpha blending, and disposal; its core importer and browser
-   UI wiring remain planned.
+   Browser UI wiring remains planned. APNG has a core browser-local importer for
+   its documented [supported subset](apng-format.md), with deterministic
+   synthetic fixtures covering timing, offsets, alpha blending, and disposal.
+   APNG browser UI wiring remains planned.
 
 Flat atlas, GIF, and APNG sources do not provide editable source-layer data, so
 these paths will rebuild frames on a generated layer rather than claim layer
