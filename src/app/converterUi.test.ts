@@ -6,6 +6,7 @@ import {
   type PiskelImportErrorCode,
 } from "../core/importers/piskel";
 import type { SpritesheetGridImportOptions } from "../core/importers/spritesheetGrid";
+import { SpritesheetJsonImportError } from "../core/importers/spritesheetJson";
 import {
   calculateExactFitGrid,
   calculateFrameSizeFromGrid,
@@ -567,6 +568,39 @@ describe("Piskel conversion messages", () => {
     expect(message).toBe(
       "Could not convert the Piskel file. " +
         "Check that it is a supported model-version-2 .piskel file.",
+    );
+    expect(message).not.toContain(privateContents);
+  });
+});
+
+describe("spritesheet JSON conversion messages", () => {
+  it("surfaces importer-authored format diagnostics without a stack trace", () => {
+    const detail =
+      "Phaser Multi-Atlas metadata is recognized but not supported because it contains nested atlas pages.";
+    const error = new SpritesheetJsonImportError(
+      "unsupported-variant",
+      detail,
+    );
+    error.stack = `SpritesheetJsonImportError: ${detail}\n at private-atlas.json:1:1`;
+
+    const message = getConversionErrorMessage("spritesheet-json", error);
+
+    expect(message).toBe(detail);
+    expect(message).not.toContain("private-atlas.json");
+    expect(message).not.toContain("SpritesheetJsonImportError");
+  });
+
+  it("does not expose arbitrary atlas error content", () => {
+    const privateContents = '{"privatePixelData":"do not display"}';
+
+    const message = getConversionErrorMessage(
+      "spritesheet-json",
+      new Error(privateContents),
+    );
+
+    expect(message).toBe(
+      "Could not convert the spritesheet atlas. " +
+        "Check that the JSON uses a supported root-level frame layout.",
     );
     expect(message).not.toContain(privateContents);
   });

@@ -178,6 +178,26 @@ Every resulting frame canvas must have the same dimensions. Missing, malformed,
 negative, out-of-bounds, or inconsistent trim geometry is rejected rather than
 treating the cropped atlas rectangle as a complete frame.
 
+### Atlas JSON detection and diagnostics
+
+Format detection is browser-local and uses JSON structure plus fixed producer
+signals such as `meta.app`; it does not use the JSON filename or a remote
+service. The diagnostic classifier recognizes Aseprite JSON, TexturePacker
+Array (`frames` array), TexturePacker Hash (`frames` object map), common
+Phaser/Pixi-compatible root-frame atlases, and Phaser Multi-Atlas metadata
+with a top-level `textures` array. These formats overlap structurally, so a
+recognized family is diagnostic guidance, not a claim that every variant can
+be converted.
+
+The supported conversion path remains one PNG with one non-empty root-level
+`frames` array or object map using the fields documented above. Phaser
+Multi-Atlas files are recognized but not converted because their frame data is
+nested under one or more atlas pages. The app reports this as an unsupported
+variant. Invalid JSON syntax, a recognized format with missing or malformed
+fields, and valid JSON with an unknown schema are reported separately.
+Diagnostics name the family and structural problem when possible without
+displaying source JSON, frame-map keys, source filenames, or stack traces.
+
 ## Piskel project
 
 Use this mode for one `.piskel` file that matches the

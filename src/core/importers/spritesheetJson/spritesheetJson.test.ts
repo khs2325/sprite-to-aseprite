@@ -2,8 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   createSpritesheetJsonProject,
+  detectAtlasJsonFormat,
+  getSpritesheetJsonImportDiagnostic,
   importSpritesheetJson,
   parseSpritesheetJsonMetadata,
+  SpritesheetJsonImportError,
 } from ".";
 
 const PNG_SIGNATURE = new Uint8Array([
@@ -21,7 +24,58 @@ function createSpritesheet(width: number, height: number): ImageData {
   return { colorSpace: "srgb", data, height, width };
 }
 
+describe("detectAtlasJsonFormat", () => {
+  it.each([
+    [
+      { frames: [], meta: { app: "https://www.aseprite.org/" } },
+      { family: "aseprite", variant: "array" },
+    ],
+    [
+      { frames: [], meta: { app: "TexturePacker" } },
+      { family: "texturepacker", variant: "array" },
+    ],
+    [
+      { frames: {}, meta: { app: "TexturePacker" } },
+      { family: "texturepacker", variant: "hash" },
+    ],
+    [
+      { animations: {}, frames: {} },
+      { family: "phaser-pixi", variant: "hash" },
+    ],
+    [
+      { textures: [{ frames: [] }] },
+      { family: "phaser-pixi", variant: "multiatlas" },
+    ],
+    [
+      { assets: [] },
+      { family: "unknown", variant: "unknown" },
+    ],
+  ] as const)("detects structural atlas signal %#", (value, detection) => {
+    expect(detectAtlasJsonFormat(value)).toEqual(detection);
+  });
+});
+
 describe("parseSpritesheetJsonMetadata", () => {
+  it("keeps supported Aseprite and Pixi-compatible root frames unchanged", () => {
+    const aseprite = parseSpritesheetJsonMetadata(JSON.stringify({
+      frames: [{ frame: { x: 0, y: 0, w: 2, h: 2 }, duration: 80 }],
+      meta: { app: "https://www.aseprite.org/" },
+    }));
+    const pixi = parseSpritesheetJsonMetadata(JSON.stringify({
+      frames: {
+        idle: { frame: { x: 2, y: 0, w: 2, h: 2 }, duration: 90 },
+      },
+      animations: { idle: ["idle"] },
+    }));
+
+    expect(aseprite.frames).toEqual([
+      { frame: { x: 0, y: 0, w: 2, h: 2 }, duration: 80 },
+    ]);
+    expect(pixi.frames).toEqual([
+      { frame: { x: 2, y: 0, w: 2, h: 2 }, duration: 90 },
+    ]);
+  });
+
   it("preserves array order and provided durations", () => {
     const metadata = parseSpritesheetJsonMetadata(JSON.stringify({
       frames: [
@@ -185,7 +239,49 @@ describe("parseSpritesheetJsonMetadata", () => {
     expect(() => parseSpritesheetJsonMetadata("not json"))
       .toThrow("Spritesheet metadata is not valid JSON.");
     expect(() => parseSpritesheetJsonMetadata('{"frames":[]}'))
-      .toThrow("Spritesheet metadata must contain at least one frame.");
+      .toThrow("TexturePacker Array metadata must contain at least one frame.");
+  });
+
+  it("distinguishes unsupported multi-atlas, incomplete, and unknown shapes", () => {
+    expect(() => parseSpritesheetJsonMetadata(JSON.stringify({
+      textures: [{ frames: [] }],
+    }))).toThrow(
+      "Phaser Multi-Atlas metadata is recognized but not supported because it contains nested atlas pages",
+    );
+    expect(() => parseSpritesheetJsonMetadata(JSON.stringify({
+      meta: { app: "Aseprite" },
+      frames: "missing collection",
+    }))).toThrow(
+      "Aseprite JSON metadata is incomplete: frames must be an array or object map.",
+    );
+    expect(() => parseSpritesheetJsonMetadata(JSON.stringify({
+      textures: [{}],
+    }))).toThrow("Phaser Multi-Atlas texture 1.frames must be an array.");
+    expect(() => parseSpritesheetJsonMetadata('{"assets":[]}')).toThrow(
+      "Atlas JSON schema is not recognized.",
+    );
+  });
+
+  it("keeps object-map keys, arbitrary errors, and stack traces out of diagnostics", () => {
+    const privateKey = "private-character-name.png";
+    let error: unknown;
+
+    try {
+      parseSpritesheetJsonMetadata(JSON.stringify({
+        frames: { [privateKey]: { frame: { x: -1, y: 0, w: 1, h: 1 } } },
+      }));
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toBeInstanceOf(SpritesheetJsonImportError);
+    expect(error).toMatchObject({ code: "invalid-field" });
+    expect(getSpritesheetJsonImportDiagnostic(error)).toContain(
+      "frames object entry 1.frame.x",
+    );
+    expect(getSpritesheetJsonImportDiagnostic(error)).not.toContain(privateKey);
+    expect(getSpritesheetJsonImportDiagnostic(new Error("private JSON")))
+      .toBeNull();
   });
 
   it.each([0, -1, 1.5, Number.NaN])(

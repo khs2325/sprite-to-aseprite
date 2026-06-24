@@ -1,5 +1,6 @@
 import { validateSpriteProject } from "../core/validation";
 import { getPiskelImportDiagnostic } from "../core/importers/piskel";
+import { getSpritesheetJsonImportDiagnostic } from "../core/importers/spritesheetJson";
 
 export const SUPPORTED_SOURCE_ACCEPT =
   ".png,.json,.piskel,image/png,application/json";
@@ -211,16 +212,26 @@ function getFormatHelp(
 function getImporterMessage(
   error: unknown,
   format: FileImportFormat | undefined,
+  files: readonly BrowserSourceFile[],
 ): string | null {
-  if (!(error instanceof Error)) {
-    return null;
-  }
-  const message = error.message.replace(/\s+/g, " ").trim();
   if (format === "piskel") {
+    const message = error instanceof Error
+      ? error.message.replace(/\s+/g, " ").trim()
+      : "";
     return message === "Piskel mode requires exactly one .piskel file."
       ? message
       : getPiskelImportDiagnostic(error);
   }
+  if (
+    format === "spritesheet-json" ||
+    (format === undefined && files.some((file) => file.kind === "json"))
+  ) {
+    return getSpritesheetJsonImportDiagnostic(error);
+  }
+  if (!(error instanceof Error)) {
+    return null;
+  }
+  const message = error.message.replace(/\s+/g, " ").trim();
   return message.length > 0 ? message : null;
 }
 
@@ -295,7 +306,11 @@ export function bindFileImportControl(
       project = await dependencies.onFilesImported?.(importedFiles);
     } catch (error) {
       input.value = "";
-      const detail = getImporterMessage(error, dependencies.format);
+      const detail = getImporterMessage(
+        error,
+        dependencies.format,
+        importedFiles,
+      );
       showError(
         [
           `${formatHelp.label} import failed.`,

@@ -1,4 +1,16 @@
 import type { SpriteProject } from "../../SpriteProject";
+import {
+  detectAtlasJsonFormat,
+  getAtlasJsonFormatLabel,
+} from "./formatDetection";
+
+export {
+  detectAtlasJsonFormat,
+  getAtlasJsonFormatLabel,
+  type AtlasJsonFamily,
+  type AtlasJsonFormatDetection,
+  type AtlasJsonVariant,
+} from "./formatDetection";
 
 const PNG_SIGNATURE = new Uint8Array([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -50,6 +62,40 @@ export type SpritesheetJsonImportDependencies = {
   decodePng?: (file: File) => Promise<ImageData>;
 };
 
+export type SpritesheetJsonImportErrorCode =
+  | "browser-image-decode"
+  | "invalid-field"
+  | "invalid-frame-geometry"
+  | "invalid-json"
+  | "invalid-png"
+  | "unknown-schema"
+  | "unsupported-variant";
+
+export class SpritesheetJsonImportError extends Error {
+  constructor(
+    readonly code: SpritesheetJsonImportErrorCode,
+    message: string,
+    options: ErrorOptions = {},
+  ) {
+    super(message, options);
+    this.name = "SpritesheetJsonImportError";
+  }
+}
+
+/** Returns importer-authored detail only; arbitrary thrown values stay private. */
+export function getSpritesheetJsonImportDiagnostic(
+  error: unknown,
+): string | null {
+  return error instanceof SpritesheetJsonImportError ? error.message : null;
+}
+
+function fail(
+  code: SpritesheetJsonImportErrorCode,
+  message: string,
+): never {
+  throw new SpritesheetJsonImportError(code, message);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -67,7 +113,8 @@ function getDefaultFrameDuration(options: SpritesheetJsonImportOptions): number 
     options.defaultFrameDurationMs ?? DEFAULT_FRAME_DURATION_MS;
 
   if (!isPositiveInteger(duration)) {
-    throw new Error(
+    fail(
+      "invalid-field",
       "Default frame duration must be a positive integer in milliseconds.",
     );
   }
@@ -81,38 +128,42 @@ function parseFrame(
   defaultDuration: number,
 ): SpritesheetJsonFrameMetadata {
   if (!isRecord(value)) {
-    throw new Error(`${path} must be an object.`);
+    fail("invalid-field", `${path} must be an object.`);
   }
   if (value.rotated !== undefined && typeof value.rotated !== "boolean") {
-    throw new Error(
+    fail(
+      "invalid-field",
       `${path}.rotated must be a boolean; true uses TexturePacker's ` +
         "90-degree clockwise atlas convention.",
     );
   }
   if (value.trimmed !== undefined && typeof value.trimmed !== "boolean") {
-    throw new Error(`${path}.trimmed must be a boolean.`);
+    fail("invalid-field", `${path}.trimmed must be a boolean.`);
   }
   if (!isRecord(value.frame)) {
-    throw new Error(`${path}.frame must be an object.`);
+    fail("invalid-field", `${path}.frame must be an object.`);
   }
 
   const rectangle = value.frame;
   if (!isNonNegativeInteger(rectangle.x)) {
-    throw new Error(`${path}.frame.x must be a non-negative integer.`);
+    fail("invalid-field", `${path}.frame.x must be a non-negative integer.`);
   }
   if (!isNonNegativeInteger(rectangle.y)) {
-    throw new Error(`${path}.frame.y must be a non-negative integer.`);
+    fail("invalid-field", `${path}.frame.y must be a non-negative integer.`);
   }
   if (!isPositiveInteger(rectangle.w)) {
-    throw new Error(`${path}.frame.w must be a positive integer.`);
+    fail("invalid-field", `${path}.frame.w must be a positive integer.`);
   }
   if (!isPositiveInteger(rectangle.h)) {
-    throw new Error(`${path}.frame.h must be a positive integer.`);
+    fail("invalid-field", `${path}.frame.h must be a positive integer.`);
   }
 
   const duration = value.duration ?? defaultDuration;
   if (!isPositiveInteger(duration)) {
-    throw new Error(`${path}.duration must be a positive integer in milliseconds.`);
+    fail(
+      "invalid-field",
+      `${path}.duration must be a positive integer in milliseconds.`,
+    );
   }
 
   const frame = {
@@ -124,42 +175,60 @@ function parseFrame(
 
   if (value.trimmed === true) {
     if (!isRecord(value.sourceSize)) {
-      throw new Error(`${path}.sourceSize must be an object when trimmed is true.`);
+      fail(
+        "invalid-field",
+        `${path}.sourceSize must be an object when trimmed is true.`,
+      );
     }
     if (!isPositiveInteger(value.sourceSize.w)) {
-      throw new Error(`${path}.sourceSize.w must be a positive integer.`);
+      fail("invalid-field", `${path}.sourceSize.w must be a positive integer.`);
     }
     if (!isPositiveInteger(value.sourceSize.h)) {
-      throw new Error(`${path}.sourceSize.h must be a positive integer.`);
+      fail("invalid-field", `${path}.sourceSize.h must be a positive integer.`);
     }
     if (!isRecord(value.spriteSourceSize)) {
-      throw new Error(
+      fail(
+        "invalid-field",
         `${path}.spriteSourceSize must be an object when trimmed is true.`,
       );
     }
     if (!isNonNegativeInteger(value.spriteSourceSize.x)) {
-      throw new Error(`${path}.spriteSourceSize.x must be a non-negative integer.`);
+      fail(
+        "invalid-field",
+        `${path}.spriteSourceSize.x must be a non-negative integer.`,
+      );
     }
     if (!isNonNegativeInteger(value.spriteSourceSize.y)) {
-      throw new Error(`${path}.spriteSourceSize.y must be a non-negative integer.`);
+      fail(
+        "invalid-field",
+        `${path}.spriteSourceSize.y must be a non-negative integer.`,
+      );
     }
     if (!isPositiveInteger(value.spriteSourceSize.w)) {
-      throw new Error(`${path}.spriteSourceSize.w must be a positive integer.`);
+      fail(
+        "invalid-field",
+        `${path}.spriteSourceSize.w must be a positive integer.`,
+      );
     }
     if (!isPositiveInteger(value.spriteSourceSize.h)) {
-      throw new Error(`${path}.spriteSourceSize.h must be a positive integer.`);
+      fail(
+        "invalid-field",
+        `${path}.spriteSourceSize.h must be a positive integer.`,
+      );
     }
     const restoredWidth = value.rotated === true ? frame.h : frame.w;
     const restoredHeight = value.rotated === true ? frame.w : frame.h;
     if (value.spriteSourceSize.w !== restoredWidth) {
-      throw new Error(
+      fail(
+        "invalid-frame-geometry",
         value.rotated === true
           ? `${path}.spriteSourceSize.w must match ${path}.frame.h when rotated is true.`
           : `${path}.spriteSourceSize.w must match ${path}.frame.w for an unrotated trimmed frame.`,
       );
     }
     if (value.spriteSourceSize.h !== restoredHeight) {
-      throw new Error(
+      fail(
+        "invalid-frame-geometry",
         value.rotated === true
           ? `${path}.spriteSourceSize.h must match ${path}.frame.w when rotated is true.`
           : `${path}.spriteSourceSize.h must match ${path}.frame.h for an unrotated trimmed frame.`,
@@ -169,7 +238,8 @@ function parseFrame(
       value.spriteSourceSize.x + value.spriteSourceSize.w > value.sourceSize.w ||
       value.spriteSourceSize.y + value.spriteSourceSize.h > value.sourceSize.h
     ) {
-      throw new Error(
+      fail(
+        "invalid-frame-geometry",
         `${path}.spriteSourceSize rectangle (` +
           `${value.spriteSourceSize.x}, ${value.spriteSourceSize.y}, ` +
           `${value.spriteSourceSize.w}, ${value.spriteSourceSize.h}) is outside ` +
@@ -182,7 +252,8 @@ function parseFrame(
       value.spriteSourceSize.w === value.sourceSize.w &&
       value.spriteSourceSize.h === value.sourceSize.h
     ) {
-      throw new Error(
+      fail(
+        "invalid-frame-geometry",
         `${path}.trimmed is true but spriteSourceSize fills sourceSize without trimming.`,
       );
     }
@@ -229,11 +300,62 @@ export function parseSpritesheetJsonMetadata(
   try {
     value = JSON.parse(json) as unknown;
   } catch (error) {
-    throw new Error("Spritesheet metadata is not valid JSON.", { cause: error });
+    throw new SpritesheetJsonImportError(
+      "invalid-json",
+      "Spritesheet metadata is not valid JSON.",
+      { cause: error },
+    );
   }
 
+  const detection = detectAtlasJsonFormat(value);
   if (!isRecord(value)) {
-    throw new Error("Spritesheet metadata must be an object.");
+    fail(
+      "unknown-schema",
+      "Atlas JSON schema is not recognized. Expected a JSON object with root-level frames.",
+    );
+  }
+
+  if (
+    detection.family === "phaser-pixi" &&
+    detection.variant === "multiatlas"
+  ) {
+    if (!Array.isArray(value.textures)) {
+      fail(
+        "invalid-field",
+        "Phaser Multi-Atlas metadata is incomplete: textures must be an array.",
+      );
+    }
+    if (value.textures.length === 0) {
+      fail(
+        "invalid-field",
+        "Phaser Multi-Atlas metadata is incomplete: textures must contain at least one atlas page.",
+      );
+    }
+    value.textures.forEach((texture, index) => {
+      if (!isRecord(texture)) {
+        fail(
+          "invalid-field",
+          `Phaser Multi-Atlas texture ${index + 1} must be an object.`,
+        );
+      }
+      if (!Array.isArray(texture.frames)) {
+        fail(
+          "invalid-field",
+          `Phaser Multi-Atlas texture ${index + 1}.frames must be an array.`,
+        );
+      }
+    });
+    fail(
+      "unsupported-variant",
+      "Phaser Multi-Atlas metadata is recognized but not supported because it contains nested atlas pages instead of one root-level frame collection.",
+    );
+  }
+
+  if (detection.family === "unknown" && detection.variant === "unknown") {
+    fail(
+      "unknown-schema",
+      "Atlas JSON schema is not recognized. Expected root-level frames or Phaser Multi-Atlas textures.",
+    );
   }
 
   const frameEntries = Array.isArray(value.frames)
@@ -242,17 +364,24 @@ export function parseSpritesheetJsonMetadata(
         value: frame,
       }))
     : isRecord(value.frames)
-      ? Object.entries(value.frames).map(([name, frame]) => ({
-          path: `frames[${JSON.stringify(name)}]`,
+      ? Object.values(value.frames).map((frame, index) => ({
+          path: `frames object entry ${index + 1}`,
           value: frame,
         }))
       : null;
 
+  const formatLabel = getAtlasJsonFormatLabel(detection);
   if (frameEntries === null) {
-    throw new Error("Spritesheet metadata frames must be an array or object map.");
+    fail(
+      "invalid-field",
+      `${formatLabel} metadata is incomplete: frames must be an array or object map.`,
+    );
   }
   if (frameEntries.length === 0) {
-    throw new Error("Spritesheet metadata must contain at least one frame.");
+    fail(
+      "invalid-field",
+      `${formatLabel} metadata must contain at least one frame.`,
+    );
   }
 
   return {
@@ -386,10 +515,13 @@ export function createSpritesheetJsonProject(
   metadata: SpritesheetJsonMetadata,
 ): SpriteProject {
   if (!isValidImageData(spritesheet)) {
-    throw new Error("Spritesheet contains invalid RGBA image data.");
+    fail("invalid-png", "Spritesheet contains invalid RGBA image data.");
   }
   if (metadata.frames.length === 0) {
-    throw new Error("Spritesheet metadata must contain at least one frame.");
+    fail(
+      "invalid-field",
+      "Spritesheet metadata must contain at least one frame.",
+    );
   }
 
   const firstFrame = metadata.frames[0];
@@ -402,13 +534,15 @@ export function createSpritesheetJsonProject(
       width !== firstWidth ||
       height !== firstHeight
     ) {
-      throw new Error(
+      fail(
+        "invalid-frame-geometry",
         `Frame ${frameIndex + 1} dimensions ${width}x${height} do not match ` +
           `the first frame dimensions ${firstWidth}x${firstHeight}.`,
       );
     }
     if (frame.x + frame.w > spritesheet.width || frame.y + frame.h > spritesheet.height) {
-      throw new Error(
+      fail(
+        "invalid-frame-geometry",
         `Frame ${frameIndex + 1} rectangle (${frame.x}, ${frame.y}, ${frame.w}, ${frame.h}) ` +
           `is outside spritesheet dimensions ${spritesheet.width}x${spritesheet.height}.`,
       );
@@ -451,7 +585,7 @@ async function assertPngFile(file: File): Promise<void> {
     signature.every((byte, index) => byte === PNG_SIGNATURE[index]);
 
   if (!hasPngSignature) {
-    throw new Error(`${file.name} is not a PNG file.`);
+    fail("invalid-png", "Selected spritesheet image is not a valid PNG file.");
   }
 }
 
@@ -493,8 +627,9 @@ export async function importSpritesheetJson(
   try {
     spritesheet = await decodePng(spritesheetFile);
   } catch (error) {
-    throw new Error(
-      `Could not decode spritesheet PNG (${spritesheetFile.name}).`,
+    throw new SpritesheetJsonImportError(
+      "browser-image-decode",
+      "Could not decode the selected spritesheet PNG in this browser.",
       { cause: error },
     );
   }
