@@ -45,7 +45,9 @@ browser-local object URLs that are released when no longer needed.
 In spritesheet grid mode, the UI reads the selected PNG dimensions locally and
 auto-calculates rows and columns from the current frame size. A responsive grid
 overlay updates with the selected image and visible grid settings so slicing
-can be checked before conversion.
+can be checked before conversion. The preview reports image size, grid size,
+frame size, and total frames. Editing rows or columns also recalculates frame
+dimensions, with warnings when either calculation leaves edge pixels.
 
 ## Flat-image limitations
 
