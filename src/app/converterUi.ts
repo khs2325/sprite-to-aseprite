@@ -1,6 +1,8 @@
 import "../styles.css";
 
 import type { SpriteProject } from "../core/SpriteProject";
+import { getApngImportDiagnostic, importApng } from "../core/importers/apng";
+import { getGifImportDiagnostic, importGif } from "../core/importers/gif";
 import { importPngSequence } from "../core/importers/pngSequence";
 import {
   getPiskelImportDiagnostic,
@@ -30,6 +32,8 @@ import { renderLargeFileWarning } from "./largeFileWarning";
 import { mountPreviewTimelineUi } from "./previewTimeline";
 
 type ConverterImporters = {
+  importApng: typeof importApng;
+  importGif: typeof importGif;
   importPngSequence: typeof importPngSequence;
   importPiskel: typeof importPiskel;
   importSpritesheetGrid: typeof importSpritesheetGrid;
@@ -62,6 +66,8 @@ export type ConversionUiState = {
 };
 
 const DEFAULT_IMPORTERS: ConverterImporters = {
+  importApng,
+  importGif,
   importPngSequence,
   importPiskel,
   importSpritesheetGrid,
@@ -73,6 +79,8 @@ const MODE_LABELS: Record<FileImportFormat, string> = {
   "spritesheet-grid": "Spritesheet grid",
   "spritesheet-json": "Spritesheet PNG + JSON",
   piskel: "Piskel project",
+  gif: "GIF animation",
+  apng: "APNG animation",
 };
 
 export type GridAutoCalculation = {
@@ -390,11 +398,13 @@ export function getSourceSelectionError(
   const pngCount = files.filter((file) => file.kind === "png").length;
   const jsonCount = files.filter((file) => file.kind === "json").length;
   const piskelCount = files.filter((file) => file.kind === "piskel").length;
+  const gifCount = files.filter((file) => file.kind === "gif").length;
+  const apngCount = files.filter((file) => file.kind === "apng").length;
 
   if (mode === "png-sequence") {
-    return pngCount > 0 && jsonCount === 0 && piskelCount === 0
+    return pngCount > 0 && pngCount === files.length
       ? null
-      : "PNG sequence mode requires one or more PNG files and no JSON file.";
+      : "PNG sequence mode requires one or more PNG files only.";
   }
   if (mode === "spritesheet-grid") {
     return pngCount === 1 && files.length === 1
@@ -406,9 +416,19 @@ export function getSourceSelectionError(
       ? null
       : "Spritesheet PNG + JSON mode requires exactly one PNG and one JSON file.";
   }
-  return piskelCount === 1 && files.length === 1
+  if (mode === "piskel") {
+    return piskelCount === 1 && files.length === 1
+      ? null
+      : "Piskel mode requires exactly one .piskel file.";
+  }
+  if (mode === "gif") {
+    return gifCount === 1 && files.length === 1
+      ? null
+      : "GIF mode requires exactly one .gif file.";
+  }
+  return files.length === 1 && apngCount + pngCount === 1
     ? null
-    : "Piskel mode requires exactly one .piskel file.";
+    : "APNG mode requires exactly one .apng or APNG-compatible .png file.";
 }
 
 export async function convertSourceFiles(
@@ -439,6 +459,22 @@ export async function convertSourceFiles(
     }
     return importers.importPiskel(piskelFile.file);
   }
+  if (mode === "gif") {
+    const gifFile = files.find((file) => file.kind === "gif");
+    if (gifFile === undefined) {
+      throw new Error("GIF source file is missing.");
+    }
+    return importers.importGif(gifFile.file);
+  }
+  if (mode === "apng") {
+    const apngFile = files.find(
+      (file) => file.kind === "apng" || file.kind === "png",
+    );
+    if (apngFile === undefined) {
+      throw new Error("APNG source file is missing.");
+    }
+    return importers.importApng(apngFile.file);
+  }
 
   const jsonFile = files.find((file) => file.kind === "json");
   if (jsonFile === undefined) {
@@ -461,6 +497,13 @@ export function getConversionSuccessStatus(
       "in an editable Aseprite timeline. Ready to download."
     );
   }
+  if (mode === "gif" || mode === "apng") {
+    const formatLabel = mode === "gif" ? "GIF" : "APNG";
+    return (
+      `Converted ${frameCount} ${formatLabel} ${frameNoun} ` +
+      "into an editable Aseprite timeline. Ready to download."
+    );
+  }
   return (
     `Converted ${frameCount} ${frameNoun} ` +
     "into an editable Aseprite timeline. Ready to download."
@@ -474,6 +517,18 @@ export function getConversionErrorMessage(
   if (mode === "spritesheet-json") {
     return getSpritesheetJsonImportDiagnostic(error) ??
       "Could not convert the spritesheet atlas. Check that the JSON uses a supported root-level frame layout.";
+  }
+  if (mode === "gif") {
+    const diagnostic = getGifImportDiagnostic(error);
+    return diagnostic === null
+      ? "GIF import failed: Check that the file uses the supported GIF subset."
+      : `GIF import failed: ${diagnostic}`;
+  }
+  if (mode === "apng") {
+    const diagnostic = getApngImportDiagnostic(error);
+    return diagnostic === null
+      ? "APNG import failed: Check that the file uses the supported APNG subset."
+      : `APNG import failed: ${diagnostic}`;
   }
   if (mode !== "piskel") {
     return error instanceof Error && error.message.trim().length > 0
@@ -795,17 +850,17 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
 
   const renderSelectedFiles = (): void => {
     const pngFiles = selectedFiles
-      .filter((source) => source.kind === "png")
+      .filter((source) => source.kind === "png" && mode !== "apng")
       .map((source) => source.file);
     previewUrls.retain(pngFiles);
     selectedFileList.replaceChildren();
     selectedFilesSection.hidden = selectedFiles.length === 0;
 
     selectedFiles.forEach((source, index) => {
-      const presentation = getSourceFilePresentation(source);
+      const presentation = getSourceFilePresentation(source, mode);
       const item = document.createElement("li");
       const visual =
-        source.kind === "png"
+        source.kind === "png" && mode !== "apng"
           ? document.createElement("img")
           : document.createElement("span");
       const details = document.createElement("div");
@@ -820,7 +875,8 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
         visual.alt = `Thumbnail preview of ${presentation.fileName}`;
       } else {
         visual.className = `selected-file-icon selected-file-icon-${source.kind}`;
-        visual.textContent = source.kind === "piskel" ? "PISKEL" : "JSON";
+        visual.textContent =
+          source.kind === "png" ? "APNG" : source.kind.toUpperCase();
         visual.setAttribute("aria-hidden", "true");
       }
       details.className = "selected-file-details";
@@ -1040,7 +1096,12 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
     dropInstructions.textContent =
       mode === "piskel"
         ? "Drop exactly one .piskel file here, or choose one below."
-        : "Drag and drop PNG, JSON, or Piskel files here, or choose files below.";
+        : mode === "gif"
+          ? "Drop exactly one .gif file here, or choose one below."
+          : mode === "apng"
+            ? "Drop exactly one .apng or animated .png file here, or choose one below."
+            : "Drag and drop PNG, JSON, or Piskel files here, or choose files below.";
+    renderSelectedFiles();
     syncGridSource();
     updateReadiness();
   };
@@ -1082,6 +1143,10 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
       status:
         mode === "piskel"
           ? "Converting the Piskel project browser-locally. This may take a while."
+          : mode === "gif"
+            ? "Converting the GIF animation browser-locally. This may take a while."
+            : mode === "apng"
+              ? "Converting the APNG animation browser-locally. This may take a while."
           : "Converting files browser-locally. This may take a while.",
     });
 
@@ -1115,6 +1180,10 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
         status:
           mode === "piskel"
             ? "Piskel conversion did not complete."
+            : mode === "gif"
+              ? "GIF conversion did not complete."
+              : mode === "apng"
+                ? "APNG conversion did not complete."
             : "Conversion did not complete.",
         error: getConversionErrorMessage(mode, error),
       });

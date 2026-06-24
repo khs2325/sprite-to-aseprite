@@ -30,11 +30,22 @@ The current conversion core supports:
   because the output model does not preserve hidden-frame state. For
   compatibility with real Piskel exports, `"hiddenFrames": ""` is treated as no
   hidden frames and empty-string array entries are ignored.
+- **GIF animation:** accepts exactly one `.gif` file in the
+  [documented supported subset](docs/gif-format.md). Supported frames, timing,
+  transparency, offsets, and disposal behavior are rebuilt on one generated
+  layer.
+- **APNG animation:** accepts exactly one `.apng` file, or an animated `.png`
+  file, in the [documented supported subset](docs/apng-format.md). Supported
+  frames, timing, offsets, alpha blending, and disposal behavior are rebuilt on
+  one generated layer.
 
 These inputs rebuild a timeline from the extracted frames. Piskel support is
 limited to the documented subset and is not described as universal, perfect,
-or lossless conversion. GIF, APNG, Pixelorama (`.pxo`), PSD, and other JSON
-schemas are not currently supported.
+or lossless conversion. GIF and APNG support is likewise limited to each
+documented subset. These flat animation formats do not provide editable source
+layers, so the converter does not claim to preserve or recover layers from
+them. Pixelorama (`.pxo`), PSD, and other JSON schemas are not currently
+supported.
 
 ## Browser-only processing
 
@@ -42,8 +53,9 @@ Artwork and metadata are read and processed in the browser. Conversion and
 `.aseprite` generation do not upload user files to a server or send them to a
 remote image-processing service. The generated file is downloaded locally
 using browser APIs. Selected files can be reviewed and removed before
-conversion; PNG thumbnail previews and the spritesheet grid overlay also use
-browser-local object URLs that are released when no longer needed.
+conversion; GIF and APNG sources use document-style file cards, while PNG
+thumbnail previews and the spritesheet grid overlay use browser-local object
+URLs that are released when no longer needed.
 
 In spritesheet grid mode, the UI reads the selected PNG dimensions locally and
 auto-calculates rows and columns from the current frame size. A responsive grid

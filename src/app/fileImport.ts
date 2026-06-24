@@ -1,20 +1,24 @@
 import { validateSpriteProject } from "../core/validation";
+import { getApngImportDiagnostic } from "../core/importers/apng";
+import { getGifImportDiagnostic } from "../core/importers/gif";
 import { getPiskelImportDiagnostic } from "../core/importers/piskel";
 import { getSpritesheetJsonImportDiagnostic } from "../core/importers/spritesheetJson";
 
 export const SUPPORTED_SOURCE_ACCEPT =
-  ".png,.json,.piskel,image/png,application/json";
+  ".png,.json,.piskel,.gif,.apng,image/png,image/gif,image/apng,application/json";
 
 export type FileImportFormat =
   | "png-sequence"
   | "spritesheet-grid"
   | "spritesheet-json"
-  | "piskel";
+  | "piskel"
+  | "gif"
+  | "apng";
 
 export type BrowserSourceFile =
   | {
       file: File;
-      kind: "png";
+      kind: "png" | "gif" | "apng";
       bytes: ArrayBuffer;
     }
   | {
@@ -32,7 +36,12 @@ export type SourceFilePresentation = {
   fileName: string;
   fileSize: string;
   kind: BrowserSourceFile["kind"];
-  typeLabel: "PNG image" | "JSON metadata" | "Piskel project";
+  typeLabel:
+    | "PNG image"
+    | "JSON metadata"
+    | "Piskel project"
+    | "GIF animation"
+    | "APNG animation";
 };
 
 export type SourcePreviewUrlStore = {
@@ -50,6 +59,8 @@ const SOURCE_TYPE_LABELS: Record<
   png: "PNG image",
   json: "JSON metadata",
   piskel: "Piskel project",
+  gif: "GIF animation",
+  apng: "APNG animation",
 };
 
 export function formatFileSize(byteCount: number): string {
@@ -69,12 +80,16 @@ export function formatFileSize(byteCount: number): string {
 
 export function getSourceFilePresentation(
   source: BrowserSourceFile,
+  format?: FileImportFormat,
 ): SourceFilePresentation {
   return {
     fileName: source.file.name,
     fileSize: formatFileSize(source.file.size),
     kind: source.kind,
-    typeLabel: SOURCE_TYPE_LABELS[source.kind],
+    typeLabel:
+      format === "apng" && source.kind === "png"
+        ? "APNG animation"
+        : SOURCE_TYPE_LABELS[source.kind],
   };
 }
 
@@ -146,6 +161,22 @@ export function getSourceKind(
   if (extension === ".piskel") {
     return "piskel";
   }
+  if (extension === ".gif") {
+    return "gif";
+  }
+  if (extension === ".apng") {
+    return "apng";
+  }
+  const mimeType = file.type.toLowerCase();
+  if (mimeType === "image/gif") {
+    return "gif";
+  }
+  if (mimeType === "image/apng") {
+    return "apng";
+  }
+  if (mimeType === "image/png") {
+    return "png";
+  }
   return null;
 }
 
@@ -153,7 +184,7 @@ async function readSourceFile(
   file: File,
   kind: BrowserSourceFile["kind"],
 ): Promise<BrowserSourceFile> {
-  if (kind === "png") {
+  if (kind === "png" || kind === "gif" || kind === "apng") {
     return { file, kind, bytes: await file.arrayBuffer() };
   }
   return { file, kind, text: await file.text() };
@@ -185,6 +216,14 @@ const FORMAT_HELP: Record<FileImportFormat, FormatHelp> = {
     suggestion:
       "Check that the file is a supported model-version-2 .piskel file.",
   },
+  gif: {
+    label: "GIF animation",
+    suggestion: "Check that the file uses the supported GIF subset.",
+  },
+  apng: {
+    label: "APNG animation",
+    suggestion: "Check that the file uses the supported APNG subset.",
+  },
 };
 
 function getFormatHelp(
@@ -196,6 +235,12 @@ function getFormatHelp(
   }
   if (files.some((file) => file.kind === "piskel")) {
     return FORMAT_HELP.piskel;
+  }
+  if (files.some((file) => file.kind === "gif")) {
+    return FORMAT_HELP.gif;
+  }
+  if (files.some((file) => file.kind === "apng")) {
+    return FORMAT_HELP.apng;
   }
   if (files.some((file) => file.kind === "json")) {
     return FORMAT_HELP["spritesheet-json"];
@@ -222,6 +267,12 @@ function getImporterMessage(
       ? message
       : getPiskelImportDiagnostic(error);
   }
+  if (format === "gif") {
+    return getGifImportDiagnostic(error);
+  }
+  if (format === "apng") {
+    return getApngImportDiagnostic(error);
+  }
   if (
     format === "spritesheet-json" ||
     (format === undefined && files.some((file) => file.kind === "json"))
@@ -241,6 +292,12 @@ function getSelectionStatus(
 ): string {
   if (format === "piskel") {
     return "Selected 1 Piskel file. Ready to convert browser-locally.";
+  }
+  if (format === "gif") {
+    return "Selected 1 GIF animation. Ready to convert browser-locally.";
+  }
+  if (format === "apng") {
+    return "Selected 1 APNG animation. Ready to convert browser-locally.";
   }
   const noun = fileCount === 1 ? "file" : "files";
   return `Selected ${fileCount} supported ${noun}.`;
@@ -282,7 +339,7 @@ export function bindFileImportControl(
       if (kind === null) {
         input.value = "";
         showError(
-          `Unsupported file "${file.name}". Choose PNG, JSON, or Piskel files only.`,
+          `Unsupported file "${file.name}". Choose PNG, JSON, Piskel, GIF, or APNG files only.`,
         );
         return false;
       }
@@ -396,7 +453,7 @@ export function mountFileImportUi(
   dropInstructions.textContent =
     "Drag and drop files here, or choose files with the control below.";
   supportedTypes.textContent =
-    "Supported files: PNG images (.png), JSON metadata (.json), and Piskel projects (.piskel).";
+    "Supported files: PNG images (.png), JSON metadata (.json), Piskel projects (.piskel), GIF animations (.gif), and APNG animations (.apng or .png).";
   privacyNotice.textContent =
     "Your files stay in this browser and are never uploaded.";
   input.type = "file";
@@ -404,7 +461,7 @@ export function mountFileImportUi(
   input.accept = SUPPORTED_SOURCE_ACCEPT;
   input.setAttribute(
     "aria-label",
-    "Choose PNG, JSON, or Piskel sprite source files",
+    "Choose PNG, JSON, Piskel, GIF, or APNG sprite source files",
   );
   errorOutput.setAttribute("role", "alert");
   errorOutput.setAttribute("aria-live", "assertive");

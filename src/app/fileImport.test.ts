@@ -77,7 +77,7 @@ function dragFilesOver(target: DropTargetStub): void {
 }
 
 describe("bindFileImportControl", () => {
-  it("builds readable PNG, JSON, and Piskel card details without source text", () => {
+  it("builds readable source card details without exposing source contents", () => {
     expect(getSourceFilePresentation({
       file: new File([new Uint8Array(1536)], "sheet.png"),
       kind: "png",
@@ -98,6 +98,21 @@ describe("bindFileImportControl", () => {
       kind: "piskel",
       text: "private project",
     })).toMatchObject({ typeLabel: "Piskel project" });
+    expect(getSourceFilePresentation({
+      file: new File(["gif"], "sprite.gif"),
+      kind: "gif",
+      bytes: new ArrayBuffer(0),
+    })).toMatchObject({ typeLabel: "GIF animation" });
+    expect(getSourceFilePresentation({
+      file: new File(["apng"], "sprite.apng"),
+      kind: "apng",
+      bytes: new ArrayBuffer(0),
+    })).toMatchObject({ typeLabel: "APNG animation" });
+    expect(getSourceFilePresentation({
+      file: new File(["apng"], "sprite.png"),
+      kind: "png",
+      bytes: new ArrayBuffer(0),
+    }, "apng")).toMatchObject({ typeLabel: "APNG animation" });
     expect(formatFileSize(1)).toBe("1 byte");
   });
 
@@ -134,6 +149,20 @@ describe("bindFileImportControl", () => {
         type: "application/octet-stream",
       }),
     ).toBe("piskel");
+  });
+
+  it("advertises and classifies GIF and APNG sources", () => {
+    const acceptedTypes = SUPPORTED_SOURCE_ACCEPT.split(",");
+    expect(acceptedTypes).toEqual(expect.arrayContaining([
+      ".gif",
+      "image/gif",
+      ".apng",
+      "image/apng",
+    ]));
+    expect(getSourceKind({ name: "walk.GIF", type: "" })).toBe("gif");
+    expect(getSourceKind({ name: "animation", type: "image/gif" })).toBe("gif");
+    expect(getSourceKind({ name: "walk.APNG", type: "image/png" })).toBe("apng");
+    expect(getSourceKind({ name: "animation", type: "image/apng" })).toBe("apng");
   });
 
   it("reads PNG and JSON files locally with browser File APIs", async () => {
@@ -202,6 +231,25 @@ describe("bindFileImportControl", () => {
     });
   });
 
+  it.each([
+    ["gif", "sprite.gif", "image/gif", "Selected 1 GIF animation"],
+    ["apng", "sprite.apng", "image/png", "Selected 1 APNG animation"],
+  ] as const)("reads one %s animation locally", async (format, name, type, status) => {
+    const statusOutput = createOutput();
+    const onFilesImported = vi.fn<(files: readonly BrowserSourceFile[]) => void>();
+    const control = bindFileImportControl(
+      createInput(),
+      createOutput(),
+      statusOutput,
+      { format, onFilesImported },
+    );
+    const file = new File([new Uint8Array([1, 2, 3])], name, { type });
+
+    expect(await control.selectFiles([file])).toBe(true);
+    expect(onFilesImported.mock.calls[0][0][0]).toMatchObject({ file, kind: format });
+    expect(statusOutput.textContent).toContain(status);
+  });
+
   it("rejects an unsupported file before reading or importing any selection", async () => {
     const input = createInput();
     const errorOutput = createOutput();
@@ -211,7 +259,7 @@ describe("bindFileImportControl", () => {
       onFilesImported,
     });
     const supported = new File(["png"], "sprite.png", { type: "image/png" });
-    const unsupported = new File(["gif"], "sprite.gif", { type: "image/gif" });
+    const unsupported = new File(["text"], "notes.txt", { type: "text/plain" });
     const readSupported = vi.spyOn(supported, "arrayBuffer");
 
     expect(await control.selectFiles([supported, unsupported])).toBe(false);
@@ -222,7 +270,7 @@ describe("bindFileImportControl", () => {
     expect(errorOutput).toMatchObject({
       hidden: false,
       textContent:
-        'Unsupported file "sprite.gif". Choose PNG, JSON, or Piskel files only.',
+        'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, or APNG files only.',
     });
     expect(statusOutput.hidden).toBe(true);
   });
@@ -492,11 +540,11 @@ describe("bindFileImportControl", () => {
       dropTarget,
     );
 
-    dropFiles(dropTarget, [new File(["gif"], "sprite.gif")]);
+    dropFiles(dropTarget, [new File(["text"], "notes.txt")]);
 
     await vi.waitFor(() => expect(errorOutput.hidden).toBe(false));
     expect(errorOutput.textContent).toBe(
-      'Unsupported file "sprite.gif". Choose PNG, JSON, or Piskel files only.',
+      'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, or APNG files only.',
     );
     expect(onFilesImported).not.toHaveBeenCalled();
   });
@@ -519,7 +567,7 @@ describe("bindFileImportControl", () => {
 
     await vi.waitFor(() => expect(errorOutput.hidden).toBe(false));
     expect(errorOutput.textContent).toBe(
-      'Unsupported file "notes.txt". Choose PNG, JSON, or Piskel files only.',
+      'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, or APNG files only.',
     );
     expect(readPng).not.toHaveBeenCalled();
     expect(onFilesImported).not.toHaveBeenCalled();

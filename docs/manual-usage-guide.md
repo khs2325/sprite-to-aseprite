@@ -1,9 +1,9 @@
 # Manual usage guide
 
 Sprite to Aseprite Converter rebuilds an editable Aseprite timeline from PNG
-frames, spritesheets, or a supported Piskel project. Your artwork stays in the
-browser. The app does not upload source files to a server or send them to an
-external processing service.
+frames, spritesheets, a supported Piskel project, or a supported GIF/APNG
+animation. Your artwork stays in the browser. The app does not upload source
+files to a server or send them to an external processing service.
 
 PNG sequences and spritesheets are flat images. They do not contain the
 original layer structure, so the converter cannot recover original layers
@@ -29,11 +29,12 @@ the server with `Ctrl+C`.
 
 1. Under **Choose an import mode**, select the mode matching the source files.
 2. Under **Add source files**, drag the required files onto the drop area or
-   use the file picker. The app accepts `.png`, `.json`, and `.piskel` files;
-   each mode validates its required file combination. Review the selected-file
-   cards before conversion. PNG cards include browser-local thumbnails, while
-   JSON and Piskel cards show document details without displaying their raw
-   contents. Remove individual files or use **Clear selected files** as needed.
+   use the file picker. The app accepts `.png`, `.json`, `.piskel`, `.gif`, and
+   `.apng` files; each mode validates its required file combination. Review the
+   selected-file cards before conversion. PNG cards include browser-local
+   thumbnails, while JSON, Piskel, GIF, and APNG cards show document details
+   without displaying their raw contents. Remove individual files or use
+   **Clear selected files** as needed.
 3. Check that the app reports the source files are ready, then select
    **Convert to .aseprite**. Conversion happens browser-locally.
 4. Review the rebuilt timeline and make any timing or layer-name changes.
@@ -272,6 +273,38 @@ showing source contents or stack traces.
 The project name and description are validated metadata but are not exported;
 internal layer ids are generated. These boundaries mean Piskel conversion is
 not claimed to be universal, perfect, or lossless.
+
+## GIF animation
+
+GIF import follows the [documented supported GIF subset](gif-format.md).
+
+1. Select **GIF animation** under **Choose an import mode**.
+2. Choose exactly one `.gif` file.
+3. Review the document-style file card, then select
+   **Convert to .aseprite**.
+4. Confirm the reported frame count and inspect timing, transparency, offsets,
+   and disposal results in the rebuilt timeline before downloading.
+
+The importer processes the selected file in the browser and reports a specific,
+safe diagnostic when the stream is malformed or uses an unsupported GIF
+feature. GIF does not contain editable source-layer structure for this import
+path, so the converter rebuilds frames on one generated layer rather than
+claiming layer preservation.
+
+## APNG animation
+
+APNG import follows the [documented supported APNG subset](apng-format.md).
+
+1. Select **APNG animation** under **Choose an import mode**.
+2. Choose exactly one `.apng` file or one animated `.png` file.
+3. Review the selected file card, then select **Convert to .aseprite**.
+4. Confirm the reported frame count and inspect timing, offsets, alpha blending,
+   and disposal results in the rebuilt timeline before downloading.
+
+A plain, non-animated PNG selected in APNG mode is rejected with an APNG
+diagnostic. Processing remains browser-local. APNG does not provide editable
+source-layer structure for this import path, so the converter rebuilds frames
+on one generated layer rather than claiming layer preservation.
 
 ## Preview and edit the rebuilt timeline
 
