@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { SpriteProject } from "../core/SpriteProject";
+import { ApngImportError } from "../core/importers/apng";
+import { GifImportError } from "../core/importers/gif";
 import {
   PiskelImportError,
   type PiskelImportErrorCode,
@@ -68,6 +70,22 @@ function piskel(name: string): BrowserSourceFile {
     file: new File(["{}"], name, { type: "application/octet-stream" }),
     kind: "piskel",
     text: "{}",
+  };
+}
+
+function gif(name: string): BrowserSourceFile {
+  return {
+    file: new File(["gif"], name, { type: "image/gif" }),
+    kind: "gif",
+    bytes: new ArrayBuffer(0),
+  };
+}
+
+function apng(name: string): BrowserSourceFile {
+  return {
+    file: new File(["apng"], name, { type: "image/png" }),
+    kind: "apng",
+    bytes: new ArrayBuffer(0),
   };
 }
 
@@ -158,6 +176,9 @@ describe("getSourceSelectionError", () => {
     ).toBeNull();
     expect(getSourceSelectionError("piskel", [piskel("sprite.piskel")]))
       .toBeNull();
+    expect(getSourceSelectionError("gif", [gif("sprite.gif")])).toBeNull();
+    expect(getSourceSelectionError("apng", [apng("sprite.apng")])).toBeNull();
+    expect(getSourceSelectionError("apng", [png("sprite.png")])).toBeNull();
   });
 
   it("rejects mode/file mismatches before conversion", () => {
@@ -179,6 +200,16 @@ describe("getSourceSelectionError", () => {
         piskel("two.piskel"),
       ]),
     ).toContain("exactly one .piskel file");
+    expect(getSourceSelectionError("gif", [png("sprite.png")]))
+      .toContain("exactly one .gif file");
+    expect(getSourceSelectionError("gif", [gif("one.gif"), gif("two.gif")]))
+      .toContain("exactly one .gif file");
+    expect(getSourceSelectionError("apng", [gif("sprite.gif")]))
+      .toContain("exactly one .apng");
+    expect(getSourceSelectionError("apng", [
+      apng("one.apng"),
+      apng("two.apng"),
+    ])).toContain("exactly one .apng");
   });
 
   it("revalidates remaining and cleared files without a second selection state", () => {
@@ -196,6 +227,15 @@ describe("getSourceSelectionError", () => {
       error: null,
       status: "Choose source files to begin.",
     });
+  });
+
+  it("disables GIF and APNG conversion after removing or clearing the file", () => {
+    expect(getSourceSelectionState("gif", [gif("sprite.gif")]).canConvert)
+      .toBe(true);
+    expect(getSourceSelectionState("gif", []).canConvert).toBe(false);
+    expect(getSourceSelectionState("apng", [apng("sprite.apng")]).canConvert)
+      .toBe(true);
+    expect(getSourceSelectionState("apng", []).canConvert).toBe(false);
   });
 
   it("revalidates the same selected files when import mode changes", () => {
@@ -414,10 +454,14 @@ describe("spritesheet grid preview calculations", () => {
 describe("convertSourceFiles", () => {
   it("delegates every mode to the existing importer with the selected files", async () => {
     const importPngSequence = vi.fn(async () => project);
+    const importApng = vi.fn(async () => project);
+    const importGif = vi.fn(async () => project);
     const importPiskel = vi.fn(async () => project);
     const importSpritesheetGrid = vi.fn(async () => project);
     const importSpritesheetJson = vi.fn(async () => project);
     const importers = {
+      importApng,
+      importGif,
       importPngSequence,
       importPiskel,
       importSpritesheetGrid,
@@ -427,6 +471,8 @@ describe("convertSourceFiles", () => {
     const secondPng = png("walk-02.png");
     const metadata = json("walk.json");
     const piskelProject = piskel("walk.piskel");
+    const gifAnimation = gif("walk.gif");
+    const apngAnimation = apng("walk.apng");
 
     await expect(
       convertSourceFiles(
@@ -470,10 +516,22 @@ describe("convertSourceFiles", () => {
       importers,
     );
     expect(importPiskel).toHaveBeenCalledWith(piskelProject.file);
+
+    await convertSourceFiles("gif", [gifAnimation], gridOptions, importers);
+    expect(importGif).toHaveBeenCalledWith(gifAnimation.file);
+
+    await convertSourceFiles("apng", [apngAnimation], gridOptions, importers);
+    expect(importApng).toHaveBeenCalledWith(apngAnimation.file);
+
+    const pngContainer = png("walk.png");
+    await convertSourceFiles("apng", [pngContainer], gridOptions, importers);
+    expect(importApng).toHaveBeenCalledWith(pngContainer.file);
   });
 
   it("does not call an importer for an invalid selection", async () => {
     const importers = {
+      importApng: vi.fn(async () => project),
+      importGif: vi.fn(async () => project),
       importPngSequence: vi.fn(async () => project),
       importPiskel: vi.fn(async () => project),
       importSpritesheetGrid: vi.fn(async () => project),
@@ -492,6 +550,51 @@ describe("convertSourceFiles", () => {
     expect(importers.importPiskel).not.toHaveBeenCalled();
     expect(importers.importSpritesheetGrid).not.toHaveBeenCalled();
     expect(importers.importSpritesheetJson).not.toHaveBeenCalled();
+    expect(importers.importGif).not.toHaveBeenCalled();
+    expect(importers.importApng).not.toHaveBeenCalled();
+  });
+});
+
+describe("GIF and APNG conversion messages", () => {
+  const animatedProject: SpriteProject = {
+    ...project,
+    frames: [
+      { index: 0, durationMs: 100 },
+      { index: 1, durationMs: 80 },
+    ],
+  };
+
+  it("includes the imported frame count in success messages", () => {
+    expect(getConversionSuccessStatus("gif", animatedProject)).toBe(
+      "Converted 2 GIF frames into an editable Aseprite timeline. Ready to download.",
+    );
+    expect(getConversionSuccessStatus("apng", animatedProject)).toBe(
+      "Converted 2 APNG frames into an editable Aseprite timeline. Ready to download.",
+    );
+  });
+
+  it("shows importer-authored diagnostics without exposing stack traces", () => {
+    const gifError = new GifImportError("unsupported-version", "Only GIF89a files are supported.");
+    gifError.stack = "private-gif-stack";
+    const apngError = new ApngImportError("not-animated", "PNG does not contain APNG animation chunks.");
+    apngError.stack = "private-apng-stack";
+
+    expect(getConversionErrorMessage("gif", gifError)).toBe(
+      "GIF import failed: Only GIF89a files are supported.",
+    );
+    expect(getConversionErrorMessage("apng", apngError)).toBe(
+      "APNG import failed: PNG does not contain APNG animation chunks.",
+    );
+    expect(getConversionErrorMessage("gif", gifError)).not.toContain("stack");
+    expect(getConversionErrorMessage("apng", apngError)).not.toContain("stack");
+  });
+
+  it("does not expose arbitrary GIF or APNG errors", () => {
+    const privateMessage = "private source details";
+    expect(getConversionErrorMessage("gif", new Error(privateMessage)))
+      .not.toContain(privateMessage);
+    expect(getConversionErrorMessage("apng", new Error(privateMessage)))
+      .not.toContain(privateMessage);
   });
 });
 

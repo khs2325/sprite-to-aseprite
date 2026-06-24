@@ -43,6 +43,19 @@ rather than silently inventing or dropping source structure.
 This support is not universal, perfect, or lossless Piskel conversion. Artwork
 is never uploaded or remotely processed.
 
+## Supported post-MVP GIF and APNG import
+
+GIF and APNG are supported as browser-local import paths through the canonical
+`SpriteProject` model and the existing Aseprite exporter. The browser UI accepts
+one `.gif` in the [documented GIF subset](gif-format.md), or one `.apng`/animated
+`.png` in the [documented APNG subset](apng-format.md), and exposes safe
+importer-authored diagnostics for malformed or unsupported files.
+
+These flat animation sources rebuild supported frames and timing on a generated
+layer. They do not provide editable source-layer data, so the product does not
+claim layer preservation or recovery. Source artwork is processed locally in
+the browser and is never uploaded.
+
 ## Planned post-MVP compatibility work
 
 The next planned work expands the existing browser-local architecture without
@@ -53,18 +66,11 @@ claiming support before implementation is tested:
 2. Optional SpriteProject frame tags are mapped from supported Aseprite JSON.
    Encoding those tags in `.aseprite` output remains a separate planned writer
    change.
-3. GIF has a core browser-local importer for the documented
-   [supported subset](gif-format.md), with deterministic synthetic fixtures
-   covering timing, transparency, offsets, disposal, and malformed streams.
-   Browser UI wiring remains planned. APNG has a core browser-local importer for
-   its documented [supported subset](apng-format.md), with deterministic
-   synthetic fixtures covering timing, offsets, alpha blending, and disposal.
-   APNG browser UI wiring remains planned.
 
-Flat atlas, GIF, and APNG sources do not provide editable source-layer data, so
-these paths will rebuild frames on a generated layer rather than claim layer
-recovery. All planned processing remains in the browser with no artwork upload
-or server conversion.
+Flat atlas sources do not provide editable source-layer data, so those paths
+rebuild frames on a generated layer rather than claim layer recovery. All
+planned processing remains in the browser with no artwork upload or server
+conversion.
 
 ## Core user promise
 
