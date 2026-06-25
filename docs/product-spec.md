@@ -58,17 +58,18 @@ the browser and is never uploaded.
 
 ## Supported post-MVP OpenRaster import
 
-OpenRaster (`.ora`) is supported as a browser-local core import path through the
-canonical `SpriteProject` model. The implemented subset is documented in
-[OpenRaster format notes](openraster-format.md) and covers a single-frame ZIP
+OpenRaster (`.ora`) is supported as a browser-local import path through the
+canonical `SpriteProject` model and the existing Aseprite exporter. The browser
+UI accepts exactly one `.ora` file and routes it to the documented
+[OpenRaster format subset](openraster-format.md), covering a single-frame ZIP
 container with `mimetype`, `stack.xml`, normal PNG-backed raster layers, canvas
-dimensions, layer names, source order, visibility, opacity, and signed x/y
-offsets.
+dimensions, layer names, source order, visibility, opacity, signed x/y offsets,
+and decoded RGBA pixels.
 
-This support preserves layers when the `.ora` source contains supported raster
-layer data. It does not implement UI wiring yet, animation, groups, masks,
-effects, non-normal blend modes, or full/lossless OpenRaster conversion. Artwork
-is processed locally and is never uploaded.
+This support preserves layers only when the `.ora` source contains supported
+raster layer data. It does not implement animation, groups, masks, effects,
+non-normal blend modes, or full/lossless OpenRaster conversion. Artwork is
+processed locally and is never uploaded.
 
 ## Planned additional free/open art tool project formats
 

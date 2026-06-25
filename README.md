@@ -30,6 +30,11 @@ The current conversion core supports:
   because the output model does not preserve hidden-frame state. For
   compatibility with real Piskel exports, `"hiddenFrames": ""` is treated as no
   hidden frames and empty-string array entries are ignored.
+- **OpenRaster project:** accepts exactly one `.ora` file in the
+  [documented supported subset](docs/openraster-format.md). It converts the
+  single-frame OpenRaster canvas and preserves supported normal PNG-backed
+  raster layer names, order, visibility, opacity, x/y offsets, and RGBA pixels
+  when the `.ora` file contains that supported raster layer data.
 - **GIF animation:** accepts exactly one `.gif` file in the
   [documented supported subset](docs/gif-format.md). Supported frames, timing,
   transparency, offsets, and disposal behavior are rebuilt on one generated
@@ -39,13 +44,14 @@ The current conversion core supports:
   frames, timing, offsets, alpha blending, and disposal behavior are rebuilt on
   one generated layer.
 
-These inputs rebuild a timeline from the extracted frames. Piskel support is
-limited to the documented subset and is not described as universal, perfect,
-or lossless conversion. GIF and APNG support is likewise limited to each
-documented subset. These flat animation formats do not provide editable source
-layers, so the converter does not claim to preserve or recover layers from
-them. Pixelorama (`.pxo`), PSD, and other JSON schemas are not currently
-supported.
+These inputs rebuild a timeline from the extracted frames. Piskel and
+OpenRaster support is limited to each documented subset and is not described
+as universal, perfect, or lossless conversion. GIF and APNG support is likewise
+limited to each documented subset. These flat animation formats do not provide
+editable source layers, so the converter does not claim to preserve or recover
+layers from them. OpenRaster groups, masks, effects, non-normal blend modes,
+and animation metadata are not preserved. Pixelorama (`.pxo`), PSD, and other
+JSON schemas are not currently supported.
 
 ## Browser-only processing
 
@@ -53,9 +59,9 @@ Artwork and metadata are read and processed in the browser. Conversion and
 `.aseprite` generation do not upload user files to a server or send them to a
 remote image-processing service. The generated file is downloaded locally
 using browser APIs. Selected files can be reviewed and removed before
-conversion; GIF and APNG sources use document-style file cards, while PNG
-thumbnail previews and the spritesheet grid overlay use browser-local object
-URLs that are released when no longer needed.
+conversion; GIF, APNG, and OpenRaster sources use document-style file cards,
+while PNG thumbnail previews and the spritesheet grid overlay use
+browser-local object URLs that are released when no longer needed.
 
 In spritesheet grid mode, the UI reads the selected PNG dimensions locally and
 auto-calculates rows and columns from the current frame size. A responsive grid
@@ -73,9 +79,10 @@ original layers from a flat PNG**. These importers create one normal layer
 named `Main` and place one cel on it for each converted frame.
 
 Layer names, visibility, opacity, and multiple layers can be written when a
-source format contains that layer data and an importer preserves it. The
-currently supported PNG-based inputs do not contain such data. Conversion is
-therefore not described as lossless or as restoring an original Aseprite file.
+source format contains that layer data and an importer preserves it. Supported
+Piskel and OpenRaster inputs may contain supported layer data; PNG sequences,
+spritesheets, GIF, and APNG do not. Conversion is therefore not described as
+lossless or as restoring an original Aseprite file.
 
 ## Aseprite output support
 

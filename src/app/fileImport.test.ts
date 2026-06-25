@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { OpenRasterImportError } from "../core/importers/openraster";
 import { PiskelImportError } from "../core/importers/piskel";
 import { SpritesheetJsonImportError } from "../core/importers/spritesheetJson";
 import {
@@ -113,6 +114,11 @@ describe("bindFileImportControl", () => {
       kind: "png",
       bytes: new ArrayBuffer(0),
     }, "apng")).toMatchObject({ typeLabel: "APNG animation" });
+    expect(getSourceFilePresentation({
+      file: new File(["ora"], "sprite.ora"),
+      kind: "ora",
+      bytes: new ArrayBuffer(0),
+    })).toMatchObject({ typeLabel: "OpenRaster project" });
     expect(formatFileSize(1)).toBe("1 byte");
   });
 
@@ -163,6 +169,20 @@ describe("bindFileImportControl", () => {
     expect(getSourceKind({ name: "animation", type: "image/gif" })).toBe("gif");
     expect(getSourceKind({ name: "walk.APNG", type: "image/png" })).toBe("apng");
     expect(getSourceKind({ name: "animation", type: "image/apng" })).toBe("apng");
+  });
+
+  it("advertises and classifies OpenRaster sources", () => {
+    const acceptedTypes = SUPPORTED_SOURCE_ACCEPT.split(",");
+    expect(acceptedTypes).toEqual(expect.arrayContaining([
+      ".ora",
+      "image/openraster",
+    ]));
+    expect(getSourceKind({ name: "scene.ORA", type: "" })).toBe("ora");
+    expect(getSourceKind({ name: "scene", type: "image/openraster" }))
+      .toBe("ora");
+    expect(
+      getSourceKind({ name: "scene.ora", type: "application/octet-stream" }),
+    ).toBe("ora");
   });
 
   it("reads PNG and JSON files locally with browser File APIs", async () => {
@@ -234,7 +254,8 @@ describe("bindFileImportControl", () => {
   it.each([
     ["gif", "sprite.gif", "image/gif", "Selected 1 GIF animation"],
     ["apng", "sprite.apng", "image/png", "Selected 1 APNG animation"],
-  ] as const)("reads one %s animation locally", async (format, name, type, status) => {
+    ["openraster", "sprite.ora", "image/openraster", "Selected 1 OpenRaster project"],
+  ] as const)("reads one %s source locally", async (format, name, type, status) => {
     const statusOutput = createOutput();
     const onFilesImported = vi.fn<(files: readonly BrowserSourceFile[]) => void>();
     const control = bindFileImportControl(
@@ -246,7 +267,10 @@ describe("bindFileImportControl", () => {
     const file = new File([new Uint8Array([1, 2, 3])], name, { type });
 
     expect(await control.selectFiles([file])).toBe(true);
-    expect(onFilesImported.mock.calls[0][0][0]).toMatchObject({ file, kind: format });
+    expect(onFilesImported.mock.calls[0][0][0]).toMatchObject({
+      file,
+      kind: format === "openraster" ? "ora" : format,
+    });
     expect(statusOutput.textContent).toContain(status);
   });
 
@@ -270,7 +294,7 @@ describe("bindFileImportControl", () => {
     expect(errorOutput).toMatchObject({
       hidden: false,
       textContent:
-        'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, or APNG files only.',
+        'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, APNG, or OpenRaster files only.',
     });
     expect(statusOutput.hidden).toBe(true);
   });
@@ -460,6 +484,36 @@ describe("bindFileImportControl", () => {
     );
   });
 
+  it("includes safe OpenRaster importer detail in selection errors", async () => {
+    const errorOutput = createOutput();
+    const control = bindFileImportControl(
+      createInput(),
+      errorOutput,
+      createOutput(),
+      {
+        format: "openraster",
+        onFilesImported: () => {
+          throw new OpenRasterImportError(
+            "unsupported-feature",
+            "OpenRaster nested stacks and layer groups are unsupported.",
+          );
+        },
+      },
+    );
+
+    expect(
+      await control.selectFiles([
+        new File(["ora"], "scene.ora", { type: "image/openraster" }),
+      ]),
+    ).toBe(false);
+
+    expect(errorOutput.textContent).toBe(
+      "OpenRaster project import failed. " +
+        "OpenRaster nested stacks and layer groups are unsupported. " +
+        "Check that the .ora file contains supported normal PNG-backed raster layer data.",
+    );
+  });
+
   it("uses files from the browser input change event and removes its handler", async () => {
     const input = createInput();
     const onFilesImported = vi.fn();
@@ -544,7 +598,7 @@ describe("bindFileImportControl", () => {
 
     await vi.waitFor(() => expect(errorOutput.hidden).toBe(false));
     expect(errorOutput.textContent).toBe(
-      'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, or APNG files only.',
+      'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, APNG, or OpenRaster files only.',
     );
     expect(onFilesImported).not.toHaveBeenCalled();
   });
@@ -567,7 +621,7 @@ describe("bindFileImportControl", () => {
 
     await vi.waitFor(() => expect(errorOutput.hidden).toBe(false));
     expect(errorOutput.textContent).toBe(
-      'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, or APNG files only.',
+      'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, APNG, or OpenRaster files only.',
     );
     expect(readPng).not.toHaveBeenCalled();
     expect(onFilesImported).not.toHaveBeenCalled();

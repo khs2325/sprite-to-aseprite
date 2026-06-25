@@ -1,11 +1,12 @@
 import { validateSpriteProject } from "../core/validation";
 import { getApngImportDiagnostic } from "../core/importers/apng";
 import { getGifImportDiagnostic } from "../core/importers/gif";
+import { getOpenRasterImportDiagnostic } from "../core/importers/openraster";
 import { getPiskelImportDiagnostic } from "../core/importers/piskel";
 import { getSpritesheetJsonImportDiagnostic } from "../core/importers/spritesheetJson";
 
 export const SUPPORTED_SOURCE_ACCEPT =
-  ".png,.json,.piskel,.gif,.apng,image/png,image/gif,image/apng,application/json";
+  ".png,.json,.piskel,.gif,.apng,.ora,image/png,image/gif,image/apng,image/openraster,application/json";
 
 export type FileImportFormat =
   | "png-sequence"
@@ -13,12 +14,13 @@ export type FileImportFormat =
   | "spritesheet-json"
   | "piskel"
   | "gif"
-  | "apng";
+  | "apng"
+  | "openraster";
 
 export type BrowserSourceFile =
   | {
       file: File;
-      kind: "png" | "gif" | "apng";
+      kind: "png" | "gif" | "apng" | "ora";
       bytes: ArrayBuffer;
     }
   | {
@@ -41,7 +43,8 @@ export type SourceFilePresentation = {
     | "JSON metadata"
     | "Piskel project"
     | "GIF animation"
-    | "APNG animation";
+    | "APNG animation"
+    | "OpenRaster project";
 };
 
 export type SourcePreviewUrlStore = {
@@ -61,6 +64,7 @@ const SOURCE_TYPE_LABELS: Record<
   piskel: "Piskel project",
   gif: "GIF animation",
   apng: "APNG animation",
+  ora: "OpenRaster project",
 };
 
 export function formatFileSize(byteCount: number): string {
@@ -167,12 +171,18 @@ export function getSourceKind(
   if (extension === ".apng") {
     return "apng";
   }
+  if (extension === ".ora") {
+    return "ora";
+  }
   const mimeType = file.type.toLowerCase();
   if (mimeType === "image/gif") {
     return "gif";
   }
   if (mimeType === "image/apng") {
     return "apng";
+  }
+  if (mimeType === "image/openraster") {
+    return "ora";
   }
   if (mimeType === "image/png") {
     return "png";
@@ -184,7 +194,7 @@ async function readSourceFile(
   file: File,
   kind: BrowserSourceFile["kind"],
 ): Promise<BrowserSourceFile> {
-  if (kind === "png" || kind === "gif" || kind === "apng") {
+  if (kind === "png" || kind === "gif" || kind === "apng" || kind === "ora") {
     return { file, kind, bytes: await file.arrayBuffer() };
   }
   return { file, kind, text: await file.text() };
@@ -224,6 +234,11 @@ const FORMAT_HELP: Record<FileImportFormat, FormatHelp> = {
     label: "APNG animation",
     suggestion: "Check that the file uses the supported APNG subset.",
   },
+  openraster: {
+    label: "OpenRaster project",
+    suggestion:
+      "Check that the .ora file contains supported normal PNG-backed raster layer data.",
+  },
 };
 
 function getFormatHelp(
@@ -241,6 +256,9 @@ function getFormatHelp(
   }
   if (files.some((file) => file.kind === "apng")) {
     return FORMAT_HELP.apng;
+  }
+  if (files.some((file) => file.kind === "ora")) {
+    return FORMAT_HELP.openraster;
   }
   if (files.some((file) => file.kind === "json")) {
     return FORMAT_HELP["spritesheet-json"];
@@ -273,6 +291,14 @@ function getImporterMessage(
   if (format === "apng") {
     return getApngImportDiagnostic(error);
   }
+  if (format === "openraster") {
+    const message = error instanceof Error
+      ? error.message.replace(/\s+/g, " ").trim()
+      : "";
+    return message === "OpenRaster mode requires exactly one .ora file."
+      ? message
+      : getOpenRasterImportDiagnostic(error);
+  }
   if (
     format === "spritesheet-json" ||
     (format === undefined && files.some((file) => file.kind === "json"))
@@ -298,6 +324,9 @@ function getSelectionStatus(
   }
   if (format === "apng") {
     return "Selected 1 APNG animation. Ready to convert browser-locally.";
+  }
+  if (format === "openraster") {
+    return "Selected 1 OpenRaster project. Ready to convert browser-locally.";
   }
   const noun = fileCount === 1 ? "file" : "files";
   return `Selected ${fileCount} supported ${noun}.`;
@@ -339,7 +368,7 @@ export function bindFileImportControl(
       if (kind === null) {
         input.value = "";
         showError(
-          `Unsupported file "${file.name}". Choose PNG, JSON, Piskel, GIF, or APNG files only.`,
+          `Unsupported file "${file.name}". Choose PNG, JSON, Piskel, GIF, APNG, or OpenRaster files only.`,
         );
         return false;
       }
@@ -453,7 +482,7 @@ export function mountFileImportUi(
   dropInstructions.textContent =
     "Drag and drop files here, or choose files with the control below.";
   supportedTypes.textContent =
-    "Supported files: PNG images (.png), JSON metadata (.json), Piskel projects (.piskel), GIF animations (.gif), and APNG animations (.apng or .png).";
+    "Supported files: PNG images (.png), JSON metadata (.json), Piskel projects (.piskel), GIF animations (.gif), APNG animations (.apng or .png), and OpenRaster projects (.ora).";
   privacyNotice.textContent =
     "Your files stay in this browser and are never uploaded.";
   input.type = "file";
@@ -461,7 +490,7 @@ export function mountFileImportUi(
   input.accept = SUPPORTED_SOURCE_ACCEPT;
   input.setAttribute(
     "aria-label",
-    "Choose PNG, JSON, Piskel, GIF, or APNG sprite source files",
+    "Choose PNG, JSON, Piskel, GIF, APNG, or OpenRaster sprite source files",
   );
   errorOutput.setAttribute("role", "alert");
   errorOutput.setAttribute("aria-live", "assertive");

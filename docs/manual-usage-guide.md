@@ -1,9 +1,10 @@
 # Manual usage guide
 
 Sprite to Aseprite Converter rebuilds an editable Aseprite timeline from PNG
-frames, spritesheets, a supported Piskel project, or a supported GIF/APNG
-animation. Your artwork stays in the browser. The app does not upload source
-files to a server or send them to an external processing service.
+frames, spritesheets, a supported Piskel project, a supported OpenRaster
+project, or a supported GIF/APNG animation. Your artwork stays in the browser.
+The app does not upload source files to a server or send them to an external
+processing service.
 
 PNG sequences and spritesheets are flat images. They do not contain the
 original layer structure, so the converter cannot recover original layers
@@ -29,12 +30,12 @@ the server with `Ctrl+C`.
 
 1. Under **Choose an import mode**, select the mode matching the source files.
 2. Under **Add source files**, drag the required files onto the drop area or
-   use the file picker. The app accepts `.png`, `.json`, `.piskel`, `.gif`, and
-   `.apng` files; each mode validates its required file combination. Review the
-   selected-file cards before conversion. PNG cards include browser-local
-   thumbnails, while JSON, Piskel, GIF, and APNG cards show document details
-   without displaying their raw contents. Remove individual files or use
-   **Clear selected files** as needed.
+   use the file picker. The app accepts `.png`, `.json`, `.piskel`, `.gif`,
+   `.apng`, and `.ora` files; each mode validates its required file
+   combination. Review the selected-file cards before conversion. PNG cards
+   include browser-local thumbnails, while JSON, Piskel, GIF, APNG, and
+   OpenRaster cards show document details without displaying their raw
+   contents. Remove individual files or use **Clear selected files** as needed.
 3. Check that the app reports the source files are ready, then select
    **Convert to .aseprite**. Conversion happens browser-locally.
 4. Review the rebuilt timeline and make any timing or layer-name changes.
@@ -273,6 +274,27 @@ showing source contents or stack traces.
 The project name and description are validated metadata but are not exported;
 internal layer ids are generated. These boundaries mean Piskel conversion is
 not claimed to be universal, perfect, or lossless.
+
+## OpenRaster project
+
+OpenRaster import follows the
+[documented supported OpenRaster subset](openraster-format.md).
+
+1. Select **OpenRaster project** under **Choose an import mode**.
+2. Choose exactly one `.ora` file.
+3. Review the document-style file card, then select
+   **Convert to .aseprite**. ZIP parsing, PNG layer decoding, validation, and
+   conversion happen browser-locally; no artwork is uploaded.
+4. Confirm the single rebuilt frame and inspect the preserved supported raster
+   layers under **Layer names** before downloading.
+
+The importer preserves supported layers only when the `.ora` file contains
+supported normal PNG-backed raster layer data. It supports canvas dimensions,
+source layer order, names, visibility, opacity, signed x/y offsets, and decoded
+RGBA pixels for the documented single-frame subset. It does not preserve
+OpenRaster animation, groups, masks, effects, non-normal blend modes, or
+unsupported archive features. Unsupported or malformed data is rejected with a
+safe diagnostic that does not display raw source contents or stack traces.
 
 ## GIF animation
 

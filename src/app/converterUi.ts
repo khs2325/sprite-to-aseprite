@@ -3,6 +3,10 @@ import "../styles.css";
 import type { SpriteProject } from "../core/SpriteProject";
 import { getApngImportDiagnostic, importApng } from "../core/importers/apng";
 import { getGifImportDiagnostic, importGif } from "../core/importers/gif";
+import {
+  getOpenRasterImportDiagnostic,
+  importOpenRaster,
+} from "../core/importers/openraster";
 import { importPngSequence } from "../core/importers/pngSequence";
 import {
   getPiskelImportDiagnostic,
@@ -34,6 +38,7 @@ import { mountPreviewTimelineUi } from "./previewTimeline";
 type ConverterImporters = {
   importApng: typeof importApng;
   importGif: typeof importGif;
+  importOpenRaster: typeof importOpenRaster;
   importPngSequence: typeof importPngSequence;
   importPiskel: typeof importPiskel;
   importSpritesheetGrid: typeof importSpritesheetGrid;
@@ -68,6 +73,7 @@ export type ConversionUiState = {
 const DEFAULT_IMPORTERS: ConverterImporters = {
   importApng,
   importGif,
+  importOpenRaster,
   importPngSequence,
   importPiskel,
   importSpritesheetGrid,
@@ -81,6 +87,7 @@ const MODE_LABELS: Record<FileImportFormat, string> = {
   piskel: "Piskel project",
   gif: "GIF animation",
   apng: "APNG animation",
+  openraster: "OpenRaster project",
 };
 
 export type GridAutoCalculation = {
@@ -400,6 +407,7 @@ export function getSourceSelectionError(
   const piskelCount = files.filter((file) => file.kind === "piskel").length;
   const gifCount = files.filter((file) => file.kind === "gif").length;
   const apngCount = files.filter((file) => file.kind === "apng").length;
+  const openRasterCount = files.filter((file) => file.kind === "ora").length;
 
   if (mode === "png-sequence") {
     return pngCount > 0 && pngCount === files.length
@@ -425,6 +433,11 @@ export function getSourceSelectionError(
     return gifCount === 1 && files.length === 1
       ? null
       : "GIF mode requires exactly one .gif file.";
+  }
+  if (mode === "openraster") {
+    return openRasterCount === 1 && files.length === 1
+      ? null
+      : "OpenRaster mode requires exactly one .ora file.";
   }
   return files.length === 1 && apngCount + pngCount === 1
     ? null
@@ -475,6 +488,13 @@ export async function convertSourceFiles(
     }
     return importers.importApng(apngFile.file);
   }
+  if (mode === "openraster") {
+    const openRasterFile = files.find((file) => file.kind === "ora");
+    if (openRasterFile === undefined) {
+      throw new Error("OpenRaster source file is missing.");
+    }
+    return importers.importOpenRaster(openRasterFile.file);
+  }
 
   const jsonFile = files.find((file) => file.kind === "json");
   if (jsonFile === undefined) {
@@ -504,6 +524,15 @@ export function getConversionSuccessStatus(
       "into an editable Aseprite timeline. Ready to download."
     );
   }
+  if (mode === "openraster") {
+    const layerCount = project.layers.length;
+    const layerNoun = layerCount === 1 ? "layer" : "layers";
+    return (
+      "Converted supported OpenRaster raster layer data " +
+      `into an editable Aseprite timeline with ${frameCount} ${frameNoun} ` +
+      `and ${layerCount} preserved ${layerNoun}. Ready to download.`
+    );
+  }
   return (
     `Converted ${frameCount} ${frameNoun} ` +
     "into an editable Aseprite timeline. Ready to download."
@@ -529,6 +558,12 @@ export function getConversionErrorMessage(
     return diagnostic === null
       ? "APNG import failed: Check that the file uses the supported APNG subset."
       : `APNG import failed: ${diagnostic}`;
+  }
+  if (mode === "openraster") {
+    const diagnostic = getOpenRasterImportDiagnostic(error);
+    return diagnostic === null
+      ? "OpenRaster import failed: Check that the .ora file contains supported normal PNG-backed raster layer data."
+      : `OpenRaster import failed: ${diagnostic}`;
   }
   if (mode !== "piskel") {
     return error instanceof Error && error.message.trim().length > 0
@@ -585,7 +620,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   const privacy = document.createElement("p");
   title.textContent = "Sprite to Aseprite Converter";
   introduction.textContent =
-    "Convert frames into an editable Aseprite timeline from PNG sequences, spritesheets, and Piskel projects.";
+    "Convert frames into an editable Aseprite timeline from PNG sequences, spritesheets, Piskel projects, OpenRaster projects, and GIF/APNG animations.";
   privacy.textContent =
     "Files are processed browser-locally. Your artwork is never uploaded.";
   privacy.className = "privacy-notice";
@@ -695,13 +730,13 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   importHeading.textContent = "2. Add source files";
   dropZone.className = "drop-zone";
   dropInstructions.textContent =
-    "Drag and drop PNG, JSON, or Piskel files here, or choose files below.";
+    "Drag and drop PNG, JSON, Piskel, GIF, APNG, or OpenRaster files here, or choose files below.";
   fileInput.type = "file";
   fileInput.multiple = true;
   fileInput.accept = SUPPORTED_SOURCE_ACCEPT;
   fileInput.setAttribute(
     "aria-label",
-    "Choose PNG, JSON, or Piskel sprite source files",
+    "Choose PNG, JSON, Piskel, GIF, APNG, or OpenRaster sprite source files",
   );
   sourceError.setAttribute("role", "alert");
   sourceError.setAttribute("aria-live", "assertive");
@@ -1100,7 +1135,9 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
           ? "Drop exactly one .gif file here, or choose one below."
           : mode === "apng"
             ? "Drop exactly one .apng or animated .png file here, or choose one below."
-            : "Drag and drop PNG, JSON, or Piskel files here, or choose files below.";
+            : mode === "openraster"
+              ? "Drop exactly one .ora file with supported raster layer data here, or choose one below."
+              : "Drag and drop PNG, JSON, Piskel, GIF, APNG, or OpenRaster files here, or choose files below.";
     renderSelectedFiles();
     syncGridSource();
     updateReadiness();
@@ -1147,7 +1184,9 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
             ? "Converting the GIF animation browser-locally. This may take a while."
             : mode === "apng"
               ? "Converting the APNG animation browser-locally. This may take a while."
-          : "Converting files browser-locally. This may take a while.",
+              : mode === "openraster"
+                ? "Converting the OpenRaster project browser-locally. This may take a while."
+                : "Converting files browser-locally. This may take a while.",
     });
 
     try {
@@ -1184,7 +1223,9 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
               ? "GIF conversion did not complete."
               : mode === "apng"
                 ? "APNG conversion did not complete."
-            : "Conversion did not complete.",
+                : mode === "openraster"
+                  ? "OpenRaster conversion did not complete."
+                  : "Conversion did not complete.",
         error: getConversionErrorMessage(mode, error),
       });
     } finally {
