@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { deflateSync } from "node:zlib";
+import { deflateRawSync, deflateSync } from "node:zlib";
 
 const fixtureDirectory = dirname(fileURLToPath(import.meta.url));
 const outputs = new Map();
@@ -269,6 +269,156 @@ function piskelFile(name, fps, layers) {
   }, null, 2)}\n`;
 }
 
+function zipLocalHeader({
+  compressionMethod,
+  compressedSize,
+  crc,
+  name,
+  uncompressedSize,
+}) {
+  const header = Buffer.alloc(30);
+  header.writeUInt32LE(0x04034b50, 0);
+  header.writeUInt16LE(20, 4);
+  header.writeUInt16LE(0x0800, 6);
+  header.writeUInt16LE(compressionMethod, 8);
+  header.writeUInt16LE(0, 10);
+  header.writeUInt16LE(33, 12);
+  header.writeUInt32LE(crc, 14);
+  header.writeUInt32LE(compressedSize, 18);
+  header.writeUInt32LE(uncompressedSize, 22);
+  header.writeUInt16LE(name.length, 26);
+  header.writeUInt16LE(0, 28);
+  return header;
+}
+
+function zipCentralDirectoryHeader({
+  compressionMethod,
+  compressedSize,
+  crc,
+  localHeaderOffset,
+  name,
+  uncompressedSize,
+}) {
+  const header = Buffer.alloc(46);
+  header.writeUInt32LE(0x02014b50, 0);
+  header.writeUInt16LE(20, 4);
+  header.writeUInt16LE(20, 6);
+  header.writeUInt16LE(0x0800, 8);
+  header.writeUInt16LE(compressionMethod, 10);
+  header.writeUInt16LE(0, 12);
+  header.writeUInt16LE(33, 14);
+  header.writeUInt32LE(crc, 16);
+  header.writeUInt32LE(compressedSize, 20);
+  header.writeUInt32LE(uncompressedSize, 24);
+  header.writeUInt16LE(name.length, 28);
+  header.writeUInt16LE(0, 30);
+  header.writeUInt16LE(0, 32);
+  header.writeUInt16LE(0, 34);
+  header.writeUInt16LE(0, 36);
+  header.writeUInt32LE(0, 38);
+  header.writeUInt32LE(localHeaderOffset, 42);
+  return header;
+}
+
+function encodeZip(entries) {
+  const localRecords = [];
+  const centralDirectoryRecords = [];
+  let localHeaderOffset = 0;
+
+  for (const entry of entries) {
+    const name = Buffer.from(entry.name, "utf8");
+    const source = Buffer.isBuffer(entry.content)
+      ? entry.content
+      : Buffer.from(entry.content, "utf8");
+    const compressionMethod = entry.compressionMethod ?? 8;
+    const compressed = compressionMethod === 0
+      ? source
+      : deflateRawSync(source, { level: 9 });
+    const crc = crc32(source);
+    const metadata = {
+      compressionMethod,
+      compressedSize: compressed.length,
+      crc,
+      localHeaderOffset,
+      name,
+      uncompressedSize: source.length,
+    };
+    const localHeader = zipLocalHeader(metadata);
+
+    localRecords.push(localHeader, name, compressed);
+    centralDirectoryRecords.push(zipCentralDirectoryHeader(metadata), name);
+    localHeaderOffset += localHeader.length + name.length + compressed.length;
+  }
+
+  const centralDirectory = Buffer.concat(centralDirectoryRecords);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(0, 4);
+  end.writeUInt16LE(0, 6);
+  end.writeUInt16LE(entries.length, 8);
+  end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(centralDirectory.length, 12);
+  end.writeUInt32LE(localHeaderOffset, 16);
+  end.writeUInt16LE(0, 20);
+
+  return Buffer.concat([...localRecords, centralDirectory, end]);
+}
+
+const openRasterBaseLayerPng = encodePng(2, 2, [
+  coral, transparent,
+  cyan, yellow,
+]);
+const openRasterTopLayerPng = encodePng(2, 2, [
+  transparent, yellow,
+  coral, cyan,
+]);
+const openRasterThumbnailPng = encodePng(2, 2, [
+  transparent, transparent,
+  coral, transparent,
+]);
+const openRasterMergedPng = encodePng(4, 3, [
+  transparent, transparent, transparent, transparent,
+  coral, transparent, transparent, transparent,
+  cyan, yellow, transparent, transparent,
+]);
+
+function openRasterStackXml({ topCompositeOp = "svg:src-over" } = {}) {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<image version="0.0.6" w="4" h="3">
+  <stack>
+    <layer name="Top hidden half" src="data/top-hidden.png" x="1" y="-1" opacity="0.5" visibility="hidden" composite-op="${topCompositeOp}" />
+    <layer name="Base visible" src="data/base-visible.png" x="0" y="1" />
+  </stack>
+</image>
+`;
+}
+
+function openRasterFixture({
+  includeTopLayer = true,
+  stackXml = openRasterStackXml(),
+} = {}) {
+  const entries = [
+    {
+      name: "mimetype",
+      content: "image/openraster",
+      compressionMethod: 0,
+    },
+    { name: "stack.xml", content: stackXml },
+    { name: "data/base-visible.png", content: openRasterBaseLayerPng },
+  ];
+
+  if (includeTopLayer) {
+    entries.push({ name: "data/top-hidden.png", content: openRasterTopLayerPng });
+  }
+
+  entries.push(
+    { name: "Thumbnails/thumbnail.png", content: openRasterThumbnailPng },
+    { name: "mergedimage.png", content: openRasterMergedPng },
+  );
+
+  return encodeZip(entries);
+}
+
 const spritesheet = [];
 for (let y = 0; y < 4; y += 1) {
   spritesheet.push(...frameOne.slice(y * 4, y * 4 + 4));
@@ -278,6 +428,28 @@ for (let y = 0; y < 4; y += 1) {
 outputs.set("png-sequence/spark-01.png", encodePng(4, 4, frameOne));
 outputs.set("png-sequence/spark-02.png", encodePng(4, 4, frameTwo));
 outputs.set("spritesheet/spark-sheet.png", encodePng(8, 4, spritesheet));
+outputs.set("openraster/two-layers.ora", openRasterFixture());
+outputs.set(
+  "openraster/unsupported-blend-mode.ora",
+  openRasterFixture({
+    stackXml: openRasterStackXml({ topCompositeOp: "svg:multiply" }),
+  }),
+);
+outputs.set(
+  "openraster/missing-layer-data.ora",
+  openRasterFixture({ includeTopLayer: false }),
+);
+outputs.set(
+  "openraster/malformed-stack.ora",
+  openRasterFixture({
+    stackXml: `<?xml version="1.0" encoding="UTF-8"?>
+<image version="0.0.6" w="4" h="3">
+  <stack>
+    <layer name="Broken" src="data/base-visible.png">
+  </stack>
+`,
+  }),
+);
 
 const opaqueRed = [255, 0, 0, 255];
 const opaqueGreen = [0, 255, 0, 255];

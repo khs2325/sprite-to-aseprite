@@ -56,6 +56,36 @@ layer. They do not provide editable source-layer data, so the product does not
 claim layer preservation or recovery. Source artwork is processed locally in
 the browser and is never uploaded.
 
+## Planned additional free/open art tool project formats
+
+The next project-format roadmap focuses on small, deterministic, browser-local
+subsets rather than broad compatibility claims:
+
+1. OpenRaster `.ora` first, because it is a free/open layered raster interchange
+   format used by several free art tools. The researched
+   [OpenRaster subset](openraster-format.md) starts with a ZIP container,
+   `stack.xml`, normal raster layers backed by PNG image files, canvas
+   dimensions, layer names, visibility, opacity, and x/y offsets.
+2. Pixelorama `.pxo` next, because Pixelorama is a free/open pixel art tool with
+   layers, frames, animation, tilemaps, and metadata. Planned support must be
+   based on documented or source-backed save semantics and reject unsupported
+   tilemaps, effects, blend modes, or missing embedded image data clearly.
+3. Krita `.kra` after that, with a deliberately minimal normal raster subset
+   such as 8-bit RGBA raster layers only when the structure is documented and
+   fixture-backed. The product must not claim full Krita compatibility.
+4. GIMP `.xcf` is research-only at first because it is a living GIMP-native
+   format tied closely to GIMP internals; OpenRaster may be the safer interchange
+   recommendation.
+5. LibreSprite/Aseprite `.ase` and `.aseprite` input is also research-only at
+   first so binary reader scope, chunk coverage, validation, and round-trip
+   limitations are understood before implementation.
+
+For every planned format, the converter should rebuild timelines, convert
+supported frames, and preserve supported raster layer data only when that data
+exists in the documented source subset. It must not upload artwork, add
+server-side processing, or imply lossless conversion for unsupported source
+features.
+
 ## Planned post-MVP compatibility work
 
 The next planned work expands the existing browser-local architecture without

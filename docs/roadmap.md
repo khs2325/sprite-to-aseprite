@@ -67,4 +67,21 @@
 - APNG:
   1. [x] supported-subset research and deterministic fixtures (task 046)
   2. [ ] core APNG importer (task 047)
-- Pixelorama `.pxo` remains deferred until the atlas and GIF/APNG sequence is complete.
+- Additional free/open art tool project formats:
+  1. [x] OpenRaster `.ora` research and deterministic fixtures (task 048)
+  2. [ ] OpenRaster `.ora` importer (task 049)
+  3. [ ] OpenRaster `.ora` browser UI wiring (task 050)
+  4. [ ] Pixelorama `.pxo` research and deterministic fixtures (task 051)
+  5. [ ] Pixelorama `.pxo` importer (task 052)
+  6. [ ] Pixelorama `.pxo` browser UI wiring (task 053)
+  7. [ ] Krita `.kra` minimal raster subset research and fixtures (task 054)
+  8. [ ] Krita `.kra` importer (task 055)
+  9. [ ] Krita `.kra` browser UI wiring (task 056)
+  10. [ ] GIMP `.xcf` feasibility research only (task 057)
+  11. [ ] LibreSprite/Aseprite `.ase`/`.aseprite` input feasibility research only (task 058)
+
+The project-format sequence starts with researched, fixture-backed subsets
+before importer work, then wires each completed importer into the browser UI.
+All planned processing remains local to the browser. The converter should
+preserve only documented supported raster layer/frame data and must not claim
+that flat or unsupported source features can be recovered.
