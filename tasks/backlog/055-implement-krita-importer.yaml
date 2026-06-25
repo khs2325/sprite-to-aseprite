@@ -1,0 +1,53 @@
+id: "055"
+title: Implement Krita importer
+status: backlog
+priority: medium
+goal: Convert the documented minimal Krita `.kra` raster subset into the canonical `SpriteProject` model.
+context: >
+  This task follows the Krita subset and fixtures from task 054. Krita project
+  files can contain many non-raster and color-managed features, so this importer
+  must reject unsupported data clearly.
+scope:
+  summary: Add minimal Krita parsing, validation, raster layer decoding, SpriteProject mapping, diagnostics, and tests.
+  allowed_paths:
+    - src/core/importers/krita/**
+    - src/core/conversion.integration.test.ts
+    - tests/fixtures/krita/**
+    - tests/fixtures/fixtures.test.ts
+    - docs/krita-format.md
+    - docs/product-spec.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/app/**
+    - src/core/exporters/**
+non_goals:
+  - Do not wire `.kra` into the browser UI.
+  - Do not implement full Krita compatibility, animation timelines, masks, vector layers, filter layers, clone layers, file layers, group effects, unsupported profiles, or unsupported color depths.
+  - Do not add production dependencies unless a separate approved task widens package-file scope.
+requirements:
+  - Parse only the documented `.kra` container subset browser-locally.
+  - Prefer raster layer PNG data if task 054 clearly documents and fixture-backs that structure.
+  - Decode only fixture-backed normal raster layer image data in supported color depths.
+  - Preserve supported layer name, order, visibility, opacity, offsets, and pixels.
+  - Reject masks, vector layers, filter layers, clone layers, animation timelines, unsupported color depths, unsupported color profiles, effects, unsupported layer types, and malformed containers with precise diagnostics unless explicitly supported.
+  - Validate dimensions, layer counts, allocation limits, and unsafe integer values.
+  - Output the canonical `SpriteProject` model without UI or exporter changes.
+acceptance_criteria:
+  - Supported `.kra` fixtures import with expected dimensions, layers, cels, visibility, opacity, offsets, and pixels.
+  - Unsupported Krita features fail deterministically without stack traces, upload, network behavior, UI changes, or exporter changes.
+  - Product docs do not claim full Krita compatibility.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: false
+  max_changed_files: 15
+  forbidden_paths: *forbidden
