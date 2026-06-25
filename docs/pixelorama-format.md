@@ -1,7 +1,7 @@
 # Pixelorama `.pxo` Format Notes
 
-Status: researched and fixture-backed importer subset. No Pixelorama importer or
-UI wiring is implemented yet.
+Status: researched, fixture-backed, and implemented as a core importer subset.
+Browser UI wiring is not implemented yet.
 
 Primary references:
 

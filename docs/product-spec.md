@@ -71,16 +71,27 @@ raster layer data. It does not implement animation, groups, masks, effects,
 non-normal blend modes, or full/lossless OpenRaster conversion. Artwork is
 processed locally and is never uploaded.
 
+## Supported core Pixelorama import
+
+Pixelorama (`.pxo`) is supported as a browser-local core import path through
+the canonical `SpriteProject` model. Browser UI wiring remains a separate task.
+The implemented subset follows the documented
+[Pixelorama format subset](pixelorama-format.md): ZIP `.pxo` files with RGBA8
+raw cel data, normal pixel layers, supported frame timing, layer order, layer
+names, visibility, opacity, and full-canvas cels.
+
+This support preserves layers when the `.pxo` source contains supported pixel
+layer data. It rejects unsupported tilemaps, effects, blend modes, layer types,
+missing image data, and ambiguous metadata clearly rather than inventing
+semantics. Artwork is processed locally and is never uploaded.
+
 ## Planned additional free/open art tool project formats
 
 The next project-format roadmap continues to focus on small, deterministic,
 browser-local subsets rather than broad compatibility claims:
 
-1. Pixelorama `.pxo` next, because Pixelorama is a free/open pixel art tool with
-   layers, frames, animation, tilemaps, and metadata. Planned support must follow
-   the researched [Pixelorama format subset](pixelorama-format.md) and reject
-   unsupported tilemaps, effects, blend modes, or missing embedded image data
-   clearly.
+1. Pixelorama browser UI wiring, keeping the existing core importer subset and
+   diagnostics.
 2. Krita `.kra` after that, with a deliberately minimal normal raster subset
    such as 8-bit RGBA raster layers only when the structure is documented and
    fixture-backed. The product must not claim full Krita compatibility.

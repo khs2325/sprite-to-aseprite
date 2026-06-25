@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { inflateSync } from "node:zlib";
+import { inflateRawSync, inflateSync } from "node:zlib";
 
 import { describe, expect, it } from "vitest";
 
@@ -8,6 +8,7 @@ import { exportAseprite } from "./exporters/aseprite";
 import { importApngBytes } from "./importers/apng";
 import { importGifBytes } from "./importers/gif";
 import { importPiskel } from "./importers/piskel";
+import { importPixeloramaBytes } from "./importers/pixelorama";
 import { importPngSequence } from "./importers/pngSequence";
 import { importSpritesheetGrid } from "./importers/spritesheetGrid";
 import { importSpritesheetJson } from "./importers/spritesheetJson";
@@ -704,6 +705,149 @@ describe("importer to Aseprite export integration", () => {
     expect(frames[0].durationMs).toBe(50);
     expect(frames[0].chunks.map(({ type }) => type)).toEqual([
       0x2004, 0x2004, 0x2005, 0x2005,
+    ]);
+  });
+
+  it("preserves supported Pixelorama layers and timing in Aseprite chunks", async () => {
+    const pxo = new Uint8Array(
+      readFileSync(
+        new URL(
+          "../../tests/fixtures/pixelorama/two-layers-two-frames.pxo",
+          import.meta.url,
+        ),
+      ),
+    );
+    const project = await importPixeloramaBytes(pxo, {
+      inflateRaw: async (bytes) => new Uint8Array(inflateRawSync(bytes)),
+    });
+
+    expect(project).toMatchObject({
+      colorMode: "rgba",
+      frames: [
+        { index: 0, durationMs: 100 },
+        { index: 1, durationMs: 250 },
+      ],
+      height: 2,
+      layers: [
+        {
+          cels: [
+            { frameIndex: 0, x: 0, y: 0 },
+            { frameIndex: 1, x: 0, y: 0 },
+          ],
+          name: "Base visible half",
+          opacity: 128,
+          visible: true,
+        },
+        {
+          cels: [
+            { frameIndex: 0, x: 0, y: 0 },
+            { frameIndex: 1, x: 0, y: 0 },
+          ],
+          name: "Hidden ink",
+          opacity: 255,
+          visible: false,
+        },
+      ],
+      width: 2,
+    });
+    expect(pixel(project.layers[0].cels[0].imageData, 0, 0)).toEqual([
+      17, 138, 178, 255,
+    ]);
+    expect(pixel(project.layers[1].cels[0].imageData, 1, 0)).toEqual([
+      239, 71, 111, 255,
+    ]);
+    expect(pixel(project.layers[1].cels[1].imageData, 0, 1)).toEqual([
+      255, 209, 102, 255,
+    ]);
+
+    const bytes = exportAseprite(project);
+    const frames = parseFrames(bytes);
+    expect(frames.map(({ durationMs }) => durationMs)).toEqual([100, 250]);
+    expect(frames.map(({ chunks }) => chunks.map(({ type }) => type))).toEqual([
+      [0x2004, 0x2004, 0x2005, 0x2005],
+      [0x2005, 0x2005],
+    ]);
+
+    const layerChunks = frames[0].chunks.filter(({ type }) => type === 0x2004);
+    expect(
+      layerChunks.map(({ bytes: layerBytes }) => {
+        const layerView = new DataView(
+          layerBytes.buffer,
+          layerBytes.byteOffset,
+          layerBytes.byteLength,
+        );
+        const nameLength = layerView.getUint16(22, true);
+        return {
+          name: new TextDecoder().decode(layerBytes.slice(24, 24 + nameLength)),
+          opacity: layerView.getUint8(18),
+          visible: (layerView.getUint16(6, true) & 1) !== 0,
+        };
+      }),
+    ).toEqual([
+      { name: "Base visible half", opacity: 128, visible: true },
+      { name: "Hidden ink", opacity: 255, visible: false },
+    ]);
+
+    const celChunks = frames.flatMap(({ chunks }) =>
+      chunks.filter(({ type }) => type === 0x2005),
+    );
+    expect(
+      celChunks.map(({ bytes: celBytes }) => {
+        const celView = new DataView(
+          celBytes.buffer,
+          celBytes.byteOffset,
+          celBytes.byteLength,
+        );
+        return {
+          height: celView.getUint16(24, true),
+          layerIndex: celView.getUint16(6, true),
+          pixels: Array.from(inflateSync(celBytes.slice(26))),
+          width: celView.getUint16(22, true),
+          x: celView.getInt16(8, true),
+          y: celView.getInt16(10, true),
+        };
+      }),
+    ).toEqual([
+      {
+        height: 2,
+        layerIndex: 0,
+        pixels: [
+          17, 138, 178, 255, 0, 0, 0, 0, 0, 0, 0, 0, 255, 209, 102, 255,
+        ],
+        width: 2,
+        x: 0,
+        y: 0,
+      },
+      {
+        height: 2,
+        layerIndex: 1,
+        pixels: [
+          0, 0, 0, 0, 239, 71, 111, 255, 0, 0, 0, 0, 0, 0, 0, 0,
+        ],
+        width: 2,
+        x: 0,
+        y: 0,
+      },
+      {
+        height: 2,
+        layerIndex: 0,
+        pixels: [
+          0, 0, 0, 0, 0, 0, 0, 0, 17, 138, 178, 255, 255, 209, 102, 255,
+        ],
+        width: 2,
+        x: 0,
+        y: 0,
+      },
+      {
+        height: 2,
+        layerIndex: 1,
+        pixels: [
+          239, 71, 111, 255, 0, 0, 0, 0, 255, 209, 102, 255, 0, 0, 0, 0,
+        ],
+        width: 2,
+        x: 0,
+        y: 0,
+      },
     ]);
   });
 
