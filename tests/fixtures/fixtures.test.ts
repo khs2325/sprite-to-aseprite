@@ -112,6 +112,70 @@ type OpenRasterFixtureMetadata = {
   layers: OpenRasterLayerFixtureMetadata[];
 };
 
+type PixeloramaCelFixture = {
+  metadata: Record<string, unknown>;
+  opacity: number;
+  ui_color: string;
+  z_index: number;
+};
+
+type PixeloramaFrameFixture = {
+  cels: PixeloramaCelFixture[];
+  duration: number;
+  metadata: Record<string, unknown>;
+};
+
+type PixeloramaLayerFixture = {
+  blend_mode: number;
+  clipping_mask: boolean;
+  effects: unknown[];
+  locked: boolean;
+  metadata: Record<string, unknown>;
+  name: string;
+  new_cels_linked?: boolean;
+  opacity: number;
+  parent: number;
+  type: number;
+  ui_color: string;
+  visible: boolean;
+};
+
+type PixeloramaFixture = {
+  author_company: string;
+  author_contact: string;
+  author_display_name: string;
+  author_real_name: string;
+  brushes: unknown[];
+  color_mode: number;
+  current_frame: number;
+  current_layer: number;
+  export_directory_path: string;
+  export_file_format: number;
+  export_file_name: string;
+  fps: number;
+  frames: PixeloramaFrameFixture[];
+  guides: unknown[];
+  layers: PixeloramaLayerFixture[];
+  license: string;
+  metadata: Record<string, unknown>;
+  palettes: unknown[];
+  pixelorama_version: string;
+  project_current_palette_name: string;
+  pxo_version: number;
+  reference_images: unknown[];
+  size_x: number;
+  size_y: number;
+  symmetry_points: number[];
+  tags: unknown[];
+  tile_mode_x_basis_x: number;
+  tile_mode_x_basis_y: number;
+  tile_mode_y_basis_x: number;
+  tile_mode_y_basis_y: number;
+  tilesets: unknown[];
+  user_data: string;
+  vanishing_points: unknown[];
+};
+
 function fixtureCrc32(bytes: Buffer): number {
   let crc = 0xffffffff;
   for (const byte of bytes) {
@@ -204,6 +268,31 @@ function parseOpenRasterFixtureMetadata(
       },
     ),
   };
+}
+
+function parsePixeloramaFixture(relativePath: string): {
+  data: PixeloramaFixture;
+  entries: ZipFixtureEntry[];
+  entryMap: Map<string, ZipFixtureEntry>;
+} {
+  const entries = inspectZipFixture(relativePath);
+  const entryMap = zipEntryMap(entries);
+  const dataJson = entryMap.get("data.json")?.content.toString("utf8") ?? "";
+  return {
+    data: JSON.parse(dataJson) as PixeloramaFixture,
+    entries,
+    entryMap,
+  };
+}
+
+function pixeloramaRawPixel(
+  bytes: Buffer,
+  width: number,
+  x: number,
+  y: number,
+): number[] {
+  const offset = (y * width + x) * 4;
+  return [...bytes.subarray(offset, offset + 4)];
 }
 
 function inspectApngFixture(relativePath: string): ApngFixtureMetadata {
@@ -701,6 +790,140 @@ describe("synthetic sprite fixtures", () => {
     const malformedStackXml = malformed.get("stack.xml")?.content.toString("utf8") ?? "";
     expect(malformedStackXml).toContain("<layer name=\"Broken\"");
     expect(parseOpenRasterFixtureMetadata(malformedStackXml).layers).toHaveLength(0);
+  });
+
+  it("provides a Pixelorama ZIP with raw pixel layers and frame timing", () => {
+    const { data, entries, entryMap } = parsePixeloramaFixture(
+      "pixelorama/two-layers-two-frames.pxo",
+    );
+
+    expect(entries.map(({ name }) => name)).toEqual([
+      "data.json",
+      "mimetype",
+      "preview.png",
+      "image_data/frames/1/layer_1",
+      "image_data/frames/1/indices_layer_1",
+      "image_data/frames/1/layer_2",
+      "image_data/frames/1/indices_layer_2",
+      "image_data/frames/2/layer_1",
+      "image_data/frames/2/indices_layer_1",
+      "image_data/frames/2/layer_2",
+      "image_data/frames/2/indices_layer_2",
+    ]);
+    expect(entryMap.get("mimetype")?.content.toString("utf8"))
+      .toBe("application/x-pixelorama");
+    expect(decodePng(entryMap.get("preview.png")?.content ?? Buffer.alloc(0)))
+      .toMatchObject({ width: 2, height: 2 });
+
+    expect(data).toMatchObject({
+      pixelorama_version: "1.1.10",
+      pxo_version: 6,
+      size_x: 2,
+      size_y: 2,
+      color_mode: 5,
+      fps: 10,
+      metadata: {},
+    });
+    expect(data.layers.map((layer) => ({
+      name: layer.name,
+      visible: layer.visible,
+      opacity: layer.opacity,
+      blendMode: layer.blend_mode,
+      type: layer.type,
+      effects: layer.effects,
+      parent: layer.parent,
+    }))).toEqual([
+      {
+        name: "Base visible half",
+        visible: true,
+        opacity: 0.5,
+        blendMode: 0,
+        type: 0,
+        effects: [],
+        parent: -1,
+      },
+      {
+        name: "Hidden ink",
+        visible: false,
+        opacity: 1,
+        blendMode: 0,
+        type: 0,
+        effects: [],
+        parent: -1,
+      },
+    ]);
+    expect(data.frames.map(({ duration }) =>
+      Math.max(1, Math.min(65_535, Math.round((duration * 1000) / data.fps)))))
+      .toEqual([100, 250]);
+    expect(data.frames.every(({ cels }) => cels.length === data.layers.length))
+      .toBe(true);
+    expect(data.frames.flatMap(({ cels }) => cels).every((cel) =>
+      cel.opacity === 1 && cel.z_index === 0 && Object.keys(cel.metadata).length === 0))
+      .toBe(true);
+
+    const firstBase = entryMap.get("image_data/frames/1/layer_1")?.content
+      ?? Buffer.alloc(0);
+    const firstInk = entryMap.get("image_data/frames/1/layer_2")?.content
+      ?? Buffer.alloc(0);
+    const secondInk = entryMap.get("image_data/frames/2/layer_2")?.content
+      ?? Buffer.alloc(0);
+    for (const [path, entry] of entryMap) {
+      if (path.includes("/layer_")) {
+        expect(entry.content).toHaveLength(data.size_x * data.size_y * 4);
+      } else if (path.includes("/indices_layer_")) {
+        expect(entry.content).toEqual(Buffer.from([0]));
+      }
+    }
+    expect(pixeloramaRawPixel(firstBase, data.size_x, 0, 0))
+      .toEqual([17, 138, 178, 255]);
+    expect(pixeloramaRawPixel(firstBase, data.size_x, 1, 1))
+      .toEqual([255, 209, 102, 255]);
+    expect(pixeloramaRawPixel(firstInk, data.size_x, 1, 0))
+      .toEqual([239, 71, 111, 255]);
+    expect(pixeloramaRawPixel(secondInk, data.size_x, 0, 1))
+      .toEqual([255, 209, 102, 255]);
+  });
+
+  it("provides Pixelorama rejection fixtures for unsupported semantics", () => {
+    const unsupportedBlend = parsePixeloramaFixture(
+      "pixelorama/unsupported-blend-mode.pxo",
+    );
+    expect(unsupportedBlend.data.layers[0]).toMatchObject({
+      name: "Multiply unsupported",
+      blend_mode: 3,
+      type: 0,
+    });
+
+    const unsupportedEffects = parsePixeloramaFixture(
+      "pixelorama/unsupported-effects.pxo",
+    );
+    expect(unsupportedEffects.data.layers[0].effects).toEqual([
+      { enabled: true, name: "Outline" },
+    ]);
+
+    const tilemap = parsePixeloramaFixture(
+      "pixelorama/unsupported-tilemap-layer.pxo",
+    );
+    expect(tilemap.data.layers[0]).toMatchObject({
+      name: "Tilemap unsupported",
+      type: 3,
+    });
+    expect(tilemap.data.tilesets).toEqual([{ tile_size: "(2, 2)", tile_amount: 1 }]);
+    expect(tilemap.entryMap.has("tilesets/0/0")).toBe(true);
+
+    const missingImageData = parsePixeloramaFixture(
+      "pixelorama/missing-image-data.pxo",
+    );
+    expect(missingImageData.data.frames).toHaveLength(1);
+    expect(missingImageData.entryMap.has("image_data/frames/1/layer_1"))
+      .toBe(false);
+
+    const ambiguousMetadata = parsePixeloramaFixture(
+      "pixelorama/ambiguous-metadata.pxo",
+    );
+    expect(ambiguousMetadata.data.metadata).toEqual({
+      fixture_note: "reject ambiguous project metadata",
+    });
   });
 
   it("provides APNG chunk sequences, offsets, and normalized timing", () => {

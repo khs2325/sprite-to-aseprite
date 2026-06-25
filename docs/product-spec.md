@@ -77,9 +77,10 @@ The next project-format roadmap continues to focus on small, deterministic,
 browser-local subsets rather than broad compatibility claims:
 
 1. Pixelorama `.pxo` next, because Pixelorama is a free/open pixel art tool with
-   layers, frames, animation, tilemaps, and metadata. Planned support must be
-   based on documented or source-backed save semantics and reject unsupported
-   tilemaps, effects, blend modes, or missing embedded image data clearly.
+   layers, frames, animation, tilemaps, and metadata. Planned support must follow
+   the researched [Pixelorama format subset](pixelorama-format.md) and reject
+   unsupported tilemaps, effects, blend modes, or missing embedded image data
+   clearly.
 2. Krita `.kra` after that, with a deliberately minimal normal raster subset
    such as 8-bit RGBA raster layers only when the structure is documented and
    fixture-backed. The product must not claim full Krita compatibility.

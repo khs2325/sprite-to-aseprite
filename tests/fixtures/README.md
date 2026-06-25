@@ -71,6 +71,24 @@ pixels only. They are intended to preserve layers when the source format
 contains supported layer data; they do not use `mergedimage.png` to recover
 layers.
 
+The Pixelorama fixtures add deterministic ZIP-backed `.pxo` containers for the
+future importer. Tests inspect `data.json`, `mimetype`, preview PNG metadata,
+and raw RGBA cel payloads without implementing conversion.
+
+| Fixture | Canvas | Frames | Layers | Metadata covered |
+| --- | --- | ---: | ---: | --- |
+| `pixelorama/two-layers-two-frames.pxo` | 2 by 2 | 2 | 2 | `pxo_version` 6, RGBA8 color mode, layer order, names, visibility, opacity, frame duration multipliers, raw `image_data/frames/{frame}/layer_{layer}` payloads |
+| `pixelorama/unsupported-blend-mode.pxo` | 2 by 2 | 1 | 1 | non-normal `blend_mode` for rejection |
+| `pixelorama/unsupported-effects.pxo` | 2 by 2 | 1 | 1 | non-empty layer `effects` for rejection |
+| `pixelorama/unsupported-tilemap-layer.pxo` | 2 by 2 | 1 | 1 tilemap | layer `type` 3 and `tilesets/` data for rejection |
+| `pixelorama/missing-image-data.pxo` | 2 by 2 | 1 | 1 | missing required raw cel image payload |
+| `pixelorama/ambiguous-metadata.pxo` | 2 by 2 | 1 | 1 | non-empty project metadata for rejection |
+
+Pixelorama fixtures contain only synthetic coral, cyan, yellow, and transparent
+pixels. They are intended to preserve layers when a supported `.pxo` source
+contains pixel layer data; they do not cover tilemaps, effects, groups, 3D
+layers, audio layers, indexed color, or ambiguous metadata.
+
 The first PNG frame is a coral four-pixel spark around a yellow center. The
 second is the same shape shifted one pixel right and colored cyan. All unused
 pixels are transparent. The flat PNG fixtures rebuild a timeline from frames;
