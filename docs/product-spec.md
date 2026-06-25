@@ -56,27 +56,36 @@ layer. They do not provide editable source-layer data, so the product does not
 claim layer preservation or recovery. Source artwork is processed locally in
 the browser and is never uploaded.
 
+## Supported post-MVP OpenRaster import
+
+OpenRaster (`.ora`) is supported as a browser-local core import path through the
+canonical `SpriteProject` model. The implemented subset is documented in
+[OpenRaster format notes](openraster-format.md) and covers a single-frame ZIP
+container with `mimetype`, `stack.xml`, normal PNG-backed raster layers, canvas
+dimensions, layer names, source order, visibility, opacity, and signed x/y
+offsets.
+
+This support preserves layers when the `.ora` source contains supported raster
+layer data. It does not implement UI wiring yet, animation, groups, masks,
+effects, non-normal blend modes, or full/lossless OpenRaster conversion. Artwork
+is processed locally and is never uploaded.
+
 ## Planned additional free/open art tool project formats
 
-The next project-format roadmap focuses on small, deterministic, browser-local
-subsets rather than broad compatibility claims:
+The next project-format roadmap continues to focus on small, deterministic,
+browser-local subsets rather than broad compatibility claims:
 
-1. OpenRaster `.ora` first, because it is a free/open layered raster interchange
-   format used by several free art tools. The researched
-   [OpenRaster subset](openraster-format.md) starts with a ZIP container,
-   `stack.xml`, normal raster layers backed by PNG image files, canvas
-   dimensions, layer names, visibility, opacity, and x/y offsets.
-2. Pixelorama `.pxo` next, because Pixelorama is a free/open pixel art tool with
+1. Pixelorama `.pxo` next, because Pixelorama is a free/open pixel art tool with
    layers, frames, animation, tilemaps, and metadata. Planned support must be
    based on documented or source-backed save semantics and reject unsupported
    tilemaps, effects, blend modes, or missing embedded image data clearly.
-3. Krita `.kra` after that, with a deliberately minimal normal raster subset
+2. Krita `.kra` after that, with a deliberately minimal normal raster subset
    such as 8-bit RGBA raster layers only when the structure is documented and
    fixture-backed. The product must not claim full Krita compatibility.
-4. GIMP `.xcf` is research-only at first because it is a living GIMP-native
+3. GIMP `.xcf` is research-only at first because it is a living GIMP-native
    format tied closely to GIMP internals; OpenRaster may be the safer interchange
    recommendation.
-5. LibreSprite/Aseprite `.ase` and `.aseprite` input is also research-only at
+4. LibreSprite/Aseprite `.ase` and `.aseprite` input is also research-only at
    first so binary reader scope, chunk coverage, validation, and round-trip
    limitations are understood before implementation.
 
