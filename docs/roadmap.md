@@ -71,7 +71,7 @@
   1. [x] OpenRaster `.ora` research and deterministic fixtures (task 048)
   2. [ ] OpenRaster `.ora` importer (task 049)
   3. [ ] OpenRaster `.ora` browser UI wiring (task 050)
-  4. [ ] Pixelorama `.pxo` research and deterministic fixtures (task 051)
+  4. [x] Pixelorama `.pxo` research and deterministic fixtures (task 051)
   5. [ ] Pixelorama `.pxo` importer (task 052)
   6. [ ] Pixelorama `.pxo` browser UI wiring (task 053)
   7. [ ] Krita `.kra` minimal raster subset research and fixtures (task 054)

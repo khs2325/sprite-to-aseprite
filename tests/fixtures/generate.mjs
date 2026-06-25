@@ -419,6 +419,150 @@ function openRasterFixture({
   return encodeZip(entries);
 }
 
+function rawRgba(pixels) {
+  return Buffer.from(pixels.flat());
+}
+
+function pixeloramaCel() {
+  return {
+    opacity: 1,
+    z_index: 0,
+    ui_color: "(0, 0, 0, 0)",
+    metadata: {},
+  };
+}
+
+function pixeloramaLayer({
+  blendMode = 0,
+  effects = [],
+  name,
+  opacity = 1,
+  type = 0,
+  visible = true,
+} = {}) {
+  return {
+    name,
+    visible,
+    locked: false,
+    blend_mode: blendMode,
+    clipping_mask: false,
+    opacity,
+    ui_color: "(0, 0, 0, 0)",
+    parent: -1,
+    effects,
+    type,
+    new_cels_linked: false,
+    metadata: {},
+  };
+}
+
+function pixeloramaDataJson({
+  fps = 10,
+  frames,
+  layers,
+  metadata = {},
+  name = "synthetic-pixelorama",
+  tilesets = [],
+} = {}) {
+  return JSON.stringify({
+    pixelorama_version: "1.1.10",
+    pxo_version: 6,
+    size_x: 2,
+    size_y: 2,
+    color_mode: 5,
+    tile_mode_x_basis_x: 2,
+    tile_mode_x_basis_y: 0,
+    tile_mode_y_basis_x: 0,
+    tile_mode_y_basis_y: 2,
+    layers,
+    tags: [],
+    guides: [],
+    symmetry_points: [1, 1],
+    frames,
+    current_frame: 0,
+    current_layer: 0,
+    brushes: [],
+    palettes: [],
+    project_current_palette_name: "",
+    reference_images: [],
+    tilesets,
+    vanishing_points: [],
+    export_directory_path: "",
+    export_file_name: name,
+    export_file_format: 0,
+    fps,
+    license: "",
+    user_data: "",
+    author_display_name: "",
+    author_real_name: "",
+    author_contact: "",
+    author_company: "",
+    metadata,
+  });
+}
+
+function pixeloramaFrame(duration, layerCount) {
+  return {
+    cels: Array.from({ length: layerCount }, pixeloramaCel),
+    duration,
+    metadata: {},
+  };
+}
+
+function pixeloramaFixture({
+  includeImageData = true,
+  layers,
+  frames = [pixeloramaFrame(1, layers.length)],
+  imageData,
+  metadata = {},
+  tilesets = [],
+} = {}) {
+  const entries = [
+    {
+      name: "data.json",
+      content: pixeloramaDataJson({
+        frames,
+        layers,
+        metadata,
+        tilesets,
+      }),
+    },
+    {
+      name: "mimetype",
+      content: "application/x-pixelorama",
+    },
+    {
+      name: "preview.png",
+      content: encodePng(2, 2, [
+        coral, transparent,
+        transparent, yellow,
+      ]),
+    },
+  ];
+
+  if (includeImageData) {
+    for (const [path, pixels] of imageData) {
+      entries.push({ name: path, content: rawRgba(pixels) });
+      entries.push({
+        name: path.replace("/layer_", "/indices_layer_"),
+        content: Buffer.from([0]),
+      });
+    }
+  }
+
+  for (let tilesetIndex = 0; tilesetIndex < tilesets.length; tilesetIndex += 1) {
+    entries.push({
+      name: `tilesets/${tilesetIndex}/0`,
+      content: rawRgba([
+        coral, transparent,
+        transparent, yellow,
+      ]),
+    });
+  }
+
+  return encodeZip(entries);
+}
+
 const spritesheet = [];
 for (let y = 0; y < 4; y += 1) {
   spritesheet.push(...frameOne.slice(y * 4, y * 4 + 4));
@@ -448,6 +592,95 @@ outputs.set(
     <layer name="Broken" src="data/base-visible.png">
   </stack>
 `,
+  }),
+);
+
+const pixeloramaPositiveLayers = [
+  pixeloramaLayer({ name: "Base visible half", opacity: 0.5 }),
+  pixeloramaLayer({ name: "Hidden ink", visible: false }),
+];
+const pixeloramaPositiveFrames = [
+  pixeloramaFrame(1, pixeloramaPositiveLayers.length),
+  pixeloramaFrame(2.5, pixeloramaPositiveLayers.length),
+];
+const pixeloramaPositiveImageData = [
+  [
+    "image_data/frames/1/layer_1",
+    [
+      cyan, transparent,
+      transparent, yellow,
+    ],
+  ],
+  [
+    "image_data/frames/1/layer_2",
+    [
+      transparent, coral,
+      transparent, transparent,
+    ],
+  ],
+  [
+    "image_data/frames/2/layer_1",
+    [
+      transparent, transparent,
+      cyan, yellow,
+    ],
+  ],
+  [
+    "image_data/frames/2/layer_2",
+    [
+      coral, transparent,
+      yellow, transparent,
+    ],
+  ],
+];
+outputs.set(
+  "pixelorama/two-layers-two-frames.pxo",
+  pixeloramaFixture({
+    frames: pixeloramaPositiveFrames,
+    imageData: pixeloramaPositiveImageData,
+    layers: pixeloramaPositiveLayers,
+  }),
+);
+outputs.set(
+  "pixelorama/unsupported-blend-mode.pxo",
+  pixeloramaFixture({
+    imageData: [["image_data/frames/1/layer_1", pixeloramaPositiveImageData[0][1]]],
+    layers: [pixeloramaLayer({ name: "Multiply unsupported", blendMode: 3 })],
+  }),
+);
+outputs.set(
+  "pixelorama/unsupported-effects.pxo",
+  pixeloramaFixture({
+    imageData: [["image_data/frames/1/layer_1", pixeloramaPositiveImageData[0][1]]],
+    layers: [
+      pixeloramaLayer({
+        name: "Effects unsupported",
+        effects: [{ enabled: true, name: "Outline" }],
+      }),
+    ],
+  }),
+);
+outputs.set(
+  "pixelorama/unsupported-tilemap-layer.pxo",
+  pixeloramaFixture({
+    imageData: [["image_data/frames/1/layer_1", pixeloramaPositiveImageData[0][1]]],
+    layers: [pixeloramaLayer({ name: "Tilemap unsupported", type: 3 })],
+    tilesets: [{ tile_size: "(2, 2)", tile_amount: 1 }],
+  }),
+);
+outputs.set(
+  "pixelorama/missing-image-data.pxo",
+  pixeloramaFixture({
+    includeImageData: false,
+    layers: [pixeloramaLayer({ name: "Missing pixels" })],
+  }),
+);
+outputs.set(
+  "pixelorama/ambiguous-metadata.pxo",
+  pixeloramaFixture({
+    imageData: [["image_data/frames/1/layer_1", pixeloramaPositiveImageData[0][1]]],
+    layers: [pixeloramaLayer({ name: "Metadata unsupported" })],
+    metadata: { fixture_note: "reject ambiguous project metadata" },
   }),
 );
 
