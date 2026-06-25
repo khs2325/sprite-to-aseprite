@@ -1,0 +1,56 @@
+id: "056"
+title: Wire Krita import mode into browser UI
+status: backlog
+priority: medium
+goal: Expose the implemented minimal Krita importer through the browser UI without changing importer logic.
+context: >
+  This task should happen only after task 055 adds a tested core `.kra`
+  importer. UI copy must avoid implying full Krita compatibility.
+scope:
+  summary: Add `.kra` selection, a Krita project mode, conversion routing, status messages, selected-file cards, docs, and focused UI tests.
+  allowed_paths:
+    - src/app/fileImport.ts
+    - src/app/fileImport.test.ts
+    - src/app/converterUi.ts
+    - src/app/converterUi.test.ts
+    - src/styles.css
+    - README.md
+    - docs/manual-usage-guide.md
+    - docs/product-spec.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/core/exporters/**
+    - src/core/importers/gif/**
+    - src/core/importers/apng/**
+    - src/core/importers/piskel/**
+non_goals:
+  - Do not rewrite the Krita importer or Aseprite exporter.
+  - Do not claim full Krita compatibility or unsupported feature preservation.
+  - Do not add server-side processing or file upload.
+requirements:
+  - Add `.kra` to supported file acceptance and source-kind classification.
+  - Add a `Krita project` import mode with labels that mention the documented minimal raster subset where appropriate.
+  - Require exactly one `.kra` file and route it to the existing Krita importer.
+  - Show success text that describes converting supported raster layers/frames into an editable Aseprite timeline.
+  - Show importer-authored diagnostics without stack traces or private implementation details.
+  - Update selected-file cards, remove/clear behavior, convert enablement, and docs for `.kra`.
+  - Add focused UI tests for selection, labels, validation, conversion routing, success, and failure states.
+acceptance_criteria:
+  - Users can select one supported `.kra` file, choose `Krita project`, convert it, and download the resulting `.aseprite` in the browser.
+  - UI copy is explicit that only the documented minimal raster subset is supported.
+  - Invalid selection and importer failure messages are clear and content-safe.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: false
+  max_changed_files: 12
+  forbidden_paths: *forbidden
