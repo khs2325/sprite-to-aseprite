@@ -1,0 +1,52 @@
+id: "054"
+title: Research Krita import and add deterministic fixtures
+status: backlog
+priority: medium
+goal: Define a minimal safe Krita `.kra` raster subset and fixture strategy before implementing import.
+context: >
+  Krita `.kra` projects are valuable for artists but can include complex
+  layers, masks, filters, animation timelines, color spaces, and profiles.
+  The first converter task must be intentionally narrow.
+scope:
+  summary: Document a minimal `.kra` subset and add deterministic fixtures or builders for normal 8-bit RGBA raster layers.
+  allowed_paths:
+    - docs/krita-format.md
+    - docs/roadmap.md
+    - docs/product-spec.md
+    - tests/fixtures/krita/**
+    - tests/fixtures/README.md
+    - tests/fixtures/fixtures.test.ts
+    - tests/fixtures/generate.mjs
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+non_goals:
+  - Do not implement a Krita importer or browser UI wiring.
+  - Do not claim full Krita compatibility.
+  - Do not support masks, vector layers, filters, animation, clone layers, file layers, group effects, unsupported color profiles, or non-RGBA color depths in this research task.
+requirements:
+  - Research the `.kra` ZIP container, manifest, merged preview, raster layer image storage, dimensions, layer names, visibility, opacity, offsets, and color metadata.
+  - Define a minimal supported subset for normal 8-bit RGBA raster layers only, or document why an even narrower first implementation is safer.
+  - Document unsupported Krita features and the precise rejection behavior expected from the importer.
+  - Add deterministic tiny fixtures or fixture builders only if their structure is clearly documented and reproducible.
+  - Keep fixtures synthetic and avoid user artwork.
+  - Document browser-local parsing and allocation limits.
+acceptance_criteria:
+  - "`docs/krita-format.md` clearly separates supported minimal raster behavior from unsupported Krita project features."
+  - Fixtures or builders provide enough evidence for the importer task to avoid guessing.
+  - No importer, UI behavior, production dependency, network fetch, or upload is added.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 15
+  forbidden_paths: *forbidden

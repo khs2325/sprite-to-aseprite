@@ -1,0 +1,52 @@
+id: "048"
+title: Research OpenRaster import and add deterministic fixtures
+status: backlog
+priority: high
+goal: Define a minimum safe OpenRaster `.ora` import subset and fixture strategy before implementing decoding.
+context: >
+  OpenRaster is a free/open layered raster interchange format used by multiple
+  free art tools. It is the highest-priority additional project format because
+  it can carry layer data that flat PNG, GIF, and APNG sources cannot.
+scope:
+  summary: Document the supported `.ora` subset and add tiny deterministic fixtures or fixture builders.
+  allowed_paths:
+    - docs/openraster-format.md
+    - docs/roadmap.md
+    - docs/product-spec.md
+    - tests/fixtures/openraster/**
+    - tests/fixtures/README.md
+    - tests/fixtures/fixtures.test.ts
+    - tests/fixtures/generate.mjs
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+non_goals:
+  - Do not implement an OpenRaster importer or browser UI wiring.
+  - Do not use downloaded, copyrighted, private, or user-provided artwork as fixtures.
+  - Do not claim support for animation, groups, effects, or blend modes before they are documented and tested.
+requirements:
+  - Research the OpenRaster ZIP container structure, `stack.xml`, layer PNG references, canvas dimensions, offsets, visibility, opacity, and blend-mode metadata.
+  - Define a minimal supported subset covering single-frame layered raster images with normal blend mode.
+  - Document how unsupported groups, effects, animation metadata, unsupported blend modes, missing PNG data, and malformed XML must be rejected or handled.
+  - Add deterministic tiny fixtures or fixture builders covering at least two raster layers, layer names, order, visibility, opacity, and x/y offsets.
+  - Verify fixture signatures and expected structural metadata without implementing full conversion.
+  - Keep all fixture artwork synthetic and browser-local.
+acceptance_criteria:
+  - "`docs/openraster-format.md` describes an implementation-ready supported subset and explicit unsupported features."
+  - Fixtures or deterministic builders cover the highest-risk layer and metadata cases needed by the importer task.
+  - No production importer, UI behavior, dependency, network fetch, or upload is added.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 15
+  forbidden_paths: *forbidden

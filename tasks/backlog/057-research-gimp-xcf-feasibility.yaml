@@ -1,0 +1,47 @@
+id: "057"
+title: Research GIMP XCF import feasibility
+status: backlog
+priority: low
+goal: Assess whether GIMP `.xcf` import is safe and practical before creating any implementation task.
+context: >
+  XCF is a living GIMP-native project format tied closely to GIMP internals.
+  It should be researched before the converter commits to parsing it directly.
+scope:
+  summary: Document XCF feasibility, risks, supported-subset candidates, and why OpenRaster may be preferable for interchange.
+  allowed_paths:
+    - docs/gimp-xcf-feasibility.md
+    - docs/roadmap.md
+    - docs/product-spec.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+    - tests/**
+non_goals:
+  - Do not implement an XCF importer.
+  - Do not add fixtures unless a later task proves a deterministic fixture strategy is safe.
+  - Do not claim GIMP compatibility or layer/effect preservation.
+requirements:
+  - Research current XCF format documentation, versioning, compression, layer/cel representation, color models, masks, effects, and browser-local parsing constraints.
+  - Compare direct XCF parsing against recommending OpenRaster export from GIMP for interchange.
+  - Identify a possible minimal safe subset, if any, and list unsupported features that would need clear rejection.
+  - Recommend whether to create future fixture/importer tasks or keep XCF out of scope.
+  - Keep the task docs-only and avoid production code, dependencies, network behavior, or upload paths.
+acceptance_criteria:
+  - The feasibility document gives a clear go/no-go recommendation for future XCF work.
+  - The document explains why OpenRaster may be preferable for GIMP interchange.
+  - No importer, tests, fixtures, UI behavior, dependency, network fetch, or upload is added.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *forbidden

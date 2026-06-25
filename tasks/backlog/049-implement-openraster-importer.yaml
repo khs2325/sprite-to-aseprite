@@ -1,0 +1,53 @@
+id: "049"
+title: Implement OpenRaster importer
+status: backlog
+priority: high
+goal: Convert the documented OpenRaster `.ora` subset into the canonical `SpriteProject` model.
+context: >
+  This task follows the OpenRaster format notes and fixtures from task 048.
+  The importer must remain core-only and browser-local so UI wiring can stay
+  a separate, focused task.
+scope:
+  summary: Add OpenRaster parsing, validation, PNG layer decoding, SpriteProject mapping, and focused tests.
+  allowed_paths:
+    - src/core/importers/openraster/**
+    - src/core/conversion.integration.test.ts
+    - tests/fixtures/openraster/**
+    - tests/fixtures/fixtures.test.ts
+    - docs/openraster-format.md
+    - docs/product-spec.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/app/**
+    - src/core/exporters/**
+non_goals:
+  - Do not wire `.ora` into the browser UI.
+  - Do not add production dependencies unless a separate approved task widens package-file scope.
+  - Do not claim full OpenRaster compatibility, animation support, or unsupported blend/effect preservation.
+requirements:
+  - Parse the documented `.ora` ZIP container and `stack.xml` subset browser-locally.
+  - Decode referenced layer PNG files safely and map them into `SpriteProject` cels.
+  - Preserve supported layer name, order, visibility, opacity, and x/y offset data.
+  - Require canvas width/height and reject malformed, missing, unsafe, or unsupported files with content-safe diagnostics.
+  - Support normal raster layers only; reject unsupported groups, effects, animation metadata, blend modes, and missing image data unless task 048 explicitly documents safe behavior.
+  - Keep output single-frame unless documented animation metadata has fixture-backed support.
+  - Add unit and conversion tests using deterministic fixtures.
+acceptance_criteria:
+  - Supported `.ora` fixtures import with expected dimensions, layers, cels, offsets, opacity, visibility, and pixels.
+  - Unsupported or malformed fixtures fail deterministically without stack traces, network access, upload, UI changes, or exporter changes.
+  - The importer outputs only the canonical `SpriteProject` model.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: false
+  max_changed_files: 15
+  forbidden_paths: *forbidden
