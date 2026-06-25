@@ -68,7 +68,7 @@
   1. [x] supported-subset research and deterministic fixtures (task 046)
   2. [ ] core APNG importer (task 047)
 - Additional free/open art tool project formats:
-  1. [ ] OpenRaster `.ora` research and deterministic fixtures (task 048)
+  1. [x] OpenRaster `.ora` research and deterministic fixtures (task 048)
   2. [ ] OpenRaster `.ora` importer (task 049)
   3. [ ] OpenRaster `.ora` browser UI wiring (task 050)
   4. [ ] Pixelorama `.pxo` research and deterministic fixtures (task 051)

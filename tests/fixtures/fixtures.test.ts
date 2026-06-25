@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { inflateSync } from "node:zlib";
+import { inflateRawSync, inflateSync } from "node:zlib";
 
 import { describe, expect, it } from "vitest";
 
@@ -87,6 +87,31 @@ type ApngFixtureMetadata = {
   width: number;
 };
 
+type ZipFixtureEntry = {
+  compressionMethod: number;
+  content: Buffer;
+  name: string;
+};
+
+type OpenRasterLayerFixtureMetadata = {
+  compositeOp?: string;
+  name?: string;
+  opacity?: string;
+  src?: string;
+  visibility?: string;
+  x?: string;
+  y?: string;
+};
+
+type OpenRasterFixtureMetadata = {
+  image: {
+    h?: string;
+    version?: string;
+    w?: string;
+  };
+  layers: OpenRasterLayerFixtureMetadata[];
+};
+
 function fixtureCrc32(bytes: Buffer): number {
   let crc = 0xffffffff;
   for (const byte of bytes) {
@@ -96,6 +121,89 @@ function fixtureCrc32(bytes: Buffer): number {
     }
   }
   return (crc ^ 0xffffffff) >>> 0;
+}
+
+function inspectZipFixture(relativePath: string): ZipFixtureEntry[] {
+  const archive = readFileSync(join(fixtureDirectory, relativePath));
+  expect(archive.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+  expect(archive.readUInt32LE(archive.length - 22)).toBe(0x06054b50);
+
+  const centralDirectoryOffset = archive.readUInt32LE(archive.length - 6);
+  const expectedEntryCount = archive.readUInt16LE(archive.length - 12);
+  const entries: ZipFixtureEntry[] = [];
+  let offset = 0;
+
+  while (offset < centralDirectoryOffset) {
+    expect(archive.readUInt32LE(offset)).toBe(0x04034b50);
+    const compressionMethod = archive.readUInt16LE(offset + 8);
+    const crc = archive.readUInt32LE(offset + 14);
+    const compressedSize = archive.readUInt32LE(offset + 18);
+    const uncompressedSize = archive.readUInt32LE(offset + 22);
+    const nameLength = archive.readUInt16LE(offset + 26);
+    const extraLength = archive.readUInt16LE(offset + 28);
+    const nameStart = offset + 30;
+    const nameEnd = nameStart + nameLength;
+    const dataStart = nameEnd + extraLength;
+    const dataEnd = dataStart + compressedSize;
+    expect(dataEnd).toBeLessThanOrEqual(archive.length);
+
+    const compressed = archive.subarray(dataStart, dataEnd);
+    const content = compressionMethod === 0
+      ? Buffer.from(compressed)
+      : inflateRawSync(compressed);
+    expect(content).toHaveLength(uncompressedSize);
+    expect(fixtureCrc32(content)).toBe(crc);
+
+    entries.push({
+      compressionMethod,
+      content,
+      name: archive.toString("utf8", nameStart, nameEnd),
+    });
+    offset = dataEnd;
+  }
+
+  expect(entries).toHaveLength(expectedEntryCount);
+  return entries;
+}
+
+function zipEntryMap(entries: ZipFixtureEntry[]): Map<string, ZipFixtureEntry> {
+  return new Map(entries.map((entry) => [entry.name, entry]));
+}
+
+function parseXmlAttributes(source: string): Record<string, string> {
+  const attributes: Record<string, string> = {};
+  const attributePattern = /([A-Za-z_:][\w:.-]*)="([^"]*)"/g;
+  for (const match of source.matchAll(attributePattern)) {
+    attributes[match[1]] = match[2];
+  }
+  return attributes;
+}
+
+function parseOpenRasterFixtureMetadata(
+  stackXml: string,
+): OpenRasterFixtureMetadata {
+  const imageMatch = stackXml.match(/<image\s+([^>]*)>/);
+  if (imageMatch === null) {
+    throw new Error("Fixture stack.xml is missing image metadata.");
+  }
+
+  return {
+    image: parseXmlAttributes(imageMatch[1]),
+    layers: [...stackXml.matchAll(/<layer\s+([^>]*)\/>/g)].map(
+      (match) => {
+        const attributes = parseXmlAttributes(match[1]);
+        return {
+          compositeOp: attributes["composite-op"],
+          name: attributes.name,
+          opacity: attributes.opacity,
+          src: attributes.src,
+          visibility: attributes.visibility,
+          x: attributes.x,
+          y: attributes.y,
+        };
+      },
+    ),
+  };
 }
 
 function inspectApngFixture(relativePath: string): ApngFixtureMetadata {
@@ -507,6 +615,94 @@ function pixel(image: ImageData, x: number, y: number): number[] {
 }
 
 describe("synthetic sprite fixtures", () => {
+  it("provides a minimal OpenRaster ZIP with two PNG-backed layers", () => {
+    const entries = inspectZipFixture("openraster/two-layers.ora");
+    const entryMap = zipEntryMap(entries);
+
+    expect(entries.map(({ name }) => name)).toEqual([
+      "mimetype",
+      "stack.xml",
+      "data/base-visible.png",
+      "data/top-hidden.png",
+      "Thumbnails/thumbnail.png",
+      "mergedimage.png",
+    ]);
+    expect(entries[0]).toMatchObject({
+      name: "mimetype",
+      compressionMethod: 0,
+    });
+    expect(entries[0].content.toString("utf8")).toBe("image/openraster");
+
+    const stackXml = entryMap.get("stack.xml")?.content.toString("utf8") ?? "";
+    const metadata = parseOpenRasterFixtureMetadata(stackXml);
+    expect(metadata.image).toMatchObject({
+      version: "0.0.6",
+      w: "4",
+      h: "3",
+    });
+    expect(metadata.layers).toEqual([
+      {
+        name: "Top hidden half",
+        src: "data/top-hidden.png",
+        x: "1",
+        y: "-1",
+        opacity: "0.5",
+        visibility: "hidden",
+        compositeOp: "svg:src-over",
+      },
+      {
+        name: "Base visible",
+        src: "data/base-visible.png",
+        x: "0",
+        y: "1",
+        opacity: undefined,
+        visibility: undefined,
+        compositeOp: undefined,
+      },
+    ]);
+
+    for (const { src } of metadata.layers) {
+      const png = entryMap.get(src ?? "")?.content;
+      expect(png?.subarray(0, 8)).toEqual(pngSignature);
+      expect(decodePng(png ?? Buffer.alloc(0))).toMatchObject({
+        width: 2,
+        height: 2,
+      });
+    }
+    expect(decodePng(entryMap.get("Thumbnails/thumbnail.png")?.content ?? Buffer.alloc(0)))
+      .toMatchObject({ width: 2, height: 2 });
+    expect(decodePng(entryMap.get("mergedimage.png")?.content ?? Buffer.alloc(0)))
+      .toMatchObject({ width: 4, height: 3 });
+  });
+
+  it("provides OpenRaster rejection fixtures for importer diagnostics", () => {
+    const unsupportedBlend = zipEntryMap(
+      inspectZipFixture("openraster/unsupported-blend-mode.ora"),
+    );
+    const blendStackXml = unsupportedBlend.get("stack.xml")?.content.toString("utf8") ?? "";
+    expect(parseOpenRasterFixtureMetadata(blendStackXml).layers[0])
+      .toMatchObject({ compositeOp: "svg:multiply" });
+
+    const missingData = zipEntryMap(
+      inspectZipFixture("openraster/missing-layer-data.ora"),
+    );
+    const missingStackXml = missingData.get("stack.xml")?.content.toString("utf8") ?? "";
+    const missingMetadata = parseOpenRasterFixtureMetadata(missingStackXml);
+    expect(missingMetadata.layers.map(({ src }) => src)).toEqual([
+      "data/top-hidden.png",
+      "data/base-visible.png",
+    ]);
+    expect(missingData.has("data/base-visible.png")).toBe(true);
+    expect(missingData.has("data/top-hidden.png")).toBe(false);
+
+    const malformed = zipEntryMap(
+      inspectZipFixture("openraster/malformed-stack.ora"),
+    );
+    const malformedStackXml = malformed.get("stack.xml")?.content.toString("utf8") ?? "";
+    expect(malformedStackXml).toContain("<layer name=\"Broken\"");
+    expect(parseOpenRasterFixtureMetadata(malformedStackXml).layers).toHaveLength(0);
+  });
+
   it("provides APNG chunk sequences, offsets, and normalized timing", () => {
     const apng = inspectApngFixture("apng/timing-offsets.apng");
 

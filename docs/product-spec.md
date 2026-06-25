@@ -62,8 +62,9 @@ The next project-format roadmap focuses on small, deterministic, browser-local
 subsets rather than broad compatibility claims:
 
 1. OpenRaster `.ora` first, because it is a free/open layered raster interchange
-   format used by several free art tools. Planned support starts with a ZIP
-   container, `stack.xml`, normal raster layers backed by PNG image files, canvas
+   format used by several free art tools. The researched
+   [OpenRaster subset](openraster-format.md) starts with a ZIP container,
+   `stack.xml`, normal raster layers backed by PNG image files, canvas
    dimensions, layer names, visibility, opacity, and x/y offsets.
 2. Pixelorama `.pxo` next, because Pixelorama is a free/open pixel art tool with
    layers, frames, animation, tilemaps, and metadata. Planned support must be

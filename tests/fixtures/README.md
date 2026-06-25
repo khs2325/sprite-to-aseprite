@@ -54,6 +54,23 @@ composites 50%-alpha red over opaque green to produce `[128,127,0,255]`.
 previous restores the pre-draw rectangle before the following frame. APNG
 fixtures are flat animations and contain no recoverable source layers.
 
+The OpenRaster fixtures add deterministic ZIP-backed `.ora` containers for the
+future single-frame layered raster importer. Tests inspect their ZIP signatures,
+stored `mimetype`, `stack.xml` metadata, referenced PNG signatures, and preview
+PNG dimensions without implementing conversion.
+
+| Fixture | Canvas | Layers | Metadata covered |
+| --- | --- | ---: | --- |
+| `openraster/two-layers.ora` | 4 by 3 | 2 | source order, names, visible/hidden, opacity `0.5` and default `1`, offsets `(1,-1)` and `(0,1)`, normal blend |
+| `openraster/unsupported-blend-mode.ora` | 4 by 3 | 2 | same as above, but top layer uses unsupported `svg:multiply` |
+| `openraster/missing-layer-data.ora` | 4 by 3 | 2 references | `stack.xml` references `data/top-hidden.png`, which is intentionally absent |
+| `openraster/malformed-stack.ora` | 4 by 3 | malformed | valid ZIP and PNG data with malformed `stack.xml` |
+
+OpenRaster fixtures contain synthetic coral, cyan, yellow, and transparent
+pixels only. They are intended to preserve layers when the source format
+contains supported layer data; they do not use `mergedimage.png` to recover
+layers.
+
 The first PNG frame is a coral four-pixel spark around a yellow center. The
 second is the same shape shifted one pixel right and colored cyan. All unused
 pixels are transparent. The flat PNG fixtures rebuild a timeline from frames;
