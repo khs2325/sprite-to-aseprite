@@ -1,7 +1,6 @@
 # OpenRaster `.ora` Format Notes
 
-Status: researched subset for future importer work. No OpenRaster importer or UI
-wiring is implemented by this task.
+Status: implemented core importer subset. Browser UI wiring remains separate.
 
 Primary references:
 
@@ -25,10 +24,10 @@ The ZIP member names are case-sensitive and should be UTF-8. Only `STORED` and
 `DEFLATED` entries are part of the safe subset. The importer must read all user
 files locally in the browser.
 
-## Supported Subset
+## Supported Core Importer Subset
 
-The first importer should accept only single-frame layered raster images that
-can be represented directly as `SpriteProject`:
+The core importer accepts only single-frame layered raster images that can be
+represented directly as `SpriteProject`:
 
 ```ts
 {
@@ -57,7 +56,7 @@ Accepted `stack.xml` shape:
   and assert that source order.
 - Each `<layer>` has a `src` attribute pointing to a PNG file inside the ZIP,
   normally under `data/`.
-- Layer PNG data decodes to RGBA pixels in the browser.
+- Layer PNG data decodes to RGBA pixels locally in the browser.
 - Optional `name` is preserved. If omitted, use a deterministic generated name
   such as `Layer 1`.
 - Optional `x` and `y` are signed integer cel offsets. Defaults are `0`.
@@ -90,9 +89,14 @@ Reject the entire file with a clear diagnostic for:
   metadata, not part of this single-frame subset.
 
 Ignore archive entries that are not referenced by the supported subset, such as
-extra metadata files, as long as required conversion data is valid. Ignore
-`xres` and `yres` for `SpriteProject` construction because the current internal
-model has no resolution field.
+extra metadata files, as long as entry paths are safe and required conversion
+data is valid. Ignore `xres` and `yres` for `SpriteProject` construction
+because the current internal model has no resolution field.
+
+This support preserves layer data only when the `.ora` source contains it in the
+documented subset. It does not recover layers from `mergedimage.png`, implement
+animation, preserve unsupported blend modes/effects, or claim full or lossless
+OpenRaster conversion.
 
 ## Fixture Strategy
 
