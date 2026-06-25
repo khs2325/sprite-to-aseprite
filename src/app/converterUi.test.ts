@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { SpriteProject } from "../core/SpriteProject";
 import { ApngImportError } from "../core/importers/apng";
 import { GifImportError } from "../core/importers/gif";
+import { OpenRasterImportError } from "../core/importers/openraster";
 import {
   PiskelImportError,
   type PiskelImportErrorCode,
@@ -85,6 +86,14 @@ function apng(name: string): BrowserSourceFile {
   return {
     file: new File(["apng"], name, { type: "image/png" }),
     kind: "apng",
+    bytes: new ArrayBuffer(0),
+  };
+}
+
+function ora(name: string): BrowserSourceFile {
+  return {
+    file: new File(["ora"], name, { type: "image/openraster" }),
+    kind: "ora",
     bytes: new ArrayBuffer(0),
   };
 }
@@ -179,6 +188,8 @@ describe("getSourceSelectionError", () => {
     expect(getSourceSelectionError("gif", [gif("sprite.gif")])).toBeNull();
     expect(getSourceSelectionError("apng", [apng("sprite.apng")])).toBeNull();
     expect(getSourceSelectionError("apng", [png("sprite.png")])).toBeNull();
+    expect(getSourceSelectionError("openraster", [ora("scene.ora")]))
+      .toBeNull();
   });
 
   it("rejects mode/file mismatches before conversion", () => {
@@ -210,6 +221,12 @@ describe("getSourceSelectionError", () => {
       apng("one.apng"),
       apng("two.apng"),
     ])).toContain("exactly one .apng");
+    expect(getSourceSelectionError("openraster", [png("sprite.png")]))
+      .toContain("exactly one .ora file");
+    expect(getSourceSelectionError("openraster", [
+      ora("one.ora"),
+      ora("two.ora"),
+    ])).toContain("exactly one .ora file");
   });
 
   it("revalidates remaining and cleared files without a second selection state", () => {
@@ -236,6 +253,9 @@ describe("getSourceSelectionError", () => {
     expect(getSourceSelectionState("apng", [apng("sprite.apng")]).canConvert)
       .toBe(true);
     expect(getSourceSelectionState("apng", []).canConvert).toBe(false);
+    expect(getSourceSelectionState("openraster", [ora("scene.ora")]).canConvert)
+      .toBe(true);
+    expect(getSourceSelectionState("openraster", []).canConvert).toBe(false);
   });
 
   it("revalidates the same selected files when import mode changes", () => {
@@ -456,12 +476,14 @@ describe("convertSourceFiles", () => {
     const importPngSequence = vi.fn(async () => project);
     const importApng = vi.fn(async () => project);
     const importGif = vi.fn(async () => project);
+    const importOpenRaster = vi.fn(async () => project);
     const importPiskel = vi.fn(async () => project);
     const importSpritesheetGrid = vi.fn(async () => project);
     const importSpritesheetJson = vi.fn(async () => project);
     const importers = {
       importApng,
       importGif,
+      importOpenRaster,
       importPngSequence,
       importPiskel,
       importSpritesheetGrid,
@@ -473,6 +495,7 @@ describe("convertSourceFiles", () => {
     const piskelProject = piskel("walk.piskel");
     const gifAnimation = gif("walk.gif");
     const apngAnimation = apng("walk.apng");
+    const openRasterProject = ora("scene.ora");
 
     await expect(
       convertSourceFiles(
@@ -526,12 +549,21 @@ describe("convertSourceFiles", () => {
     const pngContainer = png("walk.png");
     await convertSourceFiles("apng", [pngContainer], gridOptions, importers);
     expect(importApng).toHaveBeenCalledWith(pngContainer.file);
+
+    await convertSourceFiles(
+      "openraster",
+      [openRasterProject],
+      gridOptions,
+      importers,
+    );
+    expect(importOpenRaster).toHaveBeenCalledWith(openRasterProject.file);
   });
 
   it("does not call an importer for an invalid selection", async () => {
     const importers = {
       importApng: vi.fn(async () => project),
       importGif: vi.fn(async () => project),
+      importOpenRaster: vi.fn(async () => project),
       importPngSequence: vi.fn(async () => project),
       importPiskel: vi.fn(async () => project),
       importSpritesheetGrid: vi.fn(async () => project),
@@ -552,6 +584,58 @@ describe("convertSourceFiles", () => {
     expect(importers.importSpritesheetJson).not.toHaveBeenCalled();
     expect(importers.importGif).not.toHaveBeenCalled();
     expect(importers.importApng).not.toHaveBeenCalled();
+    expect(importers.importOpenRaster).not.toHaveBeenCalled();
+  });
+});
+
+describe("OpenRaster conversion messages", () => {
+  const layeredProject: SpriteProject = {
+    ...project,
+    layers: [
+      project.layers[0],
+      {
+        id: "detail",
+        name: "Detail",
+        visible: true,
+        opacity: 255,
+        cels: [],
+      },
+    ],
+  };
+
+  it("reports supported raster layer data without overclaiming unsupported features", () => {
+    expect(getConversionSuccessStatus("openraster", layeredProject)).toBe(
+      "Converted supported OpenRaster raster layer data into an editable Aseprite timeline with 1 frame and 2 preserved layers. Ready to download.",
+    );
+  });
+
+  it("shows importer-authored diagnostics without exposing stack traces", () => {
+    const error = new OpenRasterImportError(
+      "unsupported-feature",
+      "OpenRaster nested stacks and layer groups are unsupported.",
+    );
+    error.stack = "private-openraster-stack";
+
+    expect(getConversionErrorMessage("openraster", error)).toBe(
+      "OpenRaster import failed: OpenRaster nested stacks and layer groups are unsupported.",
+    );
+    expect(getConversionErrorMessage("openraster", error)).not.toContain(
+      "private-openraster-stack",
+    );
+  });
+
+  it("does not expose arbitrary OpenRaster errors", () => {
+    const privateMessage = "private OpenRaster source details";
+
+    const message = getConversionErrorMessage(
+      "openraster",
+      new Error(privateMessage),
+    );
+
+    expect(message).toBe(
+      "OpenRaster import failed: Check that the .ora file contains supported normal PNG-backed raster layer data.",
+    );
+    expect(message).not.toContain(privateMessage);
   });
 });
 
