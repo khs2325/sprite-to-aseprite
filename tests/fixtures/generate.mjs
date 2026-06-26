@@ -382,6 +382,174 @@ const openRasterMergedPng = encodePng(4, 3, [
   cyan, yellow, transparent, transparent,
 ]);
 
+const kritaProfile = "sRGB-elle-V2-srgbtrc.icc";
+const kritaImageName = "Synthetic Krita";
+const kritaTileWidth = 64;
+const kritaTileHeight = 64;
+const kritaLayerPixels = new Map([
+  [
+    "layer1",
+    [
+      [transparent, yellow],
+      [coral, cyan],
+    ],
+  ],
+  [
+    "layer2",
+    [
+      [cyan, transparent],
+      [transparent, yellow],
+    ],
+  ],
+]);
+
+function rgbaToKritaBgra([redChannel, greenChannel, blueChannel, alphaChannel]) {
+  return [blueChannel, greenChannel, redChannel, alphaChannel];
+}
+
+function encodeKritaPaintDeviceTile(pixels) {
+  const pixelSize = 4;
+  const tileBytes = Buffer.alloc(kritaTileWidth * kritaTileHeight * pixelSize);
+
+  for (let y = 0; y < pixels.length; y += 1) {
+    const row = pixels[y];
+    for (let x = 0; x < row.length; x += 1) {
+      const offset = (y * kritaTileWidth + x) * pixelSize;
+      Buffer.from(rgbaToKritaBgra(row[x])).copy(tileBytes, offset);
+    }
+  }
+
+  const rawFlag = Buffer.from([0]);
+  const tilePayload = Buffer.concat([rawFlag, tileBytes]);
+
+  return Buffer.concat([
+    Buffer.from(`VERSION 2
+TILEWIDTH ${kritaTileWidth}
+TILEHEIGHT ${kritaTileHeight}
+PIXELSIZE ${pixelSize}
+DATA 1
+0,0,LZF,${tilePayload.length}
+`, "utf8"),
+    tilePayload,
+  ]);
+}
+
+function kritaDocumentInfoXml() {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<document-info xmlns="http://www.calligra.org/DTD/document-info">
+  <about>
+    <title>${kritaImageName}</title>
+  </about>
+</document-info>
+`;
+}
+
+function kritaLayerAttributes({
+  colorSpaceName = "RGBA",
+  compositeOp = "normal",
+  filename,
+  name,
+  nodeType = "paintlayer",
+  opacity = 255,
+  visible = 1,
+  x = 0,
+  y = 0,
+}) {
+  return [
+    `name="${name}"`,
+    `nodetype="${nodeType}"`,
+    `filename="${filename}"`,
+    `x="${x}"`,
+    `y="${y}"`,
+    `opacity="${opacity}"`,
+    `visible="${visible}"`,
+    `compositeop="${compositeOp}"`,
+    `colorspacename="${colorSpaceName}"`,
+    `profile="${kritaProfile}"`,
+    `channelflags="OOOO"`,
+    `channellockflags="OOOO"`,
+    `locked="0"`,
+    `uuid="{00000000-0000-0000-0000-000000000000}"`,
+    `collapsed="0"`,
+    `colorlabel="0"`,
+    `intimeline="0"`,
+    `onionskin="0"`,
+  ].join(" ");
+}
+
+function kritaMainDocXml({
+  imageColorSpaceName = "RGBA",
+  imageProfile = kritaProfile,
+  layers,
+}) {
+  const layerXml = layers
+    .map((layer) => `    <layer ${kritaLayerAttributes(layer)} />`)
+    .join("\n");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<DOC editor="krita" depth="8" syntaxVersion="2.0">
+  <IMAGE mime="application/x-kra" name="${kritaImageName}" width="2" height="2" x-res="72" y-res="72" colorspacename="${imageColorSpaceName}" profile="${imageProfile}">
+    <LAYERS>
+${layerXml}
+    </LAYERS>
+  </IMAGE>
+</DOC>
+`;
+}
+
+function kritaFixture({
+  includeLayerData = true,
+  layers,
+  mergedImage = encodePng(2, 2, [
+    coral, cyan,
+    yellow, transparent,
+  ]),
+  rootXml = kritaMainDocXml({ layers }),
+}) {
+  const entries = [
+    {
+      name: "mimetype",
+      content: "application/x-krita",
+      compressionMethod: 0,
+    },
+    { name: "maindoc.xml", content: rootXml },
+    { name: "documentinfo.xml", content: kritaDocumentInfoXml() },
+    {
+      name: "preview.png",
+      content: encodePng(2, 2, [
+        transparent, cyan,
+        coral, yellow,
+      ]),
+    },
+  ];
+
+  if (includeLayerData) {
+    for (const layer of layers) {
+      if ((layer.nodeType ?? "paintlayer") !== "paintlayer") {
+        continue;
+      }
+      const pixels = kritaLayerPixels.get(layer.filename);
+      if (pixels === undefined) {
+        continue;
+      }
+      entries.push(
+        {
+          name: `${kritaImageName}/layers/${layer.filename}`,
+          content: encodeKritaPaintDeviceTile(pixels),
+        },
+        {
+          name: `${kritaImageName}/layers/${layer.filename}.defaultpixel`,
+          content: Buffer.from(rgbaToKritaBgra(transparent)),
+        },
+      );
+    }
+  }
+
+  entries.push({ name: "mergedimage.png", content: mergedImage });
+
+  return encodeZip(entries);
+}
+
 function openRasterStackXml({ topCompositeOp = "svg:src-over" } = {}) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <image version="0.0.6" w="4" h="3">
@@ -572,6 +740,69 @@ for (let y = 0; y < 4; y += 1) {
 outputs.set("png-sequence/spark-01.png", encodePng(4, 4, frameOne));
 outputs.set("png-sequence/spark-02.png", encodePng(4, 4, frameTwo));
 outputs.set("spritesheet/spark-sheet.png", encodePng(8, 4, spritesheet));
+const kritaPositiveLayers = [
+  {
+    filename: "layer1",
+    name: "Top hidden half",
+    opacity: 128,
+    visible: 0,
+    x: 1,
+    y: -1,
+  },
+  {
+    filename: "layer2",
+    name: "Base visible",
+  },
+];
+outputs.set(
+  "krita/two-paint-layers.kra",
+  kritaFixture({ layers: kritaPositiveLayers }),
+);
+outputs.set(
+  "krita/unsupported-vector-layer.kra",
+  kritaFixture({
+    layers: [
+      {
+        filename: "layer1",
+        name: "Vector unsupported",
+        nodeType: "shapelayer",
+      },
+    ],
+  }),
+);
+outputs.set(
+  "krita/unsupported-color-depth.kra",
+  kritaFixture({
+    layers: [{
+      colorSpaceName: "RGBA16",
+      filename: "layer1",
+      name: "RGBA16 unsupported",
+    }],
+    rootXml: kritaMainDocXml({
+      imageColorSpaceName: "RGBA16",
+      layers: [{
+        colorSpaceName: "RGBA16",
+        filename: "layer1",
+        name: "RGBA16 unsupported",
+      }],
+    }),
+  }),
+);
+outputs.set(
+  "krita/missing-layer-data.kra",
+  kritaFixture({
+    includeLayerData: false,
+    layers: kritaPositiveLayers,
+  }),
+);
+outputs.set(
+  "krita/flattened-preview-only.kra",
+  kritaFixture({
+    includeLayerData: false,
+    layers: [],
+    rootXml: kritaMainDocXml({ layers: [] }),
+  }),
+);
 outputs.set("openraster/two-layers.ora", openRasterFixture());
 outputs.set(
   "openraster/unsupported-blend-mode.ora",

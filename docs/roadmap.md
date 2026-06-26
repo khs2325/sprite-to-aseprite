@@ -74,7 +74,7 @@
   4. [x] Pixelorama `.pxo` research and deterministic fixtures (task 051)
   5. [ ] Pixelorama `.pxo` importer (task 052)
   6. [ ] Pixelorama `.pxo` browser UI wiring (task 053)
-  7. [ ] Krita `.kra` minimal raster subset research and fixtures (task 054)
+  7. [x] Krita `.kra` minimal raster subset research and fixtures (task 054)
   8. [ ] Krita `.kra` importer (task 055)
   9. [ ] Krita `.kra` browser UI wiring (task 056)
   10. [ ] GIMP `.xcf` feasibility research only (task 057)
