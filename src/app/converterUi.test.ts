@@ -4,6 +4,7 @@ import type { SpriteProject } from "../core/SpriteProject";
 import { ApngImportError } from "../core/importers/apng";
 import { GifImportError } from "../core/importers/gif";
 import { OpenRasterImportError } from "../core/importers/openraster";
+import { PixeloramaImportError } from "../core/importers/pixelorama";
 import {
   PiskelImportError,
   type PiskelImportErrorCode,
@@ -94,6 +95,14 @@ function ora(name: string): BrowserSourceFile {
   return {
     file: new File(["ora"], name, { type: "image/openraster" }),
     kind: "ora",
+    bytes: new ArrayBuffer(0),
+  };
+}
+
+function pxo(name: string): BrowserSourceFile {
+  return {
+    file: new File(["pxo"], name, { type: "application/x-pixelorama" }),
+    kind: "pxo",
     bytes: new ArrayBuffer(0),
   };
 }
@@ -190,6 +199,8 @@ describe("getSourceSelectionError", () => {
     expect(getSourceSelectionError("apng", [png("sprite.png")])).toBeNull();
     expect(getSourceSelectionError("openraster", [ora("scene.ora")]))
       .toBeNull();
+    expect(getSourceSelectionError("pixelorama", [pxo("scene.pxo")]))
+      .toBeNull();
   });
 
   it("rejects mode/file mismatches before conversion", () => {
@@ -227,6 +238,12 @@ describe("getSourceSelectionError", () => {
       ora("one.ora"),
       ora("two.ora"),
     ])).toContain("exactly one .ora file");
+    expect(getSourceSelectionError("pixelorama", [png("sprite.png")]))
+      .toContain("exactly one .pxo file");
+    expect(getSourceSelectionError("pixelorama", [
+      pxo("one.pxo"),
+      pxo("two.pxo"),
+    ])).toContain("exactly one .pxo file");
   });
 
   it("revalidates remaining and cleared files without a second selection state", () => {
@@ -246,7 +263,7 @@ describe("getSourceSelectionError", () => {
     });
   });
 
-  it("disables GIF and APNG conversion after removing or clearing the file", () => {
+  it("disables single-file project conversion after removing or clearing the file", () => {
     expect(getSourceSelectionState("gif", [gif("sprite.gif")]).canConvert)
       .toBe(true);
     expect(getSourceSelectionState("gif", []).canConvert).toBe(false);
@@ -256,6 +273,9 @@ describe("getSourceSelectionError", () => {
     expect(getSourceSelectionState("openraster", [ora("scene.ora")]).canConvert)
       .toBe(true);
     expect(getSourceSelectionState("openraster", []).canConvert).toBe(false);
+    expect(getSourceSelectionState("pixelorama", [pxo("scene.pxo")]).canConvert)
+      .toBe(true);
+    expect(getSourceSelectionState("pixelorama", []).canConvert).toBe(false);
   });
 
   it("revalidates the same selected files when import mode changes", () => {
@@ -263,6 +283,7 @@ describe("getSourceSelectionError", () => {
     expect(getSourceSelectionState("spritesheet-grid", files).canConvert)
       .toBe(true);
     expect(getSourceSelectionState("piskel", files).canConvert).toBe(false);
+    expect(getSourceSelectionState("pixelorama", files).canConvert).toBe(false);
   });
 });
 
@@ -477,6 +498,7 @@ describe("convertSourceFiles", () => {
     const importApng = vi.fn(async () => project);
     const importGif = vi.fn(async () => project);
     const importOpenRaster = vi.fn(async () => project);
+    const importPixelorama = vi.fn(async () => project);
     const importPiskel = vi.fn(async () => project);
     const importSpritesheetGrid = vi.fn(async () => project);
     const importSpritesheetJson = vi.fn(async () => project);
@@ -484,6 +506,7 @@ describe("convertSourceFiles", () => {
       importApng,
       importGif,
       importOpenRaster,
+      importPixelorama,
       importPngSequence,
       importPiskel,
       importSpritesheetGrid,
@@ -496,6 +519,7 @@ describe("convertSourceFiles", () => {
     const gifAnimation = gif("walk.gif");
     const apngAnimation = apng("walk.apng");
     const openRasterProject = ora("scene.ora");
+    const pixeloramaProject = pxo("scene.pxo");
 
     await expect(
       convertSourceFiles(
@@ -557,6 +581,14 @@ describe("convertSourceFiles", () => {
       importers,
     );
     expect(importOpenRaster).toHaveBeenCalledWith(openRasterProject.file);
+
+    await convertSourceFiles(
+      "pixelorama",
+      [pixeloramaProject],
+      gridOptions,
+      importers,
+    );
+    expect(importPixelorama).toHaveBeenCalledWith(pixeloramaProject.file);
   });
 
   it("does not call an importer for an invalid selection", async () => {
@@ -564,6 +596,7 @@ describe("convertSourceFiles", () => {
       importApng: vi.fn(async () => project),
       importGif: vi.fn(async () => project),
       importOpenRaster: vi.fn(async () => project),
+      importPixelorama: vi.fn(async () => project),
       importPngSequence: vi.fn(async () => project),
       importPiskel: vi.fn(async () => project),
       importSpritesheetGrid: vi.fn(async () => project),
@@ -585,6 +618,62 @@ describe("convertSourceFiles", () => {
     expect(importers.importGif).not.toHaveBeenCalled();
     expect(importers.importApng).not.toHaveBeenCalled();
     expect(importers.importOpenRaster).not.toHaveBeenCalled();
+    expect(importers.importPixelorama).not.toHaveBeenCalled();
+  });
+});
+
+describe("Pixelorama conversion messages", () => {
+  const layeredProject: SpriteProject = {
+    ...project,
+    frames: [
+      { index: 0, durationMs: 100 },
+      { index: 1, durationMs: 150 },
+    ],
+    layers: [
+      project.layers[0],
+      {
+        id: "shadow",
+        name: "Shadow",
+        visible: true,
+        opacity: 128,
+        cels: [],
+      },
+    ],
+  };
+
+  it("reports supported frames and raster layers without overclaiming unsupported features", () => {
+    expect(getConversionSuccessStatus("pixelorama", layeredProject)).toBe(
+      "Converted supported Pixelorama frames and raster layers into an editable Aseprite timeline with 2 frames and 2 preserved layers. Ready to download.",
+    );
+  });
+
+  it("shows importer-authored diagnostics without exposing stack traces", () => {
+    const error = new PixeloramaImportError(
+      "unsupported-feature",
+      "Pixelorama layer 1 uses unsupported blend mode 2.",
+    );
+    error.stack = "private-pixelorama-stack";
+
+    expect(getConversionErrorMessage("pixelorama", error)).toBe(
+      "Pixelorama import failed: Pixelorama layer 1 uses unsupported blend mode 2.",
+    );
+    expect(getConversionErrorMessage("pixelorama", error)).not.toContain(
+      "private-pixelorama-stack",
+    );
+  });
+
+  it("does not expose arbitrary Pixelorama errors", () => {
+    const privateMessage = "private Pixelorama source details";
+
+    const message = getConversionErrorMessage(
+      "pixelorama",
+      new Error(privateMessage),
+    );
+
+    expect(message).toBe(
+      "Pixelorama import failed: Check that the .pxo file contains supported raster pixel layer data.",
+    );
+    expect(message).not.toContain(privateMessage);
   });
 });
 

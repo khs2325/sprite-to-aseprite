@@ -2,9 +2,9 @@
 
 Sprite to Aseprite Converter rebuilds an editable Aseprite timeline from PNG
 frames, spritesheets, a supported Piskel project, a supported OpenRaster
-project, or a supported GIF/APNG animation. Your artwork stays in the browser.
-The app does not upload source files to a server or send them to an external
-processing service.
+project, a supported Pixelorama project, or a supported GIF/APNG animation.
+Your artwork stays in the browser. The app does not upload source files to a
+server or send them to an external processing service.
 
 PNG sequences and spritesheets are flat images. They do not contain the
 original layer structure, so the converter cannot recover original layers
@@ -31,10 +31,10 @@ the server with `Ctrl+C`.
 1. Under **Choose an import mode**, select the mode matching the source files.
 2. Under **Add source files**, drag the required files onto the drop area or
    use the file picker. The app accepts `.png`, `.json`, `.piskel`, `.gif`,
-   `.apng`, and `.ora` files; each mode validates its required file
+   `.apng`, `.ora`, and `.pxo` files; each mode validates its required file
    combination. Review the selected-file cards before conversion. PNG cards
-   include browser-local thumbnails, while JSON, Piskel, GIF, APNG, and
-   OpenRaster cards show document details without displaying their raw
+   include browser-local thumbnails, while JSON, Piskel, GIF, APNG, OpenRaster,
+   and Pixelorama cards show document details without displaying their raw
    contents. Remove individual files or use **Clear selected files** as needed.
 3. Check that the app reports the source files are ready, then select
    **Convert to .aseprite**. Conversion happens browser-locally.
@@ -296,6 +296,29 @@ OpenRaster animation, groups, masks, effects, non-normal blend modes, or
 unsupported archive features. Unsupported or malformed data is rejected with a
 safe diagnostic that does not display raw source contents or stack traces.
 
+## Pixelorama project
+
+Pixelorama import follows the
+[documented supported Pixelorama subset](pixelorama-format.md).
+
+1. Select **Pixelorama project** under **Choose an import mode**.
+2. Choose exactly one `.pxo` file.
+3. Review the document-style file card, then select
+   **Convert to .aseprite**. ZIP parsing, JSON validation, raw cel reading, and
+   conversion happen browser-locally; no artwork is uploaded.
+4. Confirm the converted frames and inspect the preserved supported raster
+   layers under **Layer names** before downloading.
+
+The importer converts supported Pixelorama frames and preserves supported
+layers only when the `.pxo` source contains supported raster pixel layer data.
+It supports the documented ZIP `.pxo` subset with RGBA8 full-canvas cels,
+normal pixel layers, layer names, layer order, visibility, opacity, and frame
+timing. It does not preserve Pixelorama tilemaps, effects, unsupported layer
+types, unsupported blend modes, linked cels, palettes, guides, reference
+images, or other editor metadata. Unsupported or malformed data is rejected
+with a safe diagnostic that does not display raw source contents or stack
+traces.
+
 ## GIF animation
 
 GIF import follows the [documented supported GIF subset](gif-format.md).
@@ -366,7 +389,8 @@ download can be compared with the source.
 5. Confirm the expected canvas dimensions and layer names. PNG sequences and
    spritesheets are flat sources, so one generated layer is expected; this
    check must not be treated as recovery of layers that were absent from the
-   source. Supported Piskel sources may contain multiple preserved layers.
+   source. Supported Piskel, OpenRaster, and Pixelorama sources may contain
+   multiple preserved layers.
 6. Make a small edit and use **File > Save As** to a new file. Reopen that copy
    if editability is part of the compatibility check, leaving the downloaded
    file unchanged for comparison.
@@ -393,6 +417,23 @@ For a Piskel conversion, compare the downloaded file with the source project:
 
 Passing this checklist verifies the inspected supported source data, not
 unsupported Piskel fields or variants.
+
+### Pixelorama-specific Aseprite checklist
+
+For a Pixelorama conversion, compare the downloaded file with the supported
+source data:
+
+- confirm the canvas width and height;
+- confirm the frame count, order, and converted frame durations;
+- confirm layer names and source order, plus each layer's opacity and
+  visible/hidden state;
+- inspect transparent and partially transparent areas for correct alpha; and
+- compare representative pixels in each supported raster layer across the
+  first, last, and any timing-sensitive frames.
+
+Passing this checklist verifies the inspected supported `.pxo` raster data, not
+unsupported Pixelorama tilemaps, effects, layer types, blend modes, or editor
+metadata.
 
 ### Report a compatibility problem
 

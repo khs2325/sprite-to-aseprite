@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { OpenRasterImportError } from "../core/importers/openraster";
+import { PixeloramaImportError } from "../core/importers/pixelorama";
 import { PiskelImportError } from "../core/importers/piskel";
 import { SpritesheetJsonImportError } from "../core/importers/spritesheetJson";
 import {
@@ -119,6 +120,11 @@ describe("bindFileImportControl", () => {
       kind: "ora",
       bytes: new ArrayBuffer(0),
     })).toMatchObject({ typeLabel: "OpenRaster project" });
+    expect(getSourceFilePresentation({
+      file: new File(["pxo"], "sprite.pxo"),
+      kind: "pxo",
+      bytes: new ArrayBuffer(0),
+    })).toMatchObject({ typeLabel: "Pixelorama project" });
     expect(formatFileSize(1)).toBe("1 byte");
   });
 
@@ -183,6 +189,22 @@ describe("bindFileImportControl", () => {
     expect(
       getSourceKind({ name: "scene.ora", type: "application/octet-stream" }),
     ).toBe("ora");
+  });
+
+  it("advertises and classifies Pixelorama sources", () => {
+    const acceptedTypes = SUPPORTED_SOURCE_ACCEPT.split(",");
+    expect(acceptedTypes).toEqual(expect.arrayContaining([
+      ".pxo",
+      "application/x-pixelorama",
+    ]));
+    expect(getSourceKind({ name: "scene.PXO", type: "" })).toBe("pxo");
+    expect(getSourceKind({
+      name: "scene",
+      type: "application/x-pixelorama",
+    })).toBe("pxo");
+    expect(
+      getSourceKind({ name: "scene.pxo", type: "application/octet-stream" }),
+    ).toBe("pxo");
   });
 
   it("reads PNG and JSON files locally with browser File APIs", async () => {
@@ -255,6 +277,7 @@ describe("bindFileImportControl", () => {
     ["gif", "sprite.gif", "image/gif", "Selected 1 GIF animation"],
     ["apng", "sprite.apng", "image/png", "Selected 1 APNG animation"],
     ["openraster", "sprite.ora", "image/openraster", "Selected 1 OpenRaster project"],
+    ["pixelorama", "sprite.pxo", "application/x-pixelorama", "Selected 1 Pixelorama project"],
   ] as const)("reads one %s source locally", async (format, name, type, status) => {
     const statusOutput = createOutput();
     const onFilesImported = vi.fn<(files: readonly BrowserSourceFile[]) => void>();
@@ -269,7 +292,12 @@ describe("bindFileImportControl", () => {
     expect(await control.selectFiles([file])).toBe(true);
     expect(onFilesImported.mock.calls[0][0][0]).toMatchObject({
       file,
-      kind: format === "openraster" ? "ora" : format,
+      kind:
+        format === "openraster"
+          ? "ora"
+          : format === "pixelorama"
+            ? "pxo"
+            : format,
     });
     expect(statusOutput.textContent).toContain(status);
   });
@@ -294,7 +322,7 @@ describe("bindFileImportControl", () => {
     expect(errorOutput).toMatchObject({
       hidden: false,
       textContent:
-        'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, APNG, or OpenRaster files only.',
+        'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, APNG, OpenRaster, or Pixelorama files only.',
     });
     expect(statusOutput.hidden).toBe(true);
   });
@@ -514,6 +542,37 @@ describe("bindFileImportControl", () => {
     );
   });
 
+  it("includes safe Pixelorama importer detail in selection errors", async () => {
+    const errorOutput = createOutput();
+    const control = bindFileImportControl(
+      createInput(),
+      errorOutput,
+      createOutput(),
+      {
+        format: "pixelorama",
+        onFilesImported: () => {
+          throw new PixeloramaImportError(
+            "unsupported-feature",
+            "Pixelorama layer 1 uses unsupported blend mode 2.",
+          );
+        },
+      },
+    );
+
+    expect(
+      await control.selectFiles([
+        new File(["pxo"], "scene.pxo", { type: "application/x-pixelorama" }),
+      ]),
+    ).toBe(false);
+
+    expect(errorOutput.textContent).toBe(
+      "Pixelorama project import failed. " +
+        "Pixelorama layer 1 uses unsupported blend mode 2. " +
+        "Check that the .pxo file contains supported raster pixel layer data.",
+    );
+    expect(errorOutput.textContent).not.toContain("PixeloramaImportError");
+  });
+
   it("uses files from the browser input change event and removes its handler", async () => {
     const input = createInput();
     const onFilesImported = vi.fn();
@@ -598,7 +657,7 @@ describe("bindFileImportControl", () => {
 
     await vi.waitFor(() => expect(errorOutput.hidden).toBe(false));
     expect(errorOutput.textContent).toBe(
-      'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, APNG, or OpenRaster files only.',
+      'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, APNG, OpenRaster, or Pixelorama files only.',
     );
     expect(onFilesImported).not.toHaveBeenCalled();
   });
@@ -621,7 +680,7 @@ describe("bindFileImportControl", () => {
 
     await vi.waitFor(() => expect(errorOutput.hidden).toBe(false));
     expect(errorOutput.textContent).toBe(
-      'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, APNG, or OpenRaster files only.',
+      'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, APNG, OpenRaster, or Pixelorama files only.',
     );
     expect(readPng).not.toHaveBeenCalled();
     expect(onFilesImported).not.toHaveBeenCalled();
