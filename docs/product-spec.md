@@ -94,7 +94,10 @@ browser-local subsets rather than broad compatibility claims:
 
 1. Krita `.kra`, with a deliberately minimal normal raster subset
    such as 8-bit RGBA raster layers only when the structure is documented and
-   fixture-backed. The product must not claim full Krita compatibility.
+   fixture-backed. Task 054 researched this in
+   [Krita format notes](krita-format.md) and added deterministic native-tile
+   fixtures, but no Krita importer or UI support exists yet. The product must
+   not claim full Krita compatibility.
 2. GIMP `.xcf` is research-only at first because it is a living GIMP-native
    format tied closely to GIMP internals; OpenRaster may be the safer interchange
    recommendation.

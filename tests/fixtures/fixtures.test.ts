@@ -112,6 +112,35 @@ type OpenRasterFixtureMetadata = {
   layers: OpenRasterLayerFixtureMetadata[];
 };
 
+type KritaLayerFixtureMetadata = {
+  colorSpaceName?: string;
+  compositeOp?: string;
+  fileName?: string;
+  name?: string;
+  nodeType?: string;
+  opacity?: string;
+  visible?: string;
+  x?: string;
+  y?: string;
+};
+
+type KritaFixtureMetadata = {
+  doc: {
+    depth?: string;
+    editor?: string;
+    syntaxVersion?: string;
+  };
+  image: {
+    colorSpaceName?: string;
+    height?: string;
+    mime?: string;
+    name?: string;
+    profile?: string;
+    width?: string;
+  };
+  layers: KritaLayerFixtureMetadata[];
+};
+
 type PixeloramaCelFixture = {
   metadata: Record<string, unknown>;
   opacity: number;
@@ -270,6 +299,48 @@ function parseOpenRasterFixtureMetadata(
   };
 }
 
+function parseKritaFixtureMetadata(maindocXml: string): KritaFixtureMetadata {
+  const docMatch = maindocXml.match(/<DOC\s+([^>]*)>/);
+  const imageMatch = maindocXml.match(/<IMAGE\s+([^>]*)>/);
+  if (docMatch === null || imageMatch === null) {
+    throw new Error("Fixture maindoc.xml is missing Krita document metadata.");
+  }
+
+  const doc = parseXmlAttributes(docMatch[1]);
+  const image = parseXmlAttributes(imageMatch[1]);
+  return {
+    doc: {
+      depth: doc.depth,
+      editor: doc.editor,
+      syntaxVersion: doc.syntaxVersion,
+    },
+    image: {
+      colorSpaceName: image.colorspacename,
+      height: image.height,
+      mime: image.mime,
+      name: image.name,
+      profile: image.profile,
+      width: image.width,
+    },
+    layers: [...maindocXml.matchAll(/<layer\s+([^>]*)\/>/g)].map(
+      (match) => {
+        const attributes = parseXmlAttributes(match[1]);
+        return {
+          colorSpaceName: attributes.colorspacename,
+          compositeOp: attributes.compositeop,
+          fileName: attributes.filename,
+          name: attributes.name,
+          nodeType: attributes.nodetype,
+          opacity: attributes.opacity,
+          visible: attributes.visible,
+          x: attributes.x,
+          y: attributes.y,
+        };
+      },
+    ),
+  };
+}
+
 function parsePixeloramaFixture(relativePath: string): {
   data: PixeloramaFixture;
   entries: ZipFixtureEntry[];
@@ -293,6 +364,52 @@ function pixeloramaRawPixel(
 ): number[] {
   const offset = (y * width + x) * 4;
   return [...bytes.subarray(offset, offset + 4)];
+}
+
+function inspectKritaNativeTile(bytes: Buffer): {
+  dataSize: number;
+  rawBgraTile: Buffer;
+  tileHeader: string;
+  versionHeader: string[];
+} {
+  let offset = 0;
+  const lines: string[] = [];
+  for (let lineIndex = 0; lineIndex < 6; lineIndex += 1) {
+    const next = bytes.indexOf(0x0a, offset);
+    expect(next).toBeGreaterThanOrEqual(0);
+    lines.push(bytes.toString("utf8", offset, next));
+    offset = next + 1;
+  }
+
+  expect(lines.slice(0, 5)).toEqual([
+    "VERSION 2",
+    "TILEWIDTH 64",
+    "TILEHEIGHT 64",
+    "PIXELSIZE 4",
+    "DATA 1",
+  ]);
+  const [x, y, compression, size] = lines[5].split(",");
+  expect([x, y, compression]).toEqual(["0", "0", "LZF"]);
+  const dataSize = Number(size);
+  expect(Number.isSafeInteger(dataSize)).toBe(true);
+  expect(bytes[offset]).toBe(0);
+  expect(bytes.subarray(offset + 1, offset + dataSize)).toHaveLength(64 * 64 * 4);
+
+  return {
+    dataSize,
+    rawBgraTile: bytes.subarray(offset + 1, offset + dataSize),
+    tileHeader: lines[5],
+    versionHeader: lines.slice(0, 5),
+  };
+}
+
+function kritaBgraPixel(
+  tileBytes: Buffer,
+  x: number,
+  y: number,
+): number[] {
+  const offset = (y * 64 + x) * 4;
+  return [...tileBytes.subarray(offset, offset + 4)];
 }
 
 function inspectApngFixture(relativePath: string): ApngFixtureMetadata {
@@ -704,6 +821,132 @@ function pixel(image: ImageData, x: number, y: number): number[] {
 }
 
 describe("synthetic sprite fixtures", () => {
+  it("provides a Krita ZIP with native paint-layer tile data", () => {
+    const entries = inspectZipFixture("krita/two-paint-layers.kra");
+    const entryMap = zipEntryMap(entries);
+
+    expect(entries.map(({ name }) => name)).toEqual([
+      "mimetype",
+      "maindoc.xml",
+      "documentinfo.xml",
+      "preview.png",
+      "Synthetic Krita/layers/layer1",
+      "Synthetic Krita/layers/layer1.defaultpixel",
+      "Synthetic Krita/layers/layer2",
+      "Synthetic Krita/layers/layer2.defaultpixel",
+      "mergedimage.png",
+    ]);
+    expect(entries[0]).toMatchObject({
+      name: "mimetype",
+      compressionMethod: 0,
+    });
+    expect(entries[0].content.toString("utf8")).toBe("application/x-krita");
+
+    const metadata = parseKritaFixtureMetadata(
+      entryMap.get("maindoc.xml")?.content.toString("utf8") ?? "",
+    );
+    expect(metadata).toMatchObject({
+      doc: { editor: "krita", depth: "8", syntaxVersion: "2.0" },
+      image: {
+        mime: "application/x-kra",
+        name: "Synthetic Krita",
+        width: "2",
+        height: "2",
+        colorSpaceName: "RGBA",
+        profile: "sRGB-elle-V2-srgbtrc.icc",
+      },
+    });
+    expect(metadata.layers).toEqual([
+      {
+        name: "Top hidden half",
+        nodeType: "paintlayer",
+        fileName: "layer1",
+        x: "1",
+        y: "-1",
+        opacity: "128",
+        visible: "0",
+        compositeOp: "normal",
+        colorSpaceName: "RGBA",
+      },
+      {
+        name: "Base visible",
+        nodeType: "paintlayer",
+        fileName: "layer2",
+        x: "0",
+        y: "0",
+        opacity: "255",
+        visible: "1",
+        compositeOp: "normal",
+        colorSpaceName: "RGBA",
+      },
+    ]);
+    expect(decodePng(entryMap.get("preview.png")?.content ?? Buffer.alloc(0)))
+      .toMatchObject({ width: 2, height: 2 });
+    expect(decodePng(entryMap.get("mergedimage.png")?.content ?? Buffer.alloc(0)))
+      .toMatchObject({ width: 2, height: 2 });
+
+    const topTile = inspectKritaNativeTile(
+      entryMap.get("Synthetic Krita/layers/layer1")?.content ?? Buffer.alloc(0),
+    );
+    const baseTile = inspectKritaNativeTile(
+      entryMap.get("Synthetic Krita/layers/layer2")?.content ?? Buffer.alloc(0),
+    );
+    expect(topTile.tileHeader).toBe("0,0,LZF,16385");
+    expect(baseTile.dataSize).toBe(16_385);
+    expect(entryMap.get("Synthetic Krita/layers/layer1.defaultpixel")?.content)
+      .toEqual(Buffer.from([0, 0, 0, 0]));
+    expect(kritaBgraPixel(topTile.rawBgraTile, 1, 0))
+      .toEqual([102, 209, 255, 255]);
+    expect(kritaBgraPixel(topTile.rawBgraTile, 0, 1))
+      .toEqual([111, 71, 239, 255]);
+    expect(kritaBgraPixel(baseTile.rawBgraTile, 0, 0))
+      .toEqual([178, 138, 17, 255]);
+    expect(kritaBgraPixel(baseTile.rawBgraTile, 1, 1))
+      .toEqual([102, 209, 255, 255]);
+  });
+
+  it("provides Krita rejection fixtures for unsupported semantics", () => {
+    const vector = zipEntryMap(inspectZipFixture("krita/unsupported-vector-layer.kra"));
+    const vectorMetadata = parseKritaFixtureMetadata(
+      vector.get("maindoc.xml")?.content.toString("utf8") ?? "",
+    );
+    expect(vectorMetadata.layers[0]).toMatchObject({
+      name: "Vector unsupported",
+      nodeType: "shapelayer",
+    });
+
+    const colorDepth = zipEntryMap(inspectZipFixture("krita/unsupported-color-depth.kra"));
+    const colorDepthMetadata = parseKritaFixtureMetadata(
+      colorDepth.get("maindoc.xml")?.content.toString("utf8") ?? "",
+    );
+    expect(colorDepthMetadata.image).toMatchObject({
+      colorSpaceName: "RGBA16",
+      width: "2",
+      height: "2",
+    });
+    expect(colorDepthMetadata.layers[0]).toMatchObject({
+      colorSpaceName: "RGBA16",
+      nodeType: "paintlayer",
+    });
+
+    const missing = zipEntryMap(inspectZipFixture("krita/missing-layer-data.kra"));
+    const missingMetadata = parseKritaFixtureMetadata(
+      missing.get("maindoc.xml")?.content.toString("utf8") ?? "",
+    );
+    expect(missingMetadata.layers.map(({ fileName }) => fileName))
+      .toEqual(["layer1", "layer2"]);
+    expect(missing.has("Synthetic Krita/layers/layer1")).toBe(false);
+    expect(missing.has("Synthetic Krita/layers/layer2")).toBe(false);
+
+    const flattened = zipEntryMap(inspectZipFixture("krita/flattened-preview-only.kra"));
+    const flattenedMetadata = parseKritaFixtureMetadata(
+      flattened.get("maindoc.xml")?.content.toString("utf8") ?? "",
+    );
+    expect(flattenedMetadata.layers).toHaveLength(0);
+    expect(decodePng(flattened.get("mergedimage.png")?.content ?? Buffer.alloc(0)))
+      .toMatchObject({ width: 2, height: 2 });
+  });
+
   it("provides a minimal OpenRaster ZIP with two PNG-backed layers", () => {
     const entries = inspectZipFixture("openraster/two-layers.ora");
     const entryMap = zipEntryMap(entries);

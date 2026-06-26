@@ -89,6 +89,29 @@ pixels. They are intended to preserve layers when a supported `.pxo` source
 contains pixel layer data; they do not cover tilemaps, effects, groups, 3D
 layers, audio layers, indexed color, or ambiguous metadata.
 
+The Krita fixtures add deterministic ZIP-backed `.kra` containers for the
+future minimal native-raster importer. Tests inspect the stored `mimetype`,
+`maindoc.xml`, preview PNGs, native paint-device tile headers, default pixels,
+and BGRA tile bytes without implementing conversion.
+
+| Fixture | Canvas | Layers | Metadata covered |
+| --- | --- | ---: | --- |
+| `krita/two-paint-layers.kra` | 2 by 2 | 2 | `application/x-krita` ZIP mimetype, `IMAGE mime="application/x-kra"`, syntax version `2.0`, 8-bit `RGBA` color space, source order, names, visible/hidden, opacity `128` and `255`, offsets `(1,-1)` and `(0,0)`, normal composite op, native tile payloads |
+| `krita/unsupported-vector-layer.kra` | 2 by 2 | 1 vector | `nodetype="shapelayer"` for rejection |
+| `krita/unsupported-color-depth.kra` | 2 by 2 | 1 | image and layer `colorspacename="RGBA16"` for rejection |
+| `krita/missing-layer-data.kra` | 2 by 2 | 2 references | `maindoc.xml` references `layer1` and `layer2`, whose native payload entries are intentionally absent |
+| `krita/flattened-preview-only.kra` | 2 by 2 | 0 | valid preview and `mergedimage.png`, but no layer data to preserve |
+
+Krita paint-layer bytes are not PNGs in normal `.kra` saves. The positive
+fixture uses Krita tile format version 2 with one raw 64 by 64 tile per layer:
+`VERSION 2`, `TILEWIDTH 64`, `TILEHEIGHT 64`, `PIXELSIZE 4`, `DATA 1`, then a
+tile header such as `0,0,LZF,16385`. The first byte of that tile payload is
+`0`, meaning raw tile data, followed by 64 by 64 pixels. Krita's `RGBA` color
+space stores unmanaged 8-bit pixels in native BGRA byte order, so importer
+tests must convert those bytes to browser `ImageData` RGBA. `preview.png` and
+`mergedimage.png` are flattened previews and must not be used to recover
+layers.
+
 The first PNG frame is a coral four-pixel spark around a yellow center. The
 second is the same shape shifted one pixel right and colored cyan. All unused
 pixels are transparent. The flat PNG fixtures rebuild a timeline from frames;
