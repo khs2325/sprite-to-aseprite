@@ -1,7 +1,8 @@
 # Krita `.kra` Format Notes
 
-Status: researched and fixture-backed for a future minimal raster importer.
-No core importer or browser UI wiring is implemented yet.
+Status: researched, fixture-backed, and implemented as a browser-local core
+importer for the minimal raster subset below. Browser UI wiring is not
+implemented yet.
 
 Primary references:
 
@@ -55,8 +56,8 @@ unsupported compression methods.
 
 ## Supported Minimal Raster Subset
 
-The future importer should initially accept only single-frame documents that
-map directly to `SpriteProject`:
+The importer accepts only single-frame documents that map directly to
+`SpriteProject`:
 
 ```ts
 {

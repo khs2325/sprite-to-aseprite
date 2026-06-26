@@ -87,21 +87,29 @@ inventing semantics. The UI exposes safe importer-authored diagnostics without
 stack traces or raw source contents. Artwork is processed locally and is never
 uploaded.
 
+## Supported post-MVP Krita core import
+
+Krita (`.kra`) has a browser-local core importer for the documented
+[Krita format subset](krita-format.md): single-frame 8-bit RGBA paint layers
+with fixture-backed native raw tile payloads, normal compositing, layer names,
+order, visibility, opacity, offsets, and decoded pixels.
+
+This support is deliberately minimal and is not wired into the browser UI yet.
+It rejects unsupported Krita features such as masks, vector layers, animation
+timelines, unsupported color depths or profiles, effects, and missing native
+paint-layer payloads. Flattened `preview.png` and `mergedimage.png` entries are
+not used to recover source layers. Artwork is processed locally and is never
+uploaded.
+
 ## Planned additional free/open art tool project formats
 
 The next project-format roadmap continues to focus on small, deterministic,
 browser-local subsets rather than broad compatibility claims:
 
-1. Krita `.kra`, with a deliberately minimal normal raster subset
-   such as 8-bit RGBA raster layers only when the structure is documented and
-   fixture-backed. Task 054 researched this in
-   [Krita format notes](krita-format.md) and added deterministic native-tile
-   fixtures, but no Krita importer or UI support exists yet. The product must
-   not claim full Krita compatibility.
-2. GIMP `.xcf` is research-only at first because it is a living GIMP-native
+1. GIMP `.xcf` is research-only at first because it is a living GIMP-native
    format tied closely to GIMP internals; OpenRaster may be the safer interchange
    recommendation.
-3. LibreSprite/Aseprite `.ase` and `.aseprite` input is also research-only at
+2. LibreSprite/Aseprite `.ase` and `.aseprite` input is also research-only at
    first so binary reader scope, chunk coverage, validation, and round-trip
    limitations are understood before implementation.
 

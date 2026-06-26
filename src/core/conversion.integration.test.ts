@@ -7,6 +7,7 @@ import type { SpriteProject } from "./SpriteProject";
 import { exportAseprite } from "./exporters/aseprite";
 import { importApngBytes } from "./importers/apng";
 import { importGifBytes } from "./importers/gif";
+import { importKritaBytes } from "./importers/krita";
 import { importPiskel } from "./importers/piskel";
 import { importPixeloramaBytes } from "./importers/pixelorama";
 import { importPngSequence } from "./importers/pngSequence";
@@ -705,6 +706,114 @@ describe("importer to Aseprite export integration", () => {
     expect(frames[0].durationMs).toBe(50);
     expect(frames[0].chunks.map(({ type }) => type)).toEqual([
       0x2004, 0x2004, 0x2005, 0x2005,
+    ]);
+  });
+
+  it("preserves supported Krita paint layers in Aseprite chunks", async () => {
+    const kra = new Uint8Array(
+      readFileSync(
+        new URL(
+          "../../tests/fixtures/krita/two-paint-layers.kra",
+          import.meta.url,
+        ),
+      ),
+    );
+    const project = await importKritaBytes(kra, {
+      inflateRaw: async (bytes) => new Uint8Array(inflateRawSync(bytes)),
+    });
+
+    expect(project).toMatchObject({
+      colorMode: "rgba",
+      frames: [{ index: 0, durationMs: 100 }],
+      height: 2,
+      layers: [
+        {
+          cels: [{ frameIndex: 0, x: 1, y: -1 }],
+          name: "Top hidden half",
+          opacity: 128,
+          visible: false,
+        },
+        {
+          cels: [{ frameIndex: 0, x: 0, y: 0 }],
+          name: "Base visible",
+          opacity: 255,
+          visible: true,
+        },
+      ],
+      width: 2,
+    });
+    expect(pixel(project.layers[0].cels[0].imageData, 1, 0)).toEqual([
+      255, 209, 102, 255,
+    ]);
+    expect(pixel(project.layers[1].cels[0].imageData, 0, 0)).toEqual([
+      17, 138, 178, 255,
+    ]);
+
+    const bytes = exportAseprite(project);
+    const frames = parseFrames(bytes);
+    expect(frames.map(({ durationMs }) => durationMs)).toEqual([100]);
+    expect(frames[0].chunks.map(({ type }) => type)).toEqual([
+      0x2004, 0x2004, 0x2005, 0x2005,
+    ]);
+
+    const layerChunks = frames[0].chunks.filter(({ type }) => type === 0x2004);
+    expect(
+      layerChunks.map(({ bytes: layerBytes }) => {
+        const layerView = new DataView(
+          layerBytes.buffer,
+          layerBytes.byteOffset,
+          layerBytes.byteLength,
+        );
+        const nameLength = layerView.getUint16(22, true);
+        return {
+          name: new TextDecoder().decode(layerBytes.slice(24, 24 + nameLength)),
+          opacity: layerView.getUint8(18),
+          visible: (layerView.getUint16(6, true) & 1) !== 0,
+        };
+      }),
+    ).toEqual([
+      { name: "Top hidden half", opacity: 128, visible: false },
+      { name: "Base visible", opacity: 255, visible: true },
+    ]);
+
+    const celChunks = frames[0].chunks.filter(({ type }) => type === 0x2005);
+    expect(
+      celChunks.map(({ bytes: celBytes }) => {
+        const celView = new DataView(
+          celBytes.buffer,
+          celBytes.byteOffset,
+          celBytes.byteLength,
+        );
+        return {
+          height: celView.getUint16(24, true),
+          layerIndex: celView.getUint16(6, true),
+          pixels: Array.from(inflateSync(celBytes.slice(26))),
+          width: celView.getUint16(22, true),
+          x: celView.getInt16(8, true),
+          y: celView.getInt16(10, true),
+        };
+      }),
+    ).toEqual([
+      {
+        height: 2,
+        layerIndex: 0,
+        pixels: [
+          0, 0, 0, 0, 255, 209, 102, 255, 239, 71, 111, 255, 17, 138, 178, 255,
+        ],
+        width: 2,
+        x: 1,
+        y: -1,
+      },
+      {
+        height: 2,
+        layerIndex: 1,
+        pixels: [
+          17, 138, 178, 255, 0, 0, 0, 0, 0, 0, 0, 0, 255, 209, 102, 255,
+        ],
+        width: 2,
+        x: 0,
+        y: 0,
+      },
     ]);
   });
 
