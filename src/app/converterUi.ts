@@ -7,6 +7,10 @@ import {
   getOpenRasterImportDiagnostic,
   importOpenRaster,
 } from "../core/importers/openraster";
+import {
+  getPixeloramaImportDiagnostic,
+  importPixelorama,
+} from "../core/importers/pixelorama";
 import { importPngSequence } from "../core/importers/pngSequence";
 import {
   getPiskelImportDiagnostic,
@@ -39,6 +43,7 @@ type ConverterImporters = {
   importApng: typeof importApng;
   importGif: typeof importGif;
   importOpenRaster: typeof importOpenRaster;
+  importPixelorama: typeof importPixelorama;
   importPngSequence: typeof importPngSequence;
   importPiskel: typeof importPiskel;
   importSpritesheetGrid: typeof importSpritesheetGrid;
@@ -74,6 +79,7 @@ const DEFAULT_IMPORTERS: ConverterImporters = {
   importApng,
   importGif,
   importOpenRaster,
+  importPixelorama,
   importPngSequence,
   importPiskel,
   importSpritesheetGrid,
@@ -88,6 +94,7 @@ const MODE_LABELS: Record<FileImportFormat, string> = {
   gif: "GIF animation",
   apng: "APNG animation",
   openraster: "OpenRaster project",
+  pixelorama: "Pixelorama project",
 };
 
 export type GridAutoCalculation = {
@@ -408,6 +415,7 @@ export function getSourceSelectionError(
   const gifCount = files.filter((file) => file.kind === "gif").length;
   const apngCount = files.filter((file) => file.kind === "apng").length;
   const openRasterCount = files.filter((file) => file.kind === "ora").length;
+  const pixeloramaCount = files.filter((file) => file.kind === "pxo").length;
 
   if (mode === "png-sequence") {
     return pngCount > 0 && pngCount === files.length
@@ -438,6 +446,11 @@ export function getSourceSelectionError(
     return openRasterCount === 1 && files.length === 1
       ? null
       : "OpenRaster mode requires exactly one .ora file.";
+  }
+  if (mode === "pixelorama") {
+    return pixeloramaCount === 1 && files.length === 1
+      ? null
+      : "Pixelorama mode requires exactly one .pxo file.";
   }
   return files.length === 1 && apngCount + pngCount === 1
     ? null
@@ -495,6 +508,13 @@ export async function convertSourceFiles(
     }
     return importers.importOpenRaster(openRasterFile.file);
   }
+  if (mode === "pixelorama") {
+    const pixeloramaFile = files.find((file) => file.kind === "pxo");
+    if (pixeloramaFile === undefined) {
+      throw new Error("Pixelorama source file is missing.");
+    }
+    return importers.importPixelorama(pixeloramaFile.file);
+  }
 
   const jsonFile = files.find((file) => file.kind === "json");
   if (jsonFile === undefined) {
@@ -533,6 +553,15 @@ export function getConversionSuccessStatus(
       `and ${layerCount} preserved ${layerNoun}. Ready to download.`
     );
   }
+  if (mode === "pixelorama") {
+    const layerCount = project.layers.length;
+    const layerNoun = layerCount === 1 ? "layer" : "layers";
+    return (
+      "Converted supported Pixelorama frames and raster layers " +
+      `into an editable Aseprite timeline with ${frameCount} ${frameNoun} ` +
+      `and ${layerCount} preserved ${layerNoun}. Ready to download.`
+    );
+  }
   return (
     `Converted ${frameCount} ${frameNoun} ` +
     "into an editable Aseprite timeline. Ready to download."
@@ -564,6 +593,12 @@ export function getConversionErrorMessage(
     return diagnostic === null
       ? "OpenRaster import failed: Check that the .ora file contains supported normal PNG-backed raster layer data."
       : `OpenRaster import failed: ${diagnostic}`;
+  }
+  if (mode === "pixelorama") {
+    const diagnostic = getPixeloramaImportDiagnostic(error);
+    return diagnostic === null
+      ? "Pixelorama import failed: Check that the .pxo file contains supported raster pixel layer data."
+      : `Pixelorama import failed: ${diagnostic}`;
   }
   if (mode !== "piskel") {
     return error instanceof Error && error.message.trim().length > 0
@@ -620,7 +655,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   const privacy = document.createElement("p");
   title.textContent = "Sprite to Aseprite Converter";
   introduction.textContent =
-    "Convert frames into an editable Aseprite timeline from PNG sequences, spritesheets, Piskel projects, OpenRaster projects, and GIF/APNG animations.";
+    "Convert frames into an editable Aseprite timeline from PNG sequences, spritesheets, Piskel projects, OpenRaster projects, Pixelorama projects, and GIF/APNG animations.";
   privacy.textContent =
     "Files are processed browser-locally. Your artwork is never uploaded.";
   privacy.className = "privacy-notice";
@@ -730,13 +765,13 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   importHeading.textContent = "2. Add source files";
   dropZone.className = "drop-zone";
   dropInstructions.textContent =
-    "Drag and drop PNG, JSON, Piskel, GIF, APNG, or OpenRaster files here, or choose files below.";
+    "Drag and drop PNG, JSON, Piskel, GIF, APNG, OpenRaster, or Pixelorama files here, or choose files below.";
   fileInput.type = "file";
   fileInput.multiple = true;
   fileInput.accept = SUPPORTED_SOURCE_ACCEPT;
   fileInput.setAttribute(
     "aria-label",
-    "Choose PNG, JSON, Piskel, GIF, APNG, or OpenRaster sprite source files",
+    "Choose PNG, JSON, Piskel, GIF, APNG, OpenRaster, or Pixelorama sprite source files",
   );
   sourceError.setAttribute("role", "alert");
   sourceError.setAttribute("aria-live", "assertive");
@@ -1137,7 +1172,9 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
             ? "Drop exactly one .apng or animated .png file here, or choose one below."
             : mode === "openraster"
               ? "Drop exactly one .ora file with supported raster layer data here, or choose one below."
-              : "Drag and drop PNG, JSON, Piskel, GIF, APNG, or OpenRaster files here, or choose files below.";
+              : mode === "pixelorama"
+                ? "Drop exactly one .pxo file here. Supported frames and layers are preserved only when the source contains supported raster pixel data."
+                : "Drag and drop PNG, JSON, Piskel, GIF, APNG, OpenRaster, or Pixelorama files here, or choose files below.";
     renderSelectedFiles();
     syncGridSource();
     updateReadiness();
@@ -1183,10 +1220,12 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
           : mode === "gif"
             ? "Converting the GIF animation browser-locally. This may take a while."
             : mode === "apng"
-              ? "Converting the APNG animation browser-locally. This may take a while."
-              : mode === "openraster"
-                ? "Converting the OpenRaster project browser-locally. This may take a while."
-                : "Converting files browser-locally. This may take a while.",
+                ? "Converting the APNG animation browser-locally. This may take a while."
+                : mode === "openraster"
+                  ? "Converting the OpenRaster project browser-locally. This may take a while."
+                  : mode === "pixelorama"
+                    ? "Converting the Pixelorama project browser-locally. This may take a while."
+                    : "Converting files browser-locally. This may take a while.",
     });
 
     try {
@@ -1225,7 +1264,9 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
                 ? "APNG conversion did not complete."
                 : mode === "openraster"
                   ? "OpenRaster conversion did not complete."
-                  : "Conversion did not complete.",
+                  : mode === "pixelorama"
+                    ? "Pixelorama conversion did not complete."
+                    : "Conversion did not complete.",
         error: getConversionErrorMessage(mode, error),
       });
     } finally {
