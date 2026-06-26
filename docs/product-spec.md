@@ -87,15 +87,17 @@ inventing semantics. The UI exposes safe importer-authored diagnostics without
 stack traces or raw source contents. Artwork is processed locally and is never
 uploaded.
 
-## Supported post-MVP Krita core import
+## Supported post-MVP Krita import
 
-Krita (`.kra`) has a browser-local core importer for the documented
+Krita (`.kra`) is supported as a browser-local import path through the
+canonical `SpriteProject` model and the existing Aseprite exporter. The browser
+UI accepts exactly one `.kra` file and routes it to the documented
 [Krita format subset](krita-format.md): single-frame 8-bit RGBA paint layers
 with fixture-backed native raw tile payloads, normal compositing, layer names,
 order, visibility, opacity, offsets, and decoded pixels.
 
-This support is deliberately minimal and is not wired into the browser UI yet.
-It rejects unsupported Krita features such as masks, vector layers, animation
+This support is deliberately minimal. It rejects unsupported Krita features such
+as masks, vector layers, animation
 timelines, unsupported color depths or profiles, effects, and missing native
 paint-layer payloads. Flattened `preview.png` and `mergedimage.png` entries are
 not used to recover source layers. Artwork is processed locally and is never

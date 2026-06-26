@@ -1,13 +1,14 @@
 import { validateSpriteProject } from "../core/validation";
 import { getApngImportDiagnostic } from "../core/importers/apng";
 import { getGifImportDiagnostic } from "../core/importers/gif";
+import { getKritaImportDiagnostic } from "../core/importers/krita";
 import { getOpenRasterImportDiagnostic } from "../core/importers/openraster";
 import { getPixeloramaImportDiagnostic } from "../core/importers/pixelorama";
 import { getPiskelImportDiagnostic } from "../core/importers/piskel";
 import { getSpritesheetJsonImportDiagnostic } from "../core/importers/spritesheetJson";
 
 export const SUPPORTED_SOURCE_ACCEPT =
-  ".png,.json,.piskel,.gif,.apng,.ora,.pxo,image/png,image/gif,image/apng,image/openraster,application/x-pixelorama,application/json";
+  ".png,.json,.piskel,.gif,.apng,.ora,.pxo,.kra,image/png,image/gif,image/apng,image/openraster,application/x-pixelorama,application/x-krita,application/x-kra,application/json";
 
 export type FileImportFormat =
   | "png-sequence"
@@ -17,12 +18,13 @@ export type FileImportFormat =
   | "gif"
   | "apng"
   | "openraster"
-  | "pixelorama";
+  | "pixelorama"
+  | "krita";
 
 export type BrowserSourceFile =
   | {
       file: File;
-      kind: "png" | "gif" | "apng" | "ora" | "pxo";
+      kind: "png" | "gif" | "apng" | "ora" | "pxo" | "kra";
       bytes: ArrayBuffer;
     }
   | {
@@ -47,7 +49,8 @@ export type SourceFilePresentation = {
     | "GIF animation"
     | "APNG animation"
     | "OpenRaster project"
-    | "Pixelorama project";
+    | "Pixelorama project"
+    | "Krita project";
 };
 
 export type SourcePreviewUrlStore = {
@@ -69,6 +72,7 @@ const SOURCE_TYPE_LABELS: Record<
   apng: "APNG animation",
   ora: "OpenRaster project",
   pxo: "Pixelorama project",
+  kra: "Krita project",
 };
 
 export function formatFileSize(byteCount: number): string {
@@ -181,6 +185,9 @@ export function getSourceKind(
   if (extension === ".pxo") {
     return "pxo";
   }
+  if (extension === ".kra") {
+    return "kra";
+  }
   const mimeType = file.type.toLowerCase();
   if (mimeType === "image/gif") {
     return "gif";
@@ -193,6 +200,9 @@ export function getSourceKind(
   }
   if (mimeType === "application/x-pixelorama") {
     return "pxo";
+  }
+  if (mimeType === "application/x-krita" || mimeType === "application/x-kra") {
+    return "kra";
   }
   if (mimeType === "image/png") {
     return "png";
@@ -209,7 +219,8 @@ async function readSourceFile(
     kind === "gif" ||
     kind === "apng" ||
     kind === "ora" ||
-    kind === "pxo"
+    kind === "pxo" ||
+    kind === "kra"
   ) {
     return { file, kind, bytes: await file.arrayBuffer() };
   }
@@ -260,6 +271,11 @@ const FORMAT_HELP: Record<FileImportFormat, FormatHelp> = {
     suggestion:
       "Check that the .pxo file contains supported raster pixel layer data.",
   },
+  krita: {
+    label: "Krita project",
+    suggestion:
+      "Check that the .kra file contains documented minimal 8-bit RGBA paint-layer data.",
+  },
 };
 
 function getFormatHelp(
@@ -283,6 +299,9 @@ function getFormatHelp(
   }
   if (files.some((file) => file.kind === "pxo")) {
     return FORMAT_HELP.pixelorama;
+  }
+  if (files.some((file) => file.kind === "kra")) {
+    return FORMAT_HELP.krita;
   }
   if (files.some((file) => file.kind === "json")) {
     return FORMAT_HELP["spritesheet-json"];
@@ -331,6 +350,14 @@ function getImporterMessage(
       ? message
       : getPixeloramaImportDiagnostic(error);
   }
+  if (format === "krita") {
+    const message = error instanceof Error
+      ? error.message.replace(/\s+/g, " ").trim()
+      : "";
+    return message === "Krita mode requires exactly one .kra file."
+      ? message
+      : getKritaImportDiagnostic(error);
+  }
   if (
     format === "spritesheet-json" ||
     (format === undefined && files.some((file) => file.kind === "json"))
@@ -362,6 +389,9 @@ function getSelectionStatus(
   }
   if (format === "pixelorama") {
     return "Selected 1 Pixelorama project. Ready to convert browser-locally.";
+  }
+  if (format === "krita") {
+    return "Selected 1 Krita project. Ready to convert browser-locally.";
   }
   const noun = fileCount === 1 ? "file" : "files";
   return `Selected ${fileCount} supported ${noun}.`;
@@ -403,7 +433,7 @@ export function bindFileImportControl(
       if (kind === null) {
         input.value = "";
         showError(
-          `Unsupported file "${file.name}". Choose PNG, JSON, Piskel, GIF, APNG, OpenRaster, or Pixelorama files only.`,
+          `Unsupported file "${file.name}". Choose PNG, JSON, Piskel, GIF, APNG, OpenRaster, Pixelorama, or Krita files only.`,
         );
         return false;
       }
@@ -517,7 +547,7 @@ export function mountFileImportUi(
   dropInstructions.textContent =
     "Drag and drop files here, or choose files with the control below.";
   supportedTypes.textContent =
-    "Supported files: PNG images (.png), JSON metadata (.json), Piskel projects (.piskel), GIF animations (.gif), APNG animations (.apng or .png), OpenRaster projects (.ora), and Pixelorama projects (.pxo).";
+    "Supported files: PNG images (.png), JSON metadata (.json), Piskel projects (.piskel), GIF animations (.gif), APNG animations (.apng or .png), OpenRaster projects (.ora), Pixelorama projects (.pxo), and Krita projects (.kra, documented minimal raster subset).";
   privacyNotice.textContent =
     "Your files stay in this browser and are never uploaded.";
   input.type = "file";
@@ -525,7 +555,7 @@ export function mountFileImportUi(
   input.accept = SUPPORTED_SOURCE_ACCEPT;
   input.setAttribute(
     "aria-label",
-    "Choose PNG, JSON, Piskel, GIF, APNG, OpenRaster, or Pixelorama sprite source files",
+    "Choose PNG, JSON, Piskel, GIF, APNG, OpenRaster, Pixelorama, or Krita sprite source files",
   );
   errorOutput.setAttribute("role", "alert");
   errorOutput.setAttribute("aria-live", "assertive");
