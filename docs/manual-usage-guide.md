@@ -2,7 +2,8 @@
 
 Sprite to Aseprite Converter rebuilds an editable Aseprite timeline from PNG
 frames, spritesheets, a supported Piskel project, a supported OpenRaster
-project, a supported Pixelorama project, or a supported GIF/APNG animation.
+project, a supported Pixelorama project, a supported Krita project, or a
+supported GIF/APNG animation.
 Your artwork stays in the browser. The app does not upload source files to a
 server or send them to an external processing service.
 
@@ -31,11 +32,12 @@ the server with `Ctrl+C`.
 1. Under **Choose an import mode**, select the mode matching the source files.
 2. Under **Add source files**, drag the required files onto the drop area or
    use the file picker. The app accepts `.png`, `.json`, `.piskel`, `.gif`,
-   `.apng`, `.ora`, and `.pxo` files; each mode validates its required file
-   combination. Review the selected-file cards before conversion. PNG cards
-   include browser-local thumbnails, while JSON, Piskel, GIF, APNG, OpenRaster,
-   and Pixelorama cards show document details without displaying their raw
-   contents. Remove individual files or use **Clear selected files** as needed.
+   `.apng`, `.ora`, `.pxo`, and `.kra` files; each mode validates its required
+   file combination. Review the selected-file cards before conversion. PNG
+   cards include browser-local thumbnails, while JSON, Piskel, GIF, APNG,
+   OpenRaster, Pixelorama, and Krita cards show document details without
+   displaying their raw contents. Remove individual files or use
+   **Clear selected files** as needed.
 3. Check that the app reports the source files are ready, then select
    **Convert to .aseprite**. Conversion happens browser-locally.
 4. Review the rebuilt timeline and make any timing or layer-name changes.
@@ -319,6 +321,28 @@ images, or other editor metadata. Unsupported or malformed data is rejected
 with a safe diagnostic that does not display raw source contents or stack
 traces.
 
+## Krita project
+
+Krita import follows the
+[documented minimal Krita raster subset](krita-format.md).
+
+1. Select **Krita project** under **Choose an import mode**.
+2. Choose exactly one `.kra` file from the documented minimal raster subset.
+3. Review the document-style file card, then select
+   **Convert to .aseprite**. ZIP parsing, maindoc validation, native paint-layer
+   reading, and conversion happen browser-locally; no artwork is uploaded.
+4. Confirm the single rebuilt frame and inspect the preserved supported raster
+   layers under **Layer names** before downloading.
+
+The importer converts supported single-frame 8-bit RGBA Krita paint layers and
+preserves supported layer names, order, visibility, opacity, signed x/y
+offsets, and decoded RGBA pixels only when the `.kra` source contains that
+supported paint-layer data. It does not preserve Krita masks, vector layers,
+animation timelines, unsupported color depths or profiles, effects, or other
+editor metadata. Flattened `preview.png` and `mergedimage.png` entries are not
+used to recover source layers. Unsupported or malformed data is rejected with a
+safe diagnostic that does not display raw source contents or stack traces.
+
 ## GIF animation
 
 GIF import follows the [documented supported GIF subset](gif-format.md).
@@ -389,8 +413,8 @@ download can be compared with the source.
 5. Confirm the expected canvas dimensions and layer names. PNG sequences and
    spritesheets are flat sources, so one generated layer is expected; this
    check must not be treated as recovery of layers that were absent from the
-   source. Supported Piskel, OpenRaster, and Pixelorama sources may contain
-   multiple preserved layers.
+   source. Supported Piskel, OpenRaster, Pixelorama, and Krita sources may
+   contain multiple preserved layers.
 6. Make a small edit and use **File > Save As** to a new file. Reopen that copy
    if editability is part of the compatibility check, leaving the downloaded
    file unchanged for comparison.
@@ -434,6 +458,22 @@ source data:
 Passing this checklist verifies the inspected supported `.pxo` raster data, not
 unsupported Pixelorama tilemaps, effects, layer types, blend modes, or editor
 metadata.
+
+### Krita-specific Aseprite checklist
+
+For a Krita conversion, compare the downloaded file with the supported source
+paint-layer data:
+
+- confirm the canvas width and height;
+- confirm the single rebuilt frame;
+- confirm layer names and source order, plus each layer's opacity,
+  visible/hidden state, and x/y offset;
+- inspect transparent and partially transparent areas for correct alpha; and
+- compare representative pixels in each supported paint layer.
+
+Passing this checklist verifies the inspected supported `.kra` raster data, not
+unsupported Krita masks, vector layers, animation timelines, effects, color
+profiles, flattened previews, or editor metadata.
 
 ### Report a compatibility problem
 

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { SpriteProject } from "../core/SpriteProject";
 import { ApngImportError } from "../core/importers/apng";
 import { GifImportError } from "../core/importers/gif";
+import { KritaImportError } from "../core/importers/krita";
 import { OpenRasterImportError } from "../core/importers/openraster";
 import { PixeloramaImportError } from "../core/importers/pixelorama";
 import {
@@ -20,9 +21,11 @@ import {
   getConversionErrorMessage,
   getConversionSuccessStatus,
   getGridPreviewState,
+  getImportDropInstructions,
   getSourceSelectionError,
   getSourceSelectionState,
   findNearestDivisor,
+  MODE_LABELS,
   renderConversionState,
 } from "./converterUi";
 import type { BrowserSourceFile } from "./fileImport";
@@ -103,6 +106,14 @@ function pxo(name: string): BrowserSourceFile {
   return {
     file: new File(["pxo"], name, { type: "application/x-pixelorama" }),
     kind: "pxo",
+    bytes: new ArrayBuffer(0),
+  };
+}
+
+function kra(name: string): BrowserSourceFile {
+  return {
+    file: new File(["kra"], name, { type: "application/x-krita" }),
+    kind: "kra",
     bytes: new ArrayBuffer(0),
   };
 }
@@ -201,6 +212,7 @@ describe("getSourceSelectionError", () => {
       .toBeNull();
     expect(getSourceSelectionError("pixelorama", [pxo("scene.pxo")]))
       .toBeNull();
+    expect(getSourceSelectionError("krita", [kra("scene.kra")])).toBeNull();
   });
 
   it("rejects mode/file mismatches before conversion", () => {
@@ -244,6 +256,12 @@ describe("getSourceSelectionError", () => {
       pxo("one.pxo"),
       pxo("two.pxo"),
     ])).toContain("exactly one .pxo file");
+    expect(getSourceSelectionError("krita", [png("sprite.png")]))
+      .toContain("exactly one .kra file");
+    expect(getSourceSelectionError("krita", [
+      kra("one.kra"),
+      kra("two.kra"),
+    ])).toContain("exactly one .kra file");
   });
 
   it("revalidates remaining and cleared files without a second selection state", () => {
@@ -276,6 +294,9 @@ describe("getSourceSelectionError", () => {
     expect(getSourceSelectionState("pixelorama", [pxo("scene.pxo")]).canConvert)
       .toBe(true);
     expect(getSourceSelectionState("pixelorama", []).canConvert).toBe(false);
+    expect(getSourceSelectionState("krita", [kra("scene.kra")]).canConvert)
+      .toBe(true);
+    expect(getSourceSelectionState("krita", []).canConvert).toBe(false);
   });
 
   it("revalidates the same selected files when import mode changes", () => {
@@ -284,6 +305,14 @@ describe("getSourceSelectionError", () => {
       .toBe(true);
     expect(getSourceSelectionState("piskel", files).canConvert).toBe(false);
     expect(getSourceSelectionState("pixelorama", files).canConvert).toBe(false);
+    expect(getSourceSelectionState("krita", files).canConvert).toBe(false);
+  });
+
+  it("exposes Krita mode labels without implying full compatibility", () => {
+    expect(MODE_LABELS.krita).toBe("Krita project");
+    expect(getImportDropInstructions("krita")).toBe(
+      "Drop exactly one .kra file from the documented minimal raster subset here, or choose one below.",
+    );
   });
 });
 
@@ -497,6 +526,7 @@ describe("convertSourceFiles", () => {
     const importPngSequence = vi.fn(async () => project);
     const importApng = vi.fn(async () => project);
     const importGif = vi.fn(async () => project);
+    const importKrita = vi.fn(async () => project);
     const importOpenRaster = vi.fn(async () => project);
     const importPixelorama = vi.fn(async () => project);
     const importPiskel = vi.fn(async () => project);
@@ -505,6 +535,7 @@ describe("convertSourceFiles", () => {
     const importers = {
       importApng,
       importGif,
+      importKrita,
       importOpenRaster,
       importPixelorama,
       importPngSequence,
@@ -520,6 +551,7 @@ describe("convertSourceFiles", () => {
     const apngAnimation = apng("walk.apng");
     const openRasterProject = ora("scene.ora");
     const pixeloramaProject = pxo("scene.pxo");
+    const kritaProject = kra("scene.kra");
 
     await expect(
       convertSourceFiles(
@@ -589,12 +621,21 @@ describe("convertSourceFiles", () => {
       importers,
     );
     expect(importPixelorama).toHaveBeenCalledWith(pixeloramaProject.file);
+
+    await convertSourceFiles(
+      "krita",
+      [kritaProject],
+      gridOptions,
+      importers,
+    );
+    expect(importKrita).toHaveBeenCalledWith(kritaProject.file);
   });
 
   it("does not call an importer for an invalid selection", async () => {
     const importers = {
       importApng: vi.fn(async () => project),
       importGif: vi.fn(async () => project),
+      importKrita: vi.fn(async () => project),
       importOpenRaster: vi.fn(async () => project),
       importPixelorama: vi.fn(async () => project),
       importPngSequence: vi.fn(async () => project),
@@ -617,8 +658,60 @@ describe("convertSourceFiles", () => {
     expect(importers.importSpritesheetJson).not.toHaveBeenCalled();
     expect(importers.importGif).not.toHaveBeenCalled();
     expect(importers.importApng).not.toHaveBeenCalled();
+    expect(importers.importKrita).not.toHaveBeenCalled();
     expect(importers.importOpenRaster).not.toHaveBeenCalled();
     expect(importers.importPixelorama).not.toHaveBeenCalled();
+  });
+});
+
+describe("Krita conversion messages", () => {
+  const layeredProject: SpriteProject = {
+    ...project,
+    layers: [
+      project.layers[0],
+      {
+        id: "ink",
+        name: "Ink",
+        visible: true,
+        opacity: 255,
+        cels: [],
+      },
+    ],
+  };
+
+  it("reports supported raster layers and frame data without overclaiming compatibility", () => {
+    expect(getConversionSuccessStatus("krita", layeredProject)).toBe(
+      "Converted supported Krita raster layers and frame data into an editable Aseprite timeline with 1 frame and 2 preserved layers. Ready to download.",
+    );
+  });
+
+  it("shows importer-authored diagnostics without exposing stack traces", () => {
+    const error = new KritaImportError(
+      "unsupported-feature",
+      "Krita animation timelines are unsupported.",
+    );
+    error.stack = "private-krita-stack";
+
+    expect(getConversionErrorMessage("krita", error)).toBe(
+      "Krita import failed: Krita animation timelines are unsupported.",
+    );
+    expect(getConversionErrorMessage("krita", error)).not.toContain(
+      "private-krita-stack",
+    );
+  });
+
+  it("does not expose arbitrary Krita errors", () => {
+    const privateMessage = "private Krita source details";
+
+    const message = getConversionErrorMessage(
+      "krita",
+      new Error(privateMessage),
+    );
+
+    expect(message).toBe(
+      "Krita import failed: Check that the .kra file contains supported 8-bit RGBA paint layers from the documented minimal raster subset.",
+    );
+    expect(message).not.toContain(privateMessage);
   });
 });
 

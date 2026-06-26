@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { KritaImportError } from "../core/importers/krita";
 import { OpenRasterImportError } from "../core/importers/openraster";
 import { PixeloramaImportError } from "../core/importers/pixelorama";
 import { PiskelImportError } from "../core/importers/piskel";
@@ -125,6 +126,11 @@ describe("bindFileImportControl", () => {
       kind: "pxo",
       bytes: new ArrayBuffer(0),
     })).toMatchObject({ typeLabel: "Pixelorama project" });
+    expect(getSourceFilePresentation({
+      file: new File(["kra"], "sprite.kra"),
+      kind: "kra",
+      bytes: new ArrayBuffer(0),
+    })).toMatchObject({ typeLabel: "Krita project" });
     expect(formatFileSize(1)).toBe("1 byte");
   });
 
@@ -207,6 +213,23 @@ describe("bindFileImportControl", () => {
     ).toBe("pxo");
   });
 
+  it("advertises and classifies Krita sources", () => {
+    const acceptedTypes = SUPPORTED_SOURCE_ACCEPT.split(",");
+    expect(acceptedTypes).toEqual(expect.arrayContaining([
+      ".kra",
+      "application/x-krita",
+      "application/x-kra",
+    ]));
+    expect(getSourceKind({ name: "scene.KRA", type: "" })).toBe("kra");
+    expect(getSourceKind({
+      name: "scene",
+      type: "application/x-krita",
+    })).toBe("kra");
+    expect(
+      getSourceKind({ name: "scene.kra", type: "application/octet-stream" }),
+    ).toBe("kra");
+  });
+
   it("reads PNG and JSON files locally with browser File APIs", async () => {
     const input = createInput();
     const errorOutput = createOutput();
@@ -278,6 +301,7 @@ describe("bindFileImportControl", () => {
     ["apng", "sprite.apng", "image/png", "Selected 1 APNG animation"],
     ["openraster", "sprite.ora", "image/openraster", "Selected 1 OpenRaster project"],
     ["pixelorama", "sprite.pxo", "application/x-pixelorama", "Selected 1 Pixelorama project"],
+    ["krita", "sprite.kra", "application/x-krita", "Selected 1 Krita project"],
   ] as const)("reads one %s source locally", async (format, name, type, status) => {
     const statusOutput = createOutput();
     const onFilesImported = vi.fn<(files: readonly BrowserSourceFile[]) => void>();
@@ -297,7 +321,9 @@ describe("bindFileImportControl", () => {
           ? "ora"
           : format === "pixelorama"
             ? "pxo"
-            : format,
+            : format === "krita"
+              ? "kra"
+              : format,
     });
     expect(statusOutput.textContent).toContain(status);
   });
@@ -322,7 +348,7 @@ describe("bindFileImportControl", () => {
     expect(errorOutput).toMatchObject({
       hidden: false,
       textContent:
-        'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, APNG, OpenRaster, or Pixelorama files only.',
+        'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, APNG, OpenRaster, Pixelorama, or Krita files only.',
     });
     expect(statusOutput.hidden).toBe(true);
   });
@@ -573,6 +599,65 @@ describe("bindFileImportControl", () => {
     expect(errorOutput.textContent).not.toContain("PixeloramaImportError");
   });
 
+  it("includes safe Krita importer detail in selection errors", async () => {
+    const errorOutput = createOutput();
+    const control = bindFileImportControl(
+      createInput(),
+      errorOutput,
+      createOutput(),
+      {
+        format: "krita",
+        onFilesImported: () => {
+          throw new KritaImportError(
+            "unsupported-feature",
+            "Krita animation timelines are unsupported.",
+          );
+        },
+      },
+    );
+
+    expect(
+      await control.selectFiles([
+        new File(["kra"], "scene.kra", { type: "application/x-krita" }),
+      ]),
+    ).toBe(false);
+
+    expect(errorOutput.textContent).toBe(
+      "Krita project import failed. " +
+        "Krita animation timelines are unsupported. " +
+        "Check that the .kra file contains documented minimal 8-bit RGBA paint-layer data.",
+    );
+    expect(errorOutput.textContent).not.toContain("KritaImportError");
+  });
+
+  it("does not expose arbitrary Krita source details from selection errors", async () => {
+    const privateMessage = "private Krita source details";
+    const errorOutput = createOutput();
+    const control = bindFileImportControl(
+      createInput(),
+      errorOutput,
+      createOutput(),
+      {
+        format: "krita",
+        onFilesImported: () => {
+          throw new Error(privateMessage);
+        },
+      },
+    );
+
+    expect(
+      await control.selectFiles([
+        new File(["kra"], "scene.kra", { type: "application/x-krita" }),
+      ]),
+    ).toBe(false);
+
+    expect(errorOutput.textContent).toBe(
+      "Krita project import failed. " +
+        "Check that the .kra file contains documented minimal 8-bit RGBA paint-layer data.",
+    );
+    expect(errorOutput.textContent).not.toContain(privateMessage);
+  });
+
   it("uses files from the browser input change event and removes its handler", async () => {
     const input = createInput();
     const onFilesImported = vi.fn();
@@ -657,7 +742,7 @@ describe("bindFileImportControl", () => {
 
     await vi.waitFor(() => expect(errorOutput.hidden).toBe(false));
     expect(errorOutput.textContent).toBe(
-      'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, APNG, OpenRaster, or Pixelorama files only.',
+      'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, APNG, OpenRaster, Pixelorama, or Krita files only.',
     );
     expect(onFilesImported).not.toHaveBeenCalled();
   });
@@ -680,7 +765,7 @@ describe("bindFileImportControl", () => {
 
     await vi.waitFor(() => expect(errorOutput.hidden).toBe(false));
     expect(errorOutput.textContent).toBe(
-      'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, APNG, OpenRaster, or Pixelorama files only.',
+      'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, APNG, OpenRaster, Pixelorama, or Krita files only.',
     );
     expect(readPng).not.toHaveBeenCalled();
     expect(onFilesImported).not.toHaveBeenCalled();
