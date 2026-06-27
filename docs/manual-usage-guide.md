@@ -54,7 +54,8 @@ file cards and previews are created in the browser; artwork is never uploaded.
 The converter is free to use. A Support link may appear in the page header or
 footer, and the Support section explains any configured donation providers.
 Support is optional, not required for conversion, and does not unlock hidden
-functionality.
+functionality. The GitHub Sponsors link is configured as a public placeholder
+and can be cleared if the Sponsors page is not ready.
 
 Only public external provider pages should be linked. Payment handling stays on
 those provider pages; the converter does not collect credit card data, add a

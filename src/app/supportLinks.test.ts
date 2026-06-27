@@ -4,6 +4,7 @@ import { mountConverterUi } from "./converterUi";
 import {
   createSupportSection,
   DEFAULT_SUPPORT_LINKS,
+  GITHUB_SPONSORS_PLACEHOLDER_URL,
   getConfiguredSupportLinks,
   type SupportLinkConfig,
 } from "./supportLinks";
@@ -141,14 +142,40 @@ function mountStubbedConverter(): ElementStub {
 
 describe("support link configuration", () => {
   it("keeps empty support links from rendering fake provider buttons", () => {
-    expect(getConfiguredSupportLinks(DEFAULT_SUPPORT_LINKS)).toEqual([]);
+    const emptyLinks = {
+      buyMeACoffee: "",
+      githubSponsors: "",
+      koFi: "",
+      stripePaymentLink: "",
+    };
+    expect(getConfiguredSupportLinks(emptyLinks)).toEqual([]);
 
-    const section = createSupportSection(createDocument(), DEFAULT_SUPPORT_LINKS);
+    const section = createSupportSection(createDocument(), emptyLinks);
     const root = section as unknown as ElementStub;
 
     expect(findAll(root, (element) => element.className === "support-provider-link"))
       .toHaveLength(0);
     expect(getText(root)).toContain("Support links are not configured yet.");
+  });
+
+  it("uses the configurable GitHub Sponsors placeholder by default", () => {
+    expect(DEFAULT_SUPPORT_LINKS.githubSponsors).toBe(
+      GITHUB_SPONSORS_PLACEHOLDER_URL,
+    );
+
+    const section = createSupportSection(createDocument(), DEFAULT_SUPPORT_LINKS);
+    const links = findAll(
+      section as unknown as ElementStub,
+      (element) => element.className === "support-provider-link",
+    );
+
+    expect(links).toHaveLength(1);
+    expect(links[0]).toMatchObject({
+      href: "https://github.com/sponsors/khs2325",
+      textContent: "GitHub Sponsors",
+      target: "_blank",
+      rel: "noopener noreferrer",
+    });
   });
 
   it.each<[keyof SupportLinkConfig, string]>([
@@ -221,6 +248,7 @@ describe("support entry placement", () => {
 
     expect(supportLinks.map((link) => getText(link))).toEqual([
       "Support",
+      "GitHub Sponsors",
       "Support",
     ]);
     for (const unsafeArea of [
