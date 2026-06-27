@@ -77,7 +77,7 @@
   7. [x] Krita `.kra` minimal raster subset research and fixtures (task 054)
   8. [ ] Krita `.kra` importer (task 055)
   9. [ ] Krita `.kra` browser UI wiring (task 056)
-  10. [ ] GIMP `.xcf` feasibility research only (task 057)
+  10. [x] GIMP `.xcf` feasibility research only (task 057)
   11. [ ] LibreSprite/Aseprite `.ase`/`.aseprite` input feasibility research only (task 058)
 
 The project-format sequence starts with researched, fixture-backed subsets
