@@ -1,0 +1,42 @@
+id: "097"
+title: Update README PSD status after PSD work exists
+status: backlog
+priority: low
+goal: Update README PSD wording only after PSD research or implementation creates real evidence.
+context: >
+  PSD should not appear as fully supported until the documented subset is
+  implemented and tested.
+scope:
+  summary: Add a future README update task gated on PSD progress.
+  allowed_paths:
+    - README.md
+    - docs/psd-format.md
+    - docs/manual-usage-guide.md
+    - docs/product-spec.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+    - tests/**
+non_goals:
+  - Do not update README before PSD evidence exists.
+  - Do not claim full PSD or PSB support.
+  - Do not add UI or importer code.
+requirements:
+  - State PSD as research, planned, or supported based on actual completed tasks.
+  - If supported, link to documented subset and tests.
+  - Include limitations for text layers, smart objects, adjustment layers, effects, unsupported color modes, and lossless expectations.
+acceptance_criteria:
+  - README PSD status matches implemented reality.
+  - Browser-only and no-upload wording remains accurate.
+verification:
+  - node scripts/auto-dev-cycle.mjs --dry-run
+auto_merge:
+  allowed: true
+  max_changed_files: 6
+  forbidden_paths: *forbidden

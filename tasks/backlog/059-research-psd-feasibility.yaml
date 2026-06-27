@@ -1,0 +1,43 @@
+id: "059"
+title: Research PSD feasibility
+status: backlog
+priority: high
+goal: Document whether a safe browser-local PSD MVP is practical before implementation.
+context: >
+  PSD support is a major new input path. The first step must define a narrow,
+  honest, browser-local scope rather than promise full Photoshop compatibility.
+scope:
+  summary: Research PSD structure, browser constraints, MVP boundaries, and risks.
+  allowed_paths:
+    - docs/psd-feasibility.md
+    - docs/product-spec.md
+    - docs/roadmap.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+    - tests/**
+non_goals:
+  - Do not implement PSD parsing.
+  - Do not add dependencies.
+  - Do not claim perfect or lossless PSD conversion.
+requirements:
+  - Focus the MVP on RGB 8-bit PSD files, raster layers, and one frame initially.
+  - Document likely support for layer names and opacity where available.
+  - Identify unsupported text layers, smart objects, adjustment layers, layer effects, PSB, CMYK, indexed color, 16-bit, 32-bit, masks, groups, and timeline animation.
+  - Explain browser-local memory and security risks.
+acceptance_criteria:
+  - The feasibility document gives a go/no-go recommendation for a PSD MVP.
+  - Browser-only processing and no-upload privacy rules remain explicit.
+  - Unsupported features are documented without overclaiming.
+verification:
+  - node scripts/auto-dev-cycle.mjs --dry-run
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *forbidden

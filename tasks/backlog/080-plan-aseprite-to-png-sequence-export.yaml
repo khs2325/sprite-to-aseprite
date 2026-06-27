@@ -1,0 +1,41 @@
+id: "080"
+title: Plan Aseprite to PNG sequence export
+status: backlog
+priority: medium
+goal: Plan exporting imported Aseprite timelines as PNG sequences.
+context: >
+  PNG sequence output is a likely first non-Aseprite output format, but it
+  requires input-reader and rendering decisions.
+scope:
+  summary: Document PNG sequence output requirements, naming, frame timing metadata, and browser download behavior.
+  allowed_paths:
+    - docs/png-sequence-output.md
+    - docs/bidirectional-conversion.md
+    - docs/product-spec.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+    - tests/**
+non_goals:
+  - Do not implement PNG export.
+  - Do not implement `.aseprite` input.
+  - Do not add zip dependencies.
+requirements:
+  - Plan filename conventions, frame order, transparency, optional metadata, and multi-file download constraints.
+  - Document limitations around layers and tags.
+  - Keep all output generation browser-local.
+acceptance_criteria:
+  - The plan is implementable as small future exporter tasks.
+  - No feature code changes are made.
+verification:
+  - node scripts/auto-dev-cycle.mjs --dry-run
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *forbidden

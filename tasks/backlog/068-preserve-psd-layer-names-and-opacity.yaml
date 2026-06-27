@@ -1,0 +1,45 @@
+id: "068"
+title: Preserve PSD layer names and opacity
+status: backlog
+priority: medium
+goal: Preserve supported PSD layer names and opacity in converted layers.
+context: >
+  Layer metadata is useful only when represented in the source and supported by
+  the importer. This task keeps that behavior focused and tested.
+scope:
+  summary: Add PSD layer name, order, visibility, and opacity mapping tests.
+  allowed_paths:
+    - src/core/importers/psd/**
+    - tests/fixtures/psd/**
+    - docs/psd-format.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/app/**
+    - src/core/exporters/**
+non_goals:
+  - Do not add UI wiring.
+  - Do not support non-normal blend modes.
+  - Do not change Aseprite exporter behavior.
+requirements:
+  - Preserve supported layer names and order.
+  - Map supported layer opacity into the internal 0 to 255 opacity range.
+  - Preserve supported visibility flags.
+  - Add tests for missing names, duplicate names, opacity bounds, and hidden layers.
+acceptance_criteria:
+  - Metadata mapping is deterministic and documented.
+  - Unsupported opacity or blend semantics fail clearly or use documented fallbacks.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: false
+  max_changed_files: 12
+  forbidden_paths: *forbidden

@@ -1,0 +1,46 @@
+id: "074"
+title: Separate importer and exporter responsibilities
+status: backlog
+priority: medium
+goal: Refactor only if needed so importers do not depend on Aseprite export behavior.
+context: >
+  Importers should produce a canonical model, and exporters should consume it.
+  This boundary becomes more important with future output formats.
+scope:
+  summary: Add small architecture boundary helpers or docs-backed refactors with regression tests.
+  allowed_paths:
+    - src/core/SpriteProject.ts
+    - src/core/validation/**
+    - src/core/importers/**
+    - src/core/exporters/**
+    - src/core/conversion.integration.test.ts
+    - docs/architecture.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/app/**
+non_goals:
+  - Do not add new formats.
+  - Do not rewrite every importer.
+  - Do not change UI behavior.
+requirements:
+  - Keep existing format behavior unchanged.
+  - Add regression tests if helpers or types move.
+  - Document importer and exporter boundaries.
+acceptance_criteria:
+  - Existing formats still convert to Aseprite.
+  - Importer and exporter responsibilities are clearer than before.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: false
+  max_changed_files: 15
+  forbidden_paths: *forbidden

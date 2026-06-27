@@ -1,0 +1,40 @@
+id: "086"
+title: Add ads.txt after publisher ID is known
+status: backlog
+priority: low
+goal: Add `ads.txt` only after a real AdSense publisher ID exists.
+context: >
+  `ads.txt` should not contain fake publisher IDs or guessed values.
+scope:
+  summary: Prepare a blocked future task for adding `ads.txt` with a real publisher ID.
+  allowed_paths:
+    - public/ads.txt
+    - docs/adsense-readiness.md
+    - README.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+    - tests/**
+non_goals:
+  - Do not add `ads.txt` until the publisher ID is known.
+  - Do not add AdSense scripts.
+  - Do not add fake publisher IDs.
+requirements:
+  - Require a real approved AdSense publisher ID before implementation.
+  - Document the exact source of the publisher ID in the PR.
+  - Keep the file minimal and static.
+acceptance_criteria:
+  - The task remains blocked until a real publisher ID is available.
+  - No secrets or fake IDs are committed.
+verification:
+  - node scripts/auto-dev-cycle.mjs --dry-run
+auto_merge:
+  allowed: false
+  max_changed_files: 3
+  forbidden_paths: *forbidden

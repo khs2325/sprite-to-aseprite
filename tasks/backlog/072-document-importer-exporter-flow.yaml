@@ -1,0 +1,41 @@
+id: "072"
+title: Document importer and exporter flow
+status: backlog
+priority: medium
+goal: Document the current browser-local importer-to-exporter architecture.
+context: >
+  More input and output formats will be safer if the existing flow is documented
+  before broad refactors.
+scope:
+  summary: Update architecture docs with current importer, model, UI, and Aseprite exporter responsibilities.
+  allowed_paths:
+    - docs/architecture.md
+    - docs/product-spec.md
+    - README.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+    - tests/**
+non_goals:
+  - Do not refactor code.
+  - Do not add new formats.
+  - Do not change tests.
+requirements:
+  - Explain how each importer outputs the internal model.
+  - Explain how the Aseprite exporter consumes that model.
+  - Note browser-only processing and no upload behavior.
+acceptance_criteria:
+  - Docs are accurate for current implemented formats.
+  - Future refactor tasks can reference the documented responsibilities.
+verification:
+  - node scripts/auto-dev-cycle.mjs --dry-run
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *forbidden

@@ -1,0 +1,42 @@
+id: "084"
+title: Document round-trip limitations
+status: backlog
+priority: medium
+goal: Explain why bidirectional conversion is not guaranteed to be lossless.
+context: >
+  Future input and output formats will have different feature sets, so the
+  product must not imply perfect round trips.
+scope:
+  summary: Add user-facing and architecture docs for non-lossless round-trip behavior.
+  allowed_paths:
+    - docs/bidirectional-conversion.md
+    - docs/manual-usage-guide.md
+    - README.md
+    - docs/product-spec.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+    - tests/**
+non_goals:
+  - Do not implement bidirectional conversion.
+  - Do not add UI.
+  - Do not change importers or exporters.
+requirements:
+  - Explain feature mismatch across Aseprite, PSD, PNG sequences, spritesheets, GIF, and APNG.
+  - State that flat formats cannot recover original source layers.
+  - Explain that tags, palettes, effects, groups, masks, and metadata may be unsupported.
+acceptance_criteria:
+  - Documentation sets accurate user expectations.
+  - No code changes are made.
+verification:
+  - node scripts/auto-dev-cycle.mjs --dry-run
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *forbidden

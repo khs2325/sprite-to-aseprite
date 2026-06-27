@@ -1,0 +1,46 @@
+id: "095"
+title: Improve large-file memory warning
+status: backlog
+priority: medium
+goal: Improve user guidance for large files without uploading files or collecting telemetry.
+context: >
+  Large PSDs, layered projects, and long animations may exceed browser memory.
+scope:
+  summary: Refine UI and docs for large-file memory warnings and risk estimates.
+  allowed_paths:
+    - src/app/largeFileWarning.ts
+    - src/app/largeFileWarning.test.ts
+    - src/app/converterUi.ts
+    - src/app/converterUi.test.ts
+    - docs/browser-memory-limits.md
+    - docs/manual-usage-guide.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/core/importers/**
+    - src/core/exporters/**
+non_goals:
+  - Do not add telemetry.
+  - Do not upload files for server-side estimation.
+  - Do not block conversion solely based on compressed file size.
+requirements:
+  - Include decoded RGBA size estimates where possible.
+  - Mention layers and frames multiplying memory use.
+  - Keep warnings advisory and browser-local.
+acceptance_criteria:
+  - Users receive clearer memory risk guidance.
+  - Existing conversion behavior remains unchanged.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 10
+  forbidden_paths: *forbidden

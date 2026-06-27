@@ -1,0 +1,41 @@
+id: "063"
+title: Define PSD fixture strategy
+status: backlog
+priority: high
+goal: Plan PSD test fixtures without committing copyrighted or user artwork.
+context: >
+  PSD importer tests require deterministic fixtures, but sample artwork from
+  the web or user files must not be committed.
+scope:
+  summary: Document synthetic fixture generation and fixture coverage for PSD MVP tests.
+  allowed_paths:
+    - docs/psd-fixtures.md
+    - docs/psd-format.md
+    - tests/fixtures/README.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+    - tests/fixtures/psd/*.psd
+non_goals:
+  - Do not add PSD binary fixtures yet.
+  - Do not use copyrighted, downloaded, or user-provided PSD files.
+  - Do not implement a fixture generator.
+requirements:
+  - Define tiny synthetic fixture cases for RGB 8-bit raster layers, opacity, visibility, names, offsets, and unsupported features.
+  - Define how future generated fixtures should be reproducible.
+  - Document what fixture metadata tests should assert before importer work.
+acceptance_criteria:
+  - The fixture strategy is implementable without private art or external network calls.
+  - The plan supports focused importer tests in later tasks.
+verification:
+  - node scripts/auto-dev-cycle.mjs --dry-run
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *forbidden

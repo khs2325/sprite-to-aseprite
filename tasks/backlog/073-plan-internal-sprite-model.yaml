@@ -1,0 +1,41 @@
+id: "073"
+title: Plan InternalSprite model
+status: backlog
+priority: medium
+goal: Decide whether to formalize `InternalSprite` or evolve the existing `SpriteProject` model.
+context: >
+  Future bidirectional conversion and multiple output formats may require a
+  clearer intermediate model.
+scope:
+  summary: Produce an architecture proposal for the internal conversion model.
+  allowed_paths:
+    - docs/internal-sprite-model.md
+    - docs/architecture.md
+    - docs/product-spec.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+    - tests/**
+non_goals:
+  - Do not change `SpriteProject` in this task.
+  - Do not refactor importers or exporters.
+  - Do not add new output formats.
+requirements:
+  - Compare keeping `SpriteProject` versus introducing `InternalSprite`.
+  - Cover layers, frames, cels, opacity, tags, canvas size, source metadata, and future output needs.
+  - Document migration risks and compatibility tests needed.
+acceptance_criteria:
+  - Proposal recommends a path with explicit tradeoffs.
+  - No production code changes are made.
+verification:
+  - node scripts/auto-dev-cycle.mjs --dry-run
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *forbidden

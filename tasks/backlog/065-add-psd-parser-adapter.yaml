@@ -1,0 +1,46 @@
+id: "065"
+title: Add PSD parser adapter
+status: backlog
+priority: medium
+goal: Integrate the selected PSD parser behind a small internal adapter.
+context: >
+  Parser integration must be isolated so importer code is testable and package
+  risk is explicit.
+scope:
+  summary: Add a browser-local PSD parser adapter and dependency only if prior evaluation approves it.
+  allowed_paths:
+    - src/core/importers/psd/**
+    - tests/fixtures/psd/**
+    - docs/psd-ag-psd-evaluation.md
+    - docs/psd-format.md
+    - package.json
+    - package-lock.json
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - src/app/**
+    - src/core/exporters/**
+non_goals:
+  - Do not wire PSD into the UI.
+  - Do not implement full PSD conversion.
+  - Do not add more than the approved parser dependency.
+requirements:
+  - Use the parser selected by task 060 only if approved.
+  - If package files change, document bundle-size, license, and browser-risk notes in the PR.
+  - Keep adapter output minimal and content-safe.
+  - Add adapter tests using synthetic or generated minimal PSD fixtures.
+acceptance_criteria:
+  - The adapter parses approved test fixtures without network calls.
+  - Parser errors are normalized into safe diagnostics.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: false
+  max_changed_files: 15
+  forbidden_paths: *forbidden

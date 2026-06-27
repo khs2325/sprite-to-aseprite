@@ -1,0 +1,49 @@
+id: "071"
+title: Document PSD UI limitations
+status: backlog
+priority: medium
+goal: Add user-facing PSD limitations only after importer behavior exists.
+context: >
+  PSD messaging must be accurate and low-risk before exposing the format in the
+  browser UI.
+scope:
+  summary: Update UI copy and docs to explain supported PSD subset and limitations.
+  allowed_paths:
+    - src/app/fileImport.ts
+    - src/app/fileImport.test.ts
+    - src/app/converterUi.ts
+    - src/app/converterUi.test.ts
+    - docs/manual-usage-guide.md
+    - docs/psd-format.md
+    - README.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/core/importers/**
+    - src/core/exporters/**
+non_goals:
+  - Do not change PSD parser behavior.
+  - Do not claim text layers, smart objects, effects, PSB, or lossless PSD conversion are supported.
+  - Do not add payment, backend, ads, or tracking behavior.
+requirements:
+  - Explain RGB 8-bit raster-layer MVP scope.
+  - Explain that conversion is browser-local and files are not uploaded.
+  - Add safe diagnostics and success messages if PSD mode is enabled.
+  - Add UI tests for PSD limitation copy.
+acceptance_criteria:
+  - Users see accurate PSD support boundaries before conversion.
+  - UI copy does not overclaim or encourage sharing private PSD files.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: false
+  max_changed_files: 12
+  forbidden_paths: *forbidden

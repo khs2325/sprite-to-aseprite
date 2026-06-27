@@ -1,0 +1,41 @@
+id: "087"
+title: Document safe ad placement rules
+status: backlog
+priority: medium
+goal: Make future ad placement rules explicit before any live ads are added.
+context: >
+  Ads must not interfere with file privacy, conversion actions, downloads, or
+  support links.
+scope:
+  summary: Expand AdSense readiness docs with safe and unsafe placement examples.
+  allowed_paths:
+    - docs/adsense-readiness.md
+    - docs/product-spec.md
+    - README.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+    - tests/**
+non_goals:
+  - Do not add ad placeholders.
+  - Do not add live ads, analytics, or tracking.
+  - Do not optimize SEO keywords.
+requirements:
+  - Forbid ads near file picker, drop zone, Convert, Download, Support, errors, and private file information.
+  - Identify acceptable future locations near guide content or page bottom with spacing.
+  - Explain no fake ads and no click encouragement.
+acceptance_criteria:
+  - Future implementers have clear placement rules.
+  - Docs preserve browser-local privacy claims.
+verification:
+  - node scripts/auto-dev-cycle.mjs --dry-run
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *forbidden

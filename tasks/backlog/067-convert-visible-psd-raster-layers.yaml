@@ -1,0 +1,46 @@
+id: "067"
+title: Convert visible PSD raster layers
+status: backlog
+priority: medium
+goal: Convert visible supported PSD raster layers into the internal sprite model.
+context: >
+  The PSD MVP should preserve supported raster layers when available, not
+  flatten everything or claim unsupported layer types are preserved.
+scope:
+  summary: Map visible supported raster layers into `SpriteProject` layers and cels.
+  allowed_paths:
+    - src/core/importers/psd/**
+    - src/core/conversion.integration.test.ts
+    - tests/fixtures/psd/**
+    - docs/psd-format.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/app/**
+    - src/core/exporters/**
+non_goals:
+  - Do not wire PSD into the UI.
+  - Do not support text layers, smart objects, adjustment layers, layer effects, masks, groups, or animation.
+  - Do not claim lossless conversion.
+requirements:
+  - Convert only supported visible raster layers.
+  - Preserve canvas size and one-frame MVP behavior.
+  - Reject or clearly diagnose unsupported layer types.
+  - Keep parsing and pixel handling browser-local.
+acceptance_criteria:
+  - Supported fixtures produce expected layer and frame counts.
+  - Unsupported layer types are not silently presented as preserved.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: false
+  max_changed_files: 15
+  forbidden_paths: *forbidden

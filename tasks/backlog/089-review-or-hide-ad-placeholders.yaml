@@ -1,0 +1,43 @@
+id: "089"
+title: Review or hide ad placeholders if they hurt UX
+status: backlog
+priority: low
+goal: Keep future ad placeholders removable if they distract from conversion.
+context: >
+  Visible ad placeholders can harm trust or usability before live ads are ready.
+scope:
+  summary: Add a UX review task for hiding or removing any future ad placeholders.
+  allowed_paths:
+    - src/app/siteContent.ts
+    - src/app/siteContent.test.ts
+    - src/styles.css
+    - docs/adsense-readiness.md
+    - README.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/core/**
+non_goals:
+  - Do not add live ads.
+  - Do not add fake ads.
+  - Do not change conversion behavior.
+requirements:
+  - Inspect whether any visible ad placeholder is confusing, too close to controls, or unnecessary.
+  - Remove or hide placeholders if they harm UX.
+  - Keep policy docs accurate after changes.
+acceptance_criteria:
+  - The site remains free of misleading fake ad surfaces.
+  - Tests and docs match the chosen placeholder behavior.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 10
+  forbidden_paths: *forbidden

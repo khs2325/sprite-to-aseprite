@@ -1,0 +1,41 @@
+id: "092"
+title: Add conversion limitations matrix
+status: backlog
+priority: medium
+goal: Summarize conversion limitations across supported and planned formats.
+context: >
+  Users need a compact explanation of what cannot be preserved.
+scope:
+  summary: Add limitations matrix for layers, frames, timing, effects, masks, groups, palettes, and metadata.
+  allowed_paths:
+    - docs/conversion-limitations.md
+    - docs/manual-usage-guide.md
+    - README.md
+    - docs/product-spec.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+    - tests/**
+non_goals:
+  - Do not add new conversion behavior.
+  - Do not claim lossless conversion.
+  - Do not do SEO work.
+requirements:
+  - Include flat-image layer recovery limitations.
+  - Include project-format subset limitations.
+  - Include future PSD and bidirectional conversion caveats.
+acceptance_criteria:
+  - Limitations are easy to scan and accurate.
+  - Browser-local privacy wording remains intact.
+verification:
+  - node scripts/auto-dev-cycle.mjs --dry-run
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *forbidden

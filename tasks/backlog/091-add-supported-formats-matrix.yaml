@@ -1,0 +1,41 @@
+id: "091"
+title: Add supported formats matrix
+status: backlog
+priority: medium
+goal: Create a clear matrix of supported input formats and documented subsets.
+context: >
+  User trust improves when supported formats are summarized without overclaiming.
+scope:
+  summary: Add a docs matrix for input formats, layer support, animation support, and limitations.
+  allowed_paths:
+    - docs/supported-formats.md
+    - docs/manual-usage-guide.md
+    - README.md
+    - docs/product-spec.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+    - tests/**
+non_goals:
+  - Do not add new format support.
+  - Do not do SEO keyword work.
+  - Do not change UI.
+requirements:
+  - Cover PNG sequence, spritesheet grid, spritesheet JSON, Piskel, OpenRaster, Pixelorama, Krita, GIF, APNG, and planned PSD status.
+  - Distinguish supported, planned, research-only, and unsupported features.
+  - Preserve flat-image layer limitation wording.
+acceptance_criteria:
+  - Matrix helps users choose formats accurately.
+  - No feature code changes are made.
+verification:
+  - node scripts/auto-dev-cycle.mjs --dry-run
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *forbidden
