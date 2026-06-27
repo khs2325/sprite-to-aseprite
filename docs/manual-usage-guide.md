@@ -49,6 +49,17 @@ dropping a new set replaces the previous selection. Removing, clearing, or
 replacing files clears any conversion that no longer matches the source. All
 file cards and previews are created in the browser; artwork is never uploaded.
 
+## Optional support
+
+The converter is free to use. A Support link may appear in the page header or
+footer, and the Support section explains any configured donation providers.
+Support is optional, not required for conversion, and does not unlock hidden
+functionality.
+
+Only public external provider pages should be linked. Payment handling stays on
+those provider pages; the converter does not collect credit card data, add a
+payment backend, or upload artwork for conversion.
+
 ## Large files and browser memory
 
 Conversion runs entirely in the browser, so the available memory depends on
