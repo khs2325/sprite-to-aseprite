@@ -43,6 +43,10 @@ import { mountLayerNamingUi } from "./layerNaming";
 import { renderLargeFileWarning } from "./largeFileWarning";
 import { mountPreviewTimelineUi } from "./previewTimeline";
 import {
+  createInformationalPages,
+  createSiteNavigationLinks,
+} from "./siteContent";
+import {
   createSupportEntryPoint,
   createSupportFooter,
   createSupportSection,
@@ -718,7 +722,10 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   const introduction = document.createElement("p");
   const privacy = document.createElement("p");
   siteNav.setAttribute("aria-label", "Site links");
-  siteNav.append(createSupportEntryPoint(document));
+  siteNav.append(
+    ...createSiteNavigationLinks(document),
+    createSupportEntryPoint(document),
+  );
   title.textContent = "Sprite to Aseprite Converter";
   introduction.textContent =
     "Convert frames into an editable Aseprite timeline from PNG sequences, spritesheets, Piskel projects, OpenRaster projects, Pixelorama projects, Krita projects, and GIF/APNG animations.";
@@ -903,6 +910,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   const layerContainer = document.createElement("div");
   const exportContainer = document.createElement("div");
   const supportSection = createSupportSection(document, DEFAULT_SUPPORT_LINKS);
+  const informationalPages = createInformationalPages(document);
   const footer = createSupportFooter(document);
   workspace.className = "workspace";
   previewContainer.className = "panel";
@@ -917,6 +925,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
     convertPanel,
     workspace,
     supportSection,
+    informationalPages,
     footer,
   );
 
