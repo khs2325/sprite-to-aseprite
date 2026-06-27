@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { mountConverterUi } from "./converterUi";
 import {
-  createFutureAdPlaceholder,
   createInformationalPages,
   createSiteNavigationLinks,
   INFORMATION_PAGE_LINKS,
@@ -111,20 +110,6 @@ function findAll(
   ];
 }
 
-function findByClass(element: ElementStub, className: string): ElementStub {
-  const match = findAll(element, (candidate) =>
-    candidate.className.split(/\s+/).includes(className),
-  )[0];
-  if (match === undefined) {
-    throw new Error(`Could not find .${className}.`);
-  }
-  return match;
-}
-
-function contains(parent: ElementStub, child: ElementStub): boolean {
-  return parent === child || parent.children.some((node) => contains(node, child));
-}
-
 describe("AdSense readiness site content", () => {
   it("defines navigation for every required static informational section", () => {
     expect(INFORMATION_PAGE_LINKS.map((page) => page.id)).toEqual([
@@ -190,43 +175,17 @@ describe("AdSense readiness site content", () => {
     expect(findAll(pages, (element) => element.tagName === "script")).toHaveLength(0);
   });
 
-  it("renders a disabled future ad placeholder without fake ads or click prompts", () => {
-    const placeholder = createFutureAdPlaceholder(createDocument()) as unknown as ElementStub;
-    const text = getText(placeholder).toLowerCase();
-
-    expect(placeholder.className).toBe("future-ad-placeholder");
-    expect(placeholder.getAttribute("data-ad-status")).toBe("disabled");
-    expect(text).toContain("ads are not active yet");
-    expect(text).toContain("no advertising script is loaded");
-    expect(text).not.toContain("click");
-    expect(findAll(placeholder, (element) => element.tagName === "a")).toHaveLength(0);
-    expect(findAll(placeholder, (element) => element.tagName === "button")).toHaveLength(0);
-  });
-
-  it("mounts the ad placeholder away from converter, download, support, and private-file UI", () => {
+  it("does not render a future ad placeholder or fake ads", () => {
     const document = new DocumentStub();
     const root = document.createElement("main");
     mountConverterUi(root as unknown as HTMLElement);
+    const text = getText(root).toLowerCase();
 
-    const placeholder = findByClass(root, "future-ad-placeholder");
-    const controls = root.children[1];
-    const importPanel = root.children[2];
-    const convertPanel = root.children[3];
-    const supportSection = root.children[5];
-    const dropZone = findByClass(root, "drop-zone");
-    const downloadArea = findByClass(root, "download-area");
-    const selectedFiles = findByClass(root, "selected-files");
-
-    for (const unsafeArea of [
-      controls,
-      importPanel,
-      convertPanel,
-      supportSection,
-      dropZone,
-      downloadArea,
-      selectedFiles,
-    ]) {
-      expect(contains(unsafeArea, placeholder)).toBe(false);
-    }
+    expect(findAll(root, (element) =>
+      element.className.split(/\s+/).includes("future-ad-placeholder"),
+    )).toHaveLength(0);
+    expect(text).not.toContain("future advertising space");
+    expect(text).not.toContain("fake ad");
+    expect(findAll(root, (element) => element.tagName === "script")).toHaveLength(0);
   });
 });

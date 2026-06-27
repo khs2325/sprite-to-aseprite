@@ -2,9 +2,9 @@
 
 AdSense is not active yet on Sprite to Aseprite Converter.
 
-This project currently includes only informational policy sections and a
-disabled future ad placeholder. It does not load the Google AdSense script,
-analytics, tracking scripts, fake ads, or any backend.
+This project currently includes only informational policy sections. It does not
+load the Google AdSense script, analytics, tracking scripts, fake ads, ad
+placeholders, or any backend.
 
 ## Before live ads are added
 
@@ -35,8 +35,9 @@ Acceptable future placements include:
 - between guide sections with enough spacing; or
 - near the bottom of the main page, away from converter controls.
 
-The current placeholder is disabled, clearly labeled, and does not show fake ads
-or encourage ad interaction.
+Do not add visible ad placeholders until the final ad layout is ready for
+review. Future placeholders or live ads must remain clearly separated from
+converter controls and must not show fake ads or encourage ad interaction.
 
 ## Content accuracy
 

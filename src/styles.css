@@ -184,19 +184,6 @@ nav[aria-label="Site links"] a {
   scroll-margin-top: 1rem;
 }
 
-.future-ad-placeholder {
-  margin-top: 2rem;
-  padding: 1rem;
-  border: 1px dashed #647386;
-  border-radius: 0.65rem;
-  color: #cbd8e6;
-  background: #121820;
-}
-
-.future-ad-placeholder h2 {
-  margin-top: 0;
-}
-
 @media (max-width: 44rem) {
   .selected-file-card {
     grid-template-columns: 4rem minmax(0, 1fr);
