@@ -114,7 +114,8 @@ browser-local subsets rather than broad compatibility claims:
    task now and prefers OpenRaster for GIMP interchange.
 2. LibreSprite/Aseprite `.ase` and `.aseprite` input is also research-only at
    first so binary reader scope, chunk coverage, validation, and round-trip
-   limitations are understood before implementation.
+   limitations are understood before implementation. See the
+   [input feasibility note](aseprite-input-feasibility.md).
 
 For every planned format, the converter should rebuild timelines, convert
 supported frames, and preserve supported raster layer data only when that data
