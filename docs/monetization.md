@@ -1,8 +1,10 @@
 # Monetization
 
-The project may use optional external support links for donations. The safe
-default is no configured support links and no clickable donation provider
-buttons.
+The project may use optional external support links for donations. The GitHub
+Sponsors entry is configured through `src/app/supportLinks.ts` with the public
+placeholder `https://github.com/sponsors/khs2325`; clear it before deployment if
+that page is not ready. Other providers remain empty until their public pages
+are configured.
 
 ## Rules
 
@@ -15,6 +17,8 @@ buttons.
 - Use only public provider/profile URLs when configuring links.
 - Keep payment handling on external provider pages.
 - Keep support messaging low-pressure and honest.
+- Make it clear that contributions, bug reports, docs fixes, and compatibility
+  notes are welcome even without sponsorship.
 - Do not place donation CTAs next to file picking, drag-and-drop, Convert,
   Download, error messages, or ad slots.
 

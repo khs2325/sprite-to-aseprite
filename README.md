@@ -89,15 +89,21 @@ exactly without leftover edge pixels.
 ## Optional support links
 
 The website can show optional support links for GitHub Sponsors, Stripe Payment
-Links, Ko-fi, or Buy Me a Coffee. They are empty by default and must be
-configured with public provider/profile URLs in `src/app/supportLinks.ts` before
-they render as clickable provider buttons.
+Links, Ko-fi, or Buy Me a Coffee. Support links are configured in
+`src/app/supportLinks.ts`; the GitHub Sponsors entry currently uses the public,
+configurable placeholder `https://github.com/sponsors/khs2325`. Clear it before
+deployment if the Sponsors page is not ready, and keep other providers empty
+until their public provider pages are configured.
 
 Support is optional, not required to use the converter, and does not unlock
 hidden functionality. Payment handling stays on the external provider pages;
 the app does not collect credit card data or add a backend. See
 [docs/support.md](docs/support.md) and
 [docs/monetization.md](docs/monetization.md).
+
+Contributions are welcome whether or not someone sponsors the project: focused
+bug reports, documentation fixes, compatibility notes, original minimal test
+fixtures, and small pull requests all help.
 
 ## Flat-image limitations
 

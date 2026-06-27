@@ -23,9 +23,12 @@ const SUPPORT_PROVIDERS: readonly {
 
 // Configure these with public provider/profile URLs before deployment.
 // Keep secrets and private account settings out of the repository.
+export const GITHUB_SPONSORS_PLACEHOLDER_URL =
+  "https://github.com/sponsors/khs2325";
+
 export const DEFAULT_SUPPORT_LINKS: Required<SupportLinkConfig> = {
   buyMeACoffee: "",
-  githubSponsors: "",
+  githubSponsors: GITHUB_SPONSORS_PLACEHOLDER_URL,
   koFi: "",
   stripePaymentLink: "",
 };
