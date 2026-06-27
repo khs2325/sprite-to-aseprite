@@ -1,0 +1,44 @@
+id: "066"
+title: Validate PSD metadata
+status: backlog
+priority: medium
+goal: Validate supported PSD document metadata before pixel conversion.
+context: >
+  PSD parsing should reject unsupported or unsafe inputs early with clear
+  diagnostics rather than silently inventing behavior.
+scope:
+  summary: Add metadata validation for color mode, bit depth, dimensions, layer counts, and allocation limits.
+  allowed_paths:
+    - src/core/importers/psd/**
+    - tests/fixtures/psd/**
+    - docs/psd-format.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/app/**
+    - src/core/exporters/**
+non_goals:
+  - Do not wire PSD into the UI.
+  - Do not support unsupported color modes or PSB.
+  - Do not decode layer pixels in this task unless already needed by validation tests.
+requirements:
+  - Accept only documented RGB 8-bit PSD metadata for the MVP.
+  - Reject PSB, unsupported dimensions, unsupported color modes, unsupported bit depths, unsafe layer counts, and oversized allocations.
+  - Add precise importer diagnostics with no stack traces or source content leaks.
+acceptance_criteria:
+  - Supported metadata fixtures pass validation.
+  - Unsupported metadata fixtures fail deterministically.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: false
+  max_changed_files: 12
+  forbidden_paths: *forbidden

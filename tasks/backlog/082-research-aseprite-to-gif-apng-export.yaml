@@ -1,0 +1,40 @@
+id: "082"
+title: Research Aseprite to GIF and APNG export
+status: backlog
+priority: medium
+goal: Assess feasibility of GIF and APNG output from internal sprite timelines.
+context: >
+  Animated web outputs need encoding decisions and may require dependencies.
+scope:
+  summary: Research browser-local GIF/APNG encoding, dependency risk, quality limits, and timing support.
+  allowed_paths:
+    - docs/animated-output-feasibility.md
+    - docs/bidirectional-conversion.md
+    - docs/product-spec.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+    - tests/**
+non_goals:
+  - Do not add encoder dependencies.
+  - Do not implement GIF or APNG export.
+  - Do not add live demos.
+requirements:
+  - Research browser-local encoders, palette/alpha limitations, timing limits, disposal/blending, and bundle impact.
+  - Document whether GIF and APNG should be separate tasks.
+  - Avoid claiming perfect animation fidelity.
+acceptance_criteria:
+  - Feasibility doc recommends next steps with risks.
+  - No code, dependency, or test changes are made.
+verification:
+  - node scripts/auto-dev-cycle.mjs --dry-run
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *forbidden

@@ -1,0 +1,44 @@
+id: "088"
+title: Test ad placement safety
+status: backlog
+priority: medium
+goal: Add tests that future ad placements cannot appear near sensitive controls.
+context: >
+  If ad placeholders or live ads are added later, tests should prevent unsafe
+  placement around conversion actions and private file details.
+scope:
+  summary: Add DOM-free UI tests for prohibited ad placement regions.
+  allowed_paths:
+    - src/app/siteContent.test.ts
+    - src/app/converterUi.test.ts
+    - src/app/siteContent.ts
+    - src/styles.css
+    - docs/adsense-readiness.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/core/**
+non_goals:
+  - Do not add live ads.
+  - Do not add analytics or tracking.
+  - Do not require network calls.
+requirements:
+  - Assert no ad element appears inside file picker, drop zone, Convert, Download, Support, error, selected-file, or private-file UI.
+  - Keep tests compatible with the existing no-jsdom test strategy.
+  - Document the safety invariant.
+acceptance_criteria:
+  - Tests fail if future ad elements are placed in prohibited UI areas.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 10
+  forbidden_paths: *forbidden

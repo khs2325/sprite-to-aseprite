@@ -1,0 +1,47 @@
+id: "070"
+title: Add PSD importer fixture tests
+status: backlog
+priority: medium
+goal: Expand PSD importer coverage with deterministic synthetic fixtures.
+context: >
+  PSD support should be protected by focused tests before user-facing UI claims
+  are added.
+scope:
+  summary: Add generated or minimal PSD fixtures and focused importer tests.
+  allowed_paths:
+    - src/core/importers/psd/**
+    - src/core/conversion.integration.test.ts
+    - tests/fixtures/psd/**
+    - tests/fixtures/fixtures.test.ts
+    - tests/fixtures/generate.mjs
+    - docs/psd-fixtures.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/app/**
+    - src/core/exporters/**
+non_goals:
+  - Do not use downloaded or user-provided PSD files.
+  - Do not wire PSD into the UI.
+  - Do not broaden PSD support beyond the documented subset.
+requirements:
+  - Cover one-layer, multi-layer, opacity, hidden layer, offset, transparent pixels, unsupported feature, and malformed fixture cases where practical.
+  - Keep fixtures tiny and synthetic.
+  - Ensure fixture generation is deterministic or fixture metadata is documented.
+acceptance_criteria:
+  - PSD importer tests cover supported and unsupported behavior.
+  - No copyrighted or private artwork is committed.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: false
+  max_changed_files: 15
+  forbidden_paths: *forbidden

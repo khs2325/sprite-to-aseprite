@@ -1,0 +1,44 @@
+id: "085"
+title: Verify policy pages after deployment
+status: backlog
+priority: medium
+goal: Add a deployment checklist for policy and guide section reachability.
+context: >
+  AdSense review readiness depends on reachable policy and informational pages,
+  but live ads should not be enabled yet.
+scope:
+  summary: Document and optionally test static section links after deployment.
+  allowed_paths:
+    - docs/adsense-readiness.md
+    - docs/static-deployment.md
+    - README.md
+    - src/app/siteContent.test.ts
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/core/**
+non_goals:
+  - Do not add live ads.
+  - Do not add analytics or tracking.
+  - Do not require external network calls in tests.
+requirements:
+  - List About, Contact, Privacy Policy, Terms, Guides, and conversion guide anchors.
+  - Add local tests only if they can run without network access.
+  - Keep browser-local privacy wording.
+acceptance_criteria:
+  - Deployment checklist identifies every required policy section.
+  - Tests or docs confirm links are reachable in the static app.
+  - Typecheck, tests, and build pass if code/tests change.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 10
+  forbidden_paths: *forbidden

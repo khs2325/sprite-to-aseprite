@@ -1,0 +1,43 @@
+id: "075"
+title: Add existing format export integration tests
+status: backlog
+priority: medium
+goal: Ensure every existing input format still exports to Aseprite correctly.
+context: >
+  Architecture work should be protected by integration tests that cover the
+  current implemented format surface.
+scope:
+  summary: Add or expand importer-to-Aseprite integration tests for all supported formats.
+  allowed_paths:
+    - src/core/conversion.integration.test.ts
+    - src/core/exporters/aseprite/**
+    - tests/fixtures/**
+    - docs/architecture.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/app/**
+non_goals:
+  - Do not change importer behavior unless a test exposes a real bug.
+  - Do not add new formats.
+  - Do not use private or copyrighted fixtures.
+requirements:
+  - Cover PNG sequence, spritesheet grid, spritesheet JSON, Piskel, OpenRaster, Pixelorama, Krita, GIF, and APNG.
+  - Assert dimensions, frame counts, layer counts, opacity where relevant, and exporter success.
+  - Keep fixtures tiny and synthetic.
+acceptance_criteria:
+  - Integration coverage fails if a supported input can no longer produce an Aseprite file.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: false
+  max_changed_files: 15
+  forbidden_paths: *forbidden

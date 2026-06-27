@@ -1,0 +1,40 @@
+id: "094"
+title: Add troubleshooting guide
+status: backlog
+priority: medium
+goal: Help users diagnose common conversion and download issues.
+context: >
+  As supported formats grow, common failure modes need a central troubleshooting
+  page.
+scope:
+  summary: Add troubleshooting docs for invalid files, unsupported features, memory limits, and Aseprite verification.
+  allowed_paths:
+    - docs/troubleshooting.md
+    - docs/manual-usage-guide.md
+    - README.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+    - tests/**
+non_goals:
+  - Do not change error messages.
+  - Do not add telemetry.
+  - Do not add server upload fallback.
+requirements:
+  - Cover unsupported file types, malformed metadata, hidden or unsupported source features, browser memory, download blockers, and Aseprite open failures.
+  - Encourage sharing only minimal original reproduction files.
+acceptance_criteria:
+  - Troubleshooting guide is useful without exposing private art.
+  - Browser-only processing remains clear.
+verification:
+  - node scripts/auto-dev-cycle.mjs --dry-run
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *forbidden

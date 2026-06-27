@@ -1,0 +1,42 @@
+id: "077"
+title: Document large-file memory architecture
+status: backlog
+priority: medium
+goal: Document browser-memory constraints for large imports and future formats.
+context: >
+  PSD and bidirectional conversion may use much more memory than existing simple
+  formats.
+scope:
+  summary: Expand memory docs with architecture-level limits and future format risks.
+  allowed_paths:
+    - docs/browser-memory-limits.md
+    - docs/architecture.md
+    - docs/manual-usage-guide.md
+    - README.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+    - tests/**
+non_goals:
+  - Do not change runtime memory behavior.
+  - Do not add telemetry.
+  - Do not add server-side processing.
+requirements:
+  - Explain decoded RGBA memory costs, layer multiplication, frame multiplication, and archive parsing risks.
+  - Include PSD and future Aseprite input considerations.
+  - Preserve browser-local privacy wording.
+acceptance_criteria:
+  - Docs help users understand large-file limits without promising universal success.
+  - No app code changes are made.
+verification:
+  - node scripts/auto-dev-cycle.mjs --dry-run
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *forbidden

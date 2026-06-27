@@ -1,0 +1,41 @@
+id: "079"
+title: Expand Aseprite input feasibility for bidirectional conversion
+status: backlog
+priority: medium
+goal: Update `.ase` and `.aseprite` input research for future bidirectional workflows.
+context: >
+  Earlier research covered Aseprite input feasibility. Bidirectional conversion
+  needs a follow-up that focuses on output paths from imported Aseprite data.
+scope:
+  summary: Extend feasibility docs with reader scope, chunk coverage, and downstream output needs.
+  allowed_paths:
+    - docs/aseprite-input-feasibility.md
+    - docs/bidirectional-conversion.md
+    - docs/architecture.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+    - tests/**
+non_goals:
+  - Do not implement an Aseprite reader.
+  - Do not change the Aseprite exporter.
+  - Do not claim round-trip fidelity.
+requirements:
+  - Identify required chunks for layers, frames, cels, opacity, duration, tags, palettes, and image data.
+  - Document unsupported chunks and compatibility risks.
+  - Explain why round-trip conversion may be lossy.
+acceptance_criteria:
+  - The feasibility doc can seed future reader and output-export tasks.
+  - No code or fixture changes are made.
+verification:
+  - node scripts/auto-dev-cycle.mjs --dry-run
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *forbidden

@@ -1,0 +1,41 @@
+id: "078"
+title: Plan output format selector
+status: backlog
+priority: medium
+goal: Plan a future output format selector without implementing new exporters.
+context: >
+  The UI currently downloads Aseprite output. More output formats require clear
+  product and architecture decisions first.
+scope:
+  summary: Document output selector UX, supported future options, and implementation sequence.
+  allowed_paths:
+    - docs/output-format-selector.md
+    - docs/product-spec.md
+    - docs/architecture.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+    - tests/**
+non_goals:
+  - Do not add UI controls.
+  - Do not add exporters.
+  - Do not claim bidirectional conversion works.
+requirements:
+  - Plan output choices such as Aseprite, PNG sequence, spritesheet, GIF, APNG, and research-only PSD.
+  - Define disabled states when an output is not implemented.
+  - Avoid SEO work and monetization changes.
+acceptance_criteria:
+  - The plan breaks output selection into safe implementation tasks.
+  - Docs avoid lossless or perfect conversion claims.
+verification:
+  - node scripts/auto-dev-cycle.mjs --dry-run
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *forbidden

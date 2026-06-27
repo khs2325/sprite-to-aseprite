@@ -1,0 +1,48 @@
+id: "064"
+title: Add PSD file detection
+status: backlog
+priority: medium
+goal: Detect PSD files in browser file selection without implementing conversion.
+context: >
+  PSD support should be introduced incrementally. File detection can be tested
+  before parser integration or importer behavior exists.
+scope:
+  summary: Add `.psd` source classification, labels, and selection validation stubs.
+  allowed_paths:
+    - src/app/fileImport.ts
+    - src/app/fileImport.test.ts
+    - src/app/converterUi.ts
+    - src/app/converterUi.test.ts
+    - docs/manual-usage-guide.md
+    - README.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/core/importers/**
+    - src/core/exporters/**
+non_goals:
+  - Do not parse PSD files.
+  - Do not enable conversion unless a tested importer exists.
+  - Do not add dependencies.
+requirements:
+  - Recognize `.psd` and safe PSD MIME variants if practical.
+  - Show honest labels such as `PSD project`.
+  - Keep file processing browser-local and do not upload files.
+  - Add tests for detection, labels, and unsupported conversion state.
+acceptance_criteria:
+  - PSD files are classified without invoking a parser.
+  - UI copy does not claim full PSD support.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: false
+  max_changed_files: 12
+  forbidden_paths: *forbidden

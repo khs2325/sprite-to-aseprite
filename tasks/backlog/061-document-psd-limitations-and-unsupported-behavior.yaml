@@ -1,0 +1,42 @@
+id: "061"
+title: Document PSD limitations and unsupported behavior
+status: backlog
+priority: high
+goal: Define precise PSD limitations before user-facing PSD support exists.
+context: >
+  PSD files can contain many Photoshop-specific features. The product must be
+  explicit about what will be rejected, flattened, ignored, or preserved.
+scope:
+  summary: Create PSD limitation notes and unsupported-feature behavior.
+  allowed_paths:
+    - docs/psd-format.md
+    - docs/psd-feasibility.md
+    - docs/manual-usage-guide.md
+    - README.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+    - tests/**
+non_goals:
+  - Do not implement PSD import.
+  - Do not add UI mode labels.
+  - Do not claim lossless conversion.
+requirements:
+  - State that the initial target is RGB 8-bit raster layers in one-frame PSD files.
+  - State that text layers, smart objects, adjustment layers, layer effects, PSB, unsupported color modes, masks, groups, and animation are not fully supported.
+  - Explain that unsupported features should produce clear diagnostics or documented omission.
+acceptance_criteria:
+  - Docs avoid full compatibility, perfect conversion, and lossless claims.
+  - Browser-local processing remains clearly stated.
+verification:
+  - node scripts/auto-dev-cycle.mjs --dry-run
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *forbidden

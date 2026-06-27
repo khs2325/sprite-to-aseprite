@@ -1,0 +1,41 @@
+id: "060"
+title: Evaluate ag-psd for browser use
+status: backlog
+priority: high
+goal: Decide whether `ag-psd` is suitable for browser-local PSD parsing.
+context: >
+  A PSD parser dependency may be needed, but it must be evaluated before any
+  package changes or implementation work.
+scope:
+  summary: Research dependency size, license, browser compatibility, bundling risks, and API fit.
+  allowed_paths:
+    - docs/psd-ag-psd-evaluation.md
+    - docs/psd-feasibility.md
+    - docs/product-spec.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+    - tests/**
+non_goals:
+  - Do not install `ag-psd`.
+  - Do not implement a PSD importer.
+  - Do not add sample PSD files from third parties.
+requirements:
+  - Evaluate license compatibility, maintenance status, browser APIs, bundle size, image data access, and unsupported PSD features.
+  - Document whether package changes are required for a later adapter task.
+  - Record risks of parsing untrusted PSD files in the browser.
+acceptance_criteria:
+  - The evaluation recommends use, non-use, or further spike work with clear reasons.
+  - Any future dependency task must include package-file scope and risk notes.
+verification:
+  - node scripts/auto-dev-cycle.mjs --dry-run
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *forbidden

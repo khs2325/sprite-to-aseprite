@@ -1,0 +1,41 @@
+id: "090"
+title: Prepare AdSense review checklist
+status: backlog
+priority: medium
+goal: Create a checklist for future AdSense review without enabling ads.
+context: >
+  The project can prepare review documentation before it has an approved account
+  or publisher ID.
+scope:
+  summary: Document content, navigation, policy, deployment, and no-live-ad checks.
+  allowed_paths:
+    - docs/adsense-review-checklist.md
+    - docs/adsense-readiness.md
+    - docs/static-deployment.md
+    - README.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+    - tests/**
+non_goals:
+  - Do not add live AdSense scripts.
+  - Do not add analytics.
+  - Do not add fake traffic or testimonial claims.
+requirements:
+  - Checklist must cover policy page reachability, privacy wording, contact/about content, no fake ads, no publisher ID until known, and no `ads.txt` until ready.
+  - Include browser-local conversion claims and limitations.
+acceptance_criteria:
+  - A future reviewer can follow the checklist before enabling ads.
+  - No code or secret changes are made.
+verification:
+  - node scripts/auto-dev-cycle.mjs --dry-run
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *forbidden

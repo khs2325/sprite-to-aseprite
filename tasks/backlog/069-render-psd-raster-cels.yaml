@@ -1,0 +1,46 @@
+id: "069"
+title: Render PSD raster cels
+status: backlog
+priority: medium
+goal: Decode supported PSD raster layer image data into Aseprite-compatible cels.
+context: >
+  Pixel conversion is the highest-risk PSD importer step and needs focused
+  fixtures with tiny synthetic images.
+scope:
+  summary: Convert supported PSD raster pixels into full-canvas RGBA cels.
+  allowed_paths:
+    - src/core/importers/psd/**
+    - src/core/conversion.integration.test.ts
+    - tests/fixtures/psd/**
+    - docs/psd-format.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/app/**
+    - src/core/exporters/**
+non_goals:
+  - Do not add UI wiring.
+  - Do not support color modes outside the documented MVP.
+  - Do not add copyrighted PSD fixtures.
+requirements:
+  - Decode supported raster layer pixels into RGBA ImageData.
+  - Place layer pixels at documented offsets within the canvas.
+  - Preserve transparency where supported.
+  - Add pixel-level tests with generated or minimal synthetic fixtures.
+acceptance_criteria:
+  - Tiny PSD fixtures produce exact expected RGBA pixels.
+  - Out-of-bounds or malformed layer data fails safely.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: false
+  max_changed_files: 15
+  forbidden_paths: *forbidden

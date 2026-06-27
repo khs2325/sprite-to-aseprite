@@ -1,0 +1,41 @@
+id: "083"
+title: Research Aseprite to PSD export
+status: backlog
+priority: low
+goal: Assess PSD output feasibility without promising round-trip support.
+context: >
+  PSD output is attractive for workflows but has high compatibility and fidelity
+  risk.
+scope:
+  summary: Research whether internal sprite timelines can be exported to a minimal PSD subset.
+  allowed_paths:
+    - docs/psd-output-feasibility.md
+    - docs/bidirectional-conversion.md
+    - docs/product-spec.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+    - tests/**
+non_goals:
+  - Do not implement PSD export.
+  - Do not claim `.aseprite` to PSD round-trip fidelity.
+  - Do not add dependencies.
+requirements:
+  - Research minimal RGB 8-bit layered PSD output, opacity, names, and layer image data.
+  - Document unsupported PSD features and application compatibility risks.
+  - Explain why round-trip conversion is not guaranteed to be lossless.
+acceptance_criteria:
+  - Feasibility doc provides a cautious recommendation.
+  - No production code changes are made.
+verification:
+  - node scripts/auto-dev-cycle.mjs --dry-run
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *forbidden

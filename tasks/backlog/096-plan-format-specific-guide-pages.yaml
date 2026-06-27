@@ -1,0 +1,41 @@
+id: "096"
+title: Plan format-specific guide pages
+status: backlog
+priority: low
+goal: Plan future guide pages for supported and planned formats without SEO work.
+context: >
+  Format-specific guides can help users, but this task must not optimize Korean
+  SEO keywords or make unsupported claims.
+scope:
+  summary: Create a docs plan for guide pages and required accuracy checks.
+  allowed_paths:
+    - docs/guide-pages-plan.md
+    - docs/manual-usage-guide.md
+    - README.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+    - tests/**
+non_goals:
+  - Do not add route implementation.
+  - Do not do keyword optimization.
+  - Do not add fake examples or testimonials.
+requirements:
+  - Plan guide pages for current formats and future PSD status.
+  - Require browser-local privacy, limitations, and fixture-safe examples on each page.
+  - Mark planned formats clearly as planned until implemented.
+acceptance_criteria:
+  - The plan can be turned into small docs or routing tasks later.
+  - No application code changes are made.
+verification:
+  - node scripts/auto-dev-cycle.mjs --dry-run
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *forbidden

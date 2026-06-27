@@ -1,0 +1,43 @@
+id: "076"
+title: Add model regression tests
+status: backlog
+priority: medium
+goal: Protect layers, frames, opacity, and canvas-size behavior across refactors.
+context: >
+  Future import/export changes should not regress fundamental sprite model
+  semantics.
+scope:
+  summary: Add focused regression tests for model validation and conversion invariants.
+  allowed_paths:
+    - src/core/SpriteProject.test.ts
+    - src/core/validation/**
+    - src/core/conversion.integration.test.ts
+    - tests/fixtures/**
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/app/**
+non_goals:
+  - Do not add new formats.
+  - Do not refactor architecture.
+  - Do not weaken validation.
+requirements:
+  - Cover layer order, frame order, opacity bounds, visibility, cel frame indexes, canvas dimensions, and out-of-bounds cels.
+  - Add tests for invalid states that must remain rejected.
+acceptance_criteria:
+  - Regression tests document core model expectations.
+  - Existing behavior remains unchanged except for bug fixes exposed by tests.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 12
+  forbidden_paths: *forbidden

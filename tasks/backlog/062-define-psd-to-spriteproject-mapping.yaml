@@ -1,0 +1,42 @@
+id: "062"
+title: Define PSD to internal sprite mapping
+status: backlog
+priority: high
+goal: Specify how supported PSD data maps into the internal sprite model.
+context: >
+  PSD import should feed the same canonical model used by existing importers,
+  without leaking Photoshop-specific behavior into the Aseprite exporter.
+scope:
+  summary: Document PSD canvas, layers, opacity, visibility, and raster pixel mapping.
+  allowed_paths:
+    - docs/psd-format.md
+    - docs/architecture.md
+    - docs/product-spec.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+    - tests/**
+non_goals:
+  - Do not implement mapping code.
+  - Do not change `SpriteProject`.
+  - Do not add fixtures.
+requirements:
+  - Define canvas width and height mapping.
+  - Define raster layer order, layer name, visibility, opacity, x/y offset, and cel pixel mapping.
+  - Define one-frame behavior for the MVP.
+  - Document how unsupported PSD features should be diagnosed.
+acceptance_criteria:
+  - Future importer tasks can implement mapping without guessing semantics.
+  - Exporter responsibilities remain separate from importer responsibilities.
+verification:
+  - node scripts/auto-dev-cycle.mjs --dry-run
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *forbidden

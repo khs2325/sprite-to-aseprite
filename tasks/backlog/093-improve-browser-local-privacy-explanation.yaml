@@ -1,0 +1,42 @@
+id: "093"
+title: Improve browser-local privacy explanation
+status: backlog
+priority: medium
+goal: Make the browser-local conversion promise clearer across docs.
+context: >
+  Privacy is central to user trust, especially for private art and PSD files.
+scope:
+  summary: Add a clear explanation of what browser-local processing means and does not mean.
+  allowed_paths:
+    - docs/privacy-browser-local.md
+    - docs/manual-usage-guide.md
+    - README.md
+    - docs/product-spec.md
+    - docs/adsense-readiness.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+    - tests/**
+non_goals:
+  - Do not add privacy UI.
+  - Do not add analytics or tracking.
+  - Do not claim that external issue attachments are private.
+requirements:
+  - Explain that selected files are read by browser APIs and not uploaded to a project server for conversion.
+  - Explain that downloads are generated locally.
+  - Clarify that voluntarily sharing files in issues or external services is separate.
+acceptance_criteria:
+  - Docs reduce ambiguity around browser-local processing.
+  - No code or tracking changes are made.
+verification:
+  - node scripts/auto-dev-cycle.mjs --dry-run
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *forbidden

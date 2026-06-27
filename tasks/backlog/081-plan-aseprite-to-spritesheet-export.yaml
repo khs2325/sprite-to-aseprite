@@ -1,0 +1,40 @@
+id: "081"
+title: Plan Aseprite to spritesheet export
+status: backlog
+priority: medium
+goal: Plan exporting imported Aseprite timelines as spritesheets.
+context: >
+  Spritesheet output requires layout, metadata, trimming, and transparency
+  decisions.
+scope:
+  summary: Document spritesheet PNG and JSON output behavior before implementation.
+  allowed_paths:
+    - docs/spritesheet-output.md
+    - docs/bidirectional-conversion.md
+    - docs/product-spec.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - package.json
+    - package-lock.json
+    - src/**
+    - tests/**
+non_goals:
+  - Do not implement spritesheet export.
+  - Do not implement trimming or rotation.
+  - Do not add UI controls.
+requirements:
+  - Plan grid layout, row/column ordering, frame dimensions, transparency, JSON metadata, and frame durations.
+  - Explain limitations for layers, tags, and source metadata.
+acceptance_criteria:
+  - The output plan defines a small first exporter subset.
+  - No production code changes are made.
+verification:
+  - node scripts/auto-dev-cycle.mjs --dry-run
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *forbidden
