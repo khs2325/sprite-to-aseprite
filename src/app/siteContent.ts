@@ -84,25 +84,6 @@ export function createSiteNavigationLinks(
   });
 }
 
-export function createFutureAdPlaceholder(document: Document): HTMLElement {
-  const placeholder = document.createElement("aside");
-  const heading = document.createElement("h2");
-  const status = document.createElement("p");
-  const policy = document.createElement("p");
-
-  placeholder.className = "future-ad-placeholder";
-  placeholder.setAttribute("aria-labelledby", "future-ad-placeholder-heading");
-  placeholder.setAttribute("data-ad-status", "disabled");
-  heading.id = "future-ad-placeholder-heading";
-  heading.textContent = "Future advertising space";
-  status.textContent =
-    "Ads are not active yet. No advertising script is loaded on this site.";
-  policy.textContent =
-    "This reserved area is intentionally separated from converter controls, downloads, support links, errors, and private file information.";
-  placeholder.append(heading, status, policy);
-  return placeholder;
-}
-
 export function createInformationalPages(document: Document): HTMLElement {
   const container = document.createElement("div");
   container.className = "site-info-pages";
@@ -260,7 +241,6 @@ export function createInformationalPages(document: Document): HTMLElement {
     browserLocalGuide,
     supportedFormatsGuide,
     limitationsGuide,
-    createFutureAdPlaceholder(document),
   );
   return container;
 }

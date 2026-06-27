@@ -108,9 +108,9 @@ fixtures, and small pull requests all help.
 ## Site policy and advertising readiness
 
 The site includes static informational sections for About, Contact, Privacy
-Policy, Terms, and conversion guides. It also includes a disabled future
-advertising placeholder for policy/layout review. Live ads are not active: the
-app does not load AdSense, analytics, tracking scripts, fake ads, or a backend.
+Policy, Terms, and conversion guides. Live ads are not active: the app does not
+load AdSense, analytics, tracking scripts, fake ads, ad placeholders, or a
+backend.
 
 See [docs/adsense-readiness.md](docs/adsense-readiness.md) before adding any
 future advertising code.
