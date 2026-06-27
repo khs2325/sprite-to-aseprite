@@ -109,8 +109,9 @@ The next project-format roadmap continues to focus on small, deterministic,
 browser-local subsets rather than broad compatibility claims:
 
 1. GIMP `.xcf` is research-only at first because it is a living GIMP-native
-   format tied closely to GIMP internals; OpenRaster may be the safer interchange
-   recommendation.
+   format tied closely to GIMP internals. The
+   [XCF feasibility note](gimp-xcf-feasibility.md) recommends no direct importer
+   task now and prefers OpenRaster for GIMP interchange.
 2. LibreSprite/Aseprite `.ase` and `.aseprite` input is also research-only at
    first so binary reader scope, chunk coverage, validation, and round-trip
    limitations are understood before implementation.
