@@ -105,6 +105,16 @@ Contributions are welcome whether or not someone sponsors the project: focused
 bug reports, documentation fixes, compatibility notes, original minimal test
 fixtures, and small pull requests all help.
 
+## Site policy and advertising readiness
+
+The site includes static informational sections for About, Contact, Privacy
+Policy, Terms, and conversion guides. It also includes a disabled future
+advertising placeholder for policy/layout review. Live ads are not active: the
+app does not load AdSense, analytics, tracking scripts, fake ads, or a backend.
+
+See [docs/adsense-readiness.md](docs/adsense-readiness.md) before adding any
+future advertising code.
+
 ## Flat-image limitations
 
 PNG sequences and spritesheets are flat image formats. They contain rendered
