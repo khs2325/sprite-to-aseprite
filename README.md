@@ -86,6 +86,19 @@ frame size, and total frames. Editing rows or columns also recalculates frame
 dimensions. Values snap to the nearest image divisors so the visible grid fits
 exactly without leftover edge pixels.
 
+## Optional support links
+
+The website can show optional support links for GitHub Sponsors, Stripe Payment
+Links, Ko-fi, or Buy Me a Coffee. They are empty by default and must be
+configured with public provider/profile URLs in `src/app/supportLinks.ts` before
+they render as clickable provider buttons.
+
+Support is optional, not required to use the converter, and does not unlock
+hidden functionality. Payment handling stays on the external provider pages;
+the app does not collect credit card data or add a backend. See
+[docs/support.md](docs/support.md) and
+[docs/monetization.md](docs/monetization.md).
+
 ## Flat-image limitations
 
 PNG sequences and spritesheets are flat image formats. They contain rendered

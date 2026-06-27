@@ -42,6 +42,12 @@ import {
 import { mountLayerNamingUi } from "./layerNaming";
 import { renderLargeFileWarning } from "./largeFileWarning";
 import { mountPreviewTimelineUi } from "./previewTimeline";
+import {
+  createSupportEntryPoint,
+  createSupportFooter,
+  createSupportSection,
+  DEFAULT_SUPPORT_LINKS,
+} from "./supportLinks";
 
 type ConverterImporters = {
   importApng: typeof importApng;
@@ -707,16 +713,19 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   root.replaceChildren();
 
   const header = document.createElement("header");
+  const siteNav = document.createElement("nav");
   const title = document.createElement("h1");
   const introduction = document.createElement("p");
   const privacy = document.createElement("p");
+  siteNav.setAttribute("aria-label", "Site links");
+  siteNav.append(createSupportEntryPoint(document));
   title.textContent = "Sprite to Aseprite Converter";
   introduction.textContent =
     "Convert frames into an editable Aseprite timeline from PNG sequences, spritesheets, Piskel projects, OpenRaster projects, Pixelorama projects, Krita projects, and GIF/APNG animations.";
   privacy.textContent =
     "Files are processed browser-locally. Your artwork is never uploaded.";
   privacy.className = "privacy-notice";
-  header.append(title, introduction, privacy);
+  header.append(siteNav, title, introduction, privacy);
 
   const controls = document.createElement("section");
   const controlsHeading = document.createElement("h2");
@@ -893,13 +902,23 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   const previewContainer = document.createElement("div");
   const layerContainer = document.createElement("div");
   const exportContainer = document.createElement("div");
+  const supportSection = createSupportSection(document, DEFAULT_SUPPORT_LINKS);
+  const footer = createSupportFooter(document);
   workspace.className = "workspace";
   previewContainer.className = "panel";
   layerContainer.className = "panel";
   exportContainer.className = "download-area";
   workspace.append(previewContainer, layerContainer);
   convertPanel.append(exportContainer);
-  root.append(header, controls, importPanel, convertPanel, workspace);
+  root.append(
+    header,
+    controls,
+    importPanel,
+    convertPanel,
+    workspace,
+    supportSection,
+    footer,
+  );
 
   let mode: FileImportFormat = "png-sequence";
   let selectedFiles: readonly BrowserSourceFile[] = [];
