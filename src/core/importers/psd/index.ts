@@ -1,3 +1,5 @@
+import type { SpriteProject } from "../../SpriteProject";
+
 const DEFAULT_FRAME_DURATION_MS = 100;
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_DIMENSION = 2048;
@@ -11,6 +13,29 @@ const PSD_VERSION = 1;
 const PSD_COLOR_MODE_RGB = 3;
 const PSD_BITS_PER_CHANNEL = 8;
 const AG_PSD_PACKAGE_NAME = "ag-psd";
+const SUPPORTED_BLEND_MODE = "normal";
+
+const ADJUSTMENT_OR_FILL_LAYER_KEYS = [
+  "brightnessContrast",
+  "levels",
+  "curves",
+  "exposure",
+  "vibrance",
+  "hueSaturation",
+  "colorBalance",
+  "blackAndWhite",
+  "photoFilter",
+  "channelMixer",
+  "colorLookup",
+  "invert",
+  "posterize",
+  "threshold",
+  "gradientMap",
+  "selectiveColor",
+  "solidColor",
+  "gradientFill",
+  "patternFill",
+] as const;
 
 const READ_OPTIONS = {
   skipCompositeImageData: true,
@@ -74,6 +99,7 @@ export type PsdParserLayer = {
   bottom: number;
   children: PsdParserLayer[];
   clipping: boolean;
+  hasAdjustmentOrFill: boolean;
   hasEffects: boolean;
   hasImageData: boolean;
   hasMask: boolean;
@@ -81,6 +107,7 @@ export type PsdParserLayer = {
   hasText: boolean;
   hasVectorMask: boolean;
   imageData?: ImageData;
+  isGroup: boolean;
   left: number;
   name: string;
   opacity: number;
@@ -111,7 +138,9 @@ type RawPsdDocument = {
   width?: unknown;
 };
 
-type RawPsdLayer = {
+type PsdAdjustmentOrFillLayerKey = typeof ADJUSTMENT_OR_FILL_LAYER_KEYS[number];
+
+type RawPsdLayer = Partial<Record<PsdAdjustmentOrFillLayerKey, unknown>> & {
   blendMode?: unknown;
   bottom?: unknown;
   canvas?: unknown;
@@ -396,6 +425,13 @@ function hasOwnValue(layer: RawPsdLayer, key: keyof RawPsdLayer): boolean {
   return layer[key] !== undefined && layer[key] !== null;
 }
 
+function hasAnyOwnValue(
+  layer: RawPsdLayer,
+  keys: readonly (keyof RawPsdLayer)[],
+): boolean {
+  return keys.some((key) => hasOwnValue(layer, key));
+}
+
 function adaptLayer(value: unknown, layerIndex: number, path: string): PsdParserLayer {
   if (!isRecord(value)) {
     fail("invalid-parser-output", `${path} must be an object.`);
@@ -411,6 +447,7 @@ function adaptLayer(value: unknown, layerIndex: number, path: string): PsdParser
   }
 
   const imageData = adaptImageData(layer.imageData, `${path}.imageData`);
+  const hasChildrenProperty = layer.children !== undefined;
   const children = Array.isArray(layer.children)
     ? layer.children.map((child, index) =>
       adaptLayer(child, index, `${path}.children[${index}]`),
@@ -425,6 +462,7 @@ function adaptLayer(value: unknown, layerIndex: number, path: string): PsdParser
     bottom,
     children,
     clipping: expectBoolean(layer.clipping, `${path}.clipping`, false),
+    hasAdjustmentOrFill: hasAnyOwnValue(layer, ADJUSTMENT_OR_FILL_LAYER_KEYS),
     hasEffects: hasOwnValue(layer, "effects"),
     hasImageData: imageData !== undefined,
     hasMask: hasOwnValue(layer, "mask"),
@@ -432,6 +470,7 @@ function adaptLayer(value: unknown, layerIndex: number, path: string): PsdParser
     hasText: hasOwnValue(layer, "text"),
     hasVectorMask: hasOwnValue(layer, "vectorMask"),
     imageData,
+    isGroup: hasChildrenProperty || hasOwnValue(layer, "sectionDivider"),
     left,
     name: expectString(layer.name, `${path}.name`, fallbackName),
     opacity: parseOpacity(layer.opacity, `${path}.opacity`),
@@ -506,6 +545,108 @@ function adaptPsdDocument(value: unknown, metadata: PsdMetadata): PsdParserDocum
       adaptLayer(layer, index, `PSD layer ${index + 1}`),
     ),
     width,
+  };
+}
+
+function psdLayerLabel(layer: PsdParserLayer, sourceLayerIndex: number): string {
+  return `PSD layer ${sourceLayerIndex + 1} (${JSON.stringify(layer.name)})`;
+}
+
+type VisibleSupportedPsdRasterLayer = PsdParserLayer & {
+  imageData: ImageData;
+  visible: true;
+};
+
+function isVisibleSupportedRasterLayer(
+  layer: PsdParserLayer,
+  sourceLayerIndex: number,
+): layer is VisibleSupportedPsdRasterLayer {
+  if (!layer.visible) return false;
+
+  const label = psdLayerLabel(layer, sourceLayerIndex);
+  if (layer.isGroup || layer.children.length > 0) {
+    fail("unsupported-feature", `${label} is a group. PSD groups are not supported.`);
+  }
+  if (layer.hasText) {
+    fail("unsupported-feature", `${label} is a text layer. PSD text layers are not supported.`);
+  }
+  if (layer.hasSmartObject) {
+    fail(
+      "unsupported-feature",
+      `${label} is a smart object. PSD smart objects are not supported.`,
+    );
+  }
+  if (layer.hasAdjustmentOrFill) {
+    fail(
+      "unsupported-feature",
+      `${label} is an adjustment or fill layer. PSD adjustment and fill layers are not supported.`,
+    );
+  }
+  if (layer.hasMask || layer.hasVectorMask) {
+    fail("unsupported-feature", `${label} uses a mask. PSD layer masks are not supported.`);
+  }
+  if (layer.hasEffects) {
+    fail("unsupported-feature", `${label} uses layer effects. PSD layer effects are not supported.`);
+  }
+  if (layer.clipping) {
+    fail("unsupported-feature", `${label} is a clipping layer. PSD clipping masks are not supported.`);
+  }
+  if (layer.blendMode !== SUPPORTED_BLEND_MODE) {
+    fail(
+      "unsupported-feature",
+      `${label} uses blend mode ${JSON.stringify(layer.blendMode)}. Only normal PSD raster layers are supported.`,
+    );
+  }
+  if (!layer.hasImageData || layer.imageData === undefined) {
+    fail("unsupported-feature", `${label} is not a supported PSD raster layer.`);
+  }
+
+  const width = layer.right - layer.left;
+  const height = layer.bottom - layer.top;
+  if (width < 1 || height < 1) {
+    fail("invalid-parser-output", `${label} raster bounds must be positive.`);
+  }
+  if (layer.imageData.width !== width || layer.imageData.height !== height) {
+    fail("invalid-parser-output", `${label} ImageData dimensions must match raster bounds.`);
+  }
+
+  return true;
+}
+
+function convertPsdDocumentToSpriteProject(document: PsdParserDocument): SpriteProject {
+  const layers: SpriteProject["layers"] = [];
+
+  for (const [sourceLayerIndex, layer] of document.layers.entries()) {
+    if (!isVisibleSupportedRasterLayer(layer, sourceLayerIndex)) {
+      continue;
+    }
+
+    layers.push({
+      id: `psd-layer-${sourceLayerIndex}`,
+      name: layer.name,
+      visible: true,
+      opacity: layer.opacity,
+      cels: [
+        {
+          frameIndex: 0,
+          x: layer.left,
+          y: layer.top,
+          imageData: layer.imageData,
+        },
+      ],
+    });
+  }
+
+  if (layers.length === 0) {
+    fail("unsupported-feature", "PSD contains no visible supported raster layers.");
+  }
+
+  return {
+    width: document.width,
+    height: document.height,
+    colorMode: "rgba",
+    frames: document.frames.map((frame) => ({ ...frame })),
+    layers,
   };
 }
 
@@ -592,4 +733,20 @@ export async function parsePsdFile(
   }
 
   return parsePsdBytes(bytes, dependencies);
+}
+
+/** Imports local PSD bytes into the internal one-frame sprite model. */
+export async function importPsdBytes(
+  bytes: Uint8Array,
+  dependencies: PsdParserAdapterDependencies = {},
+): Promise<SpriteProject> {
+  return convertPsdDocumentToSpriteProject(await parsePsdBytes(bytes, dependencies));
+}
+
+/** Reads a browser-selected .psd file and converts supported visible raster layers locally. */
+export async function importPsd(
+  file: File,
+  dependencies: PsdParserAdapterDependencies = {},
+): Promise<SpriteProject> {
+  return convertPsdDocumentToSpriteProject(await parsePsdFile(file, dependencies));
 }
