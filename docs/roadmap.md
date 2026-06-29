@@ -79,6 +79,8 @@
   9. [ ] Krita `.kra` browser UI wiring (task 056)
   10. [x] GIMP `.xcf` feasibility research only (task 057)
   11. [x] LibreSprite/Aseprite `.ase`/`.aseprite` input feasibility research only (task 058)
+- PSD compatibility:
+  1. [x] PSD feasibility research only (task 059)
 
 The project-format sequence starts with researched, fixture-backed subsets
 before importer work, then wires each completed importer into the browser UI.
