@@ -12,8 +12,18 @@ const PSD_SIGNATURE = "8BPS";
 const PSD_VERSION = 1;
 const PSD_COLOR_MODE_RGB = 3;
 const PSD_BITS_PER_CHANNEL = 8;
+const PSD_CHANNEL_RED = 0;
+const PSD_CHANNEL_GREEN = 1;
+const PSD_CHANNEL_BLUE = 2;
+const PSD_CHANNEL_ALPHA = -1;
+const PSD_COMPRESSION_RAW = 0;
+const PSD_COMPRESSION_PACK_BITS = 1;
 const AG_PSD_PACKAGE_NAME = "ag-psd";
 const SUPPORTED_BLEND_MODE = "normal";
+const PSD_NORMAL_BLEND_MODE_KEY = "norm";
+const PSD_LAYER_HIDDEN_FLAG = 0x02;
+const PSD_LAYER_SIGNATURE = "8BIM";
+const PSD_LAYER_SIGNATURE_64 = "8B64";
 
 const ADJUSTMENT_OR_FILL_LAYER_KEYS = [
   "brightnessContrast",
@@ -127,6 +137,33 @@ type PsdHeader = {
 
 type PsdMetadata = PsdHeader & {
   layerCount: number;
+  layerMaskInfoLength: number;
+  layerMaskInfoStart: number;
+};
+
+type NativePsdChannelRecord = {
+  id: number;
+  length: number;
+};
+
+type NativePsdLayerRecord = {
+  blendMode: string;
+  bottom: number;
+  channelRecords: NativePsdChannelRecord[];
+  clipping: boolean;
+  hasAdjustmentOrFill: boolean;
+  hasEffects: boolean;
+  hasMask: boolean;
+  hasSmartObject: boolean;
+  hasText: boolean;
+  hasVectorMask: boolean;
+  isGroup: boolean;
+  left: number;
+  name: string;
+  opacity: number;
+  right: number;
+  top: number;
+  visible: boolean;
 };
 
 type RawPsdDocument = {
@@ -188,6 +225,11 @@ function readInt16BE(bytes: Uint8Array, offset: number): number {
   return value > 0x7fff ? value - 0x10000 : value;
 }
 
+function readInt32BE(bytes: Uint8Array, offset: number): number {
+  const value = readUint32BE(bytes, offset);
+  return value > 0x7fffffff ? value - 0x100000000 : value;
+}
+
 function readAscii(bytes: Uint8Array, offset: number, length: number): string {
   return String.fromCharCode(...bytes.subarray(offset, offset + length));
 }
@@ -214,9 +256,48 @@ function readUint32BEAt(bytes: Uint8Array, offset: number, label: string): numbe
   return readUint32BE(bytes, offset);
 }
 
+function readUint16BEAt(bytes: Uint8Array, offset: number, label: string): number {
+  validateRange(bytes, offset, 2, label);
+  return readUint16BE(bytes, offset);
+}
+
 function readInt16BEAt(bytes: Uint8Array, offset: number, label: string): number {
   validateRange(bytes, offset, 2, label);
   return readInt16BE(bytes, offset);
+}
+
+function readInt32BEAt(bytes: Uint8Array, offset: number, label: string): number {
+  validateRange(bytes, offset, 4, label);
+  return readInt32BE(bytes, offset);
+}
+
+function readUint8At(bytes: Uint8Array, offset: number, label: string): number {
+  validateRange(bytes, offset, 1, label);
+  return bytes[offset];
+}
+
+function validateContainedRange(
+  bytes: Uint8Array,
+  offset: number,
+  length: number,
+  containerEnd: number,
+  label: string,
+): void {
+  validateRange(bytes, offset, length, label);
+  if (offset + length > containerEnd) {
+    fail("invalid-container", `${label} exceeds the PSD layer info section.`);
+  }
+}
+
+function readAsciiAt(
+  bytes: Uint8Array,
+  offset: number,
+  length: number,
+  containerEnd: number,
+  label: string,
+): string {
+  validateContainedRange(bytes, offset, length, containerEnd, label);
+  return readAscii(bytes, offset, length);
 }
 
 function readLengthPrefixedSection(
@@ -274,6 +355,12 @@ function validatePsdHeader(bytes: Uint8Array): PsdHeader {
 
   if (!Number.isSafeInteger(channels) || channels < 1 || channels > 56) {
     fail("invalid-container", "PSD channel count is outside the supported header range.");
+  }
+  if (channels < 3 || channels > 4) {
+    fail(
+      "unsupported-feature",
+      "PSD RGB documents must contain 3 channels plus optional transparency.",
+    );
   }
   if (width < 1 || width > MAX_DIMENSION || height < 1 || height > MAX_DIMENSION) {
     fail(
@@ -347,7 +434,12 @@ function validatePsdMetadata(bytes: Uint8Array): PsdMetadata {
   validateLayerCount(layerCount);
   validateDecodedLayerAllocation(header.width, header.height, layerCount);
 
-  return { ...header, layerCount };
+  return {
+    ...header,
+    layerCount,
+    layerMaskInfoLength: layerMaskInfo.length,
+    layerMaskInfoStart: layerMaskInfo.start,
+  };
 }
 
 function expectInteger(value: unknown, path: string): number {
@@ -548,6 +640,614 @@ function adaptPsdDocument(value: unknown, metadata: PsdMetadata): PsdParserDocum
   };
 }
 
+function normalizeLayerName(value: string | undefined, fallback: string, path: string): string {
+  if (value === undefined || value.trim().length === 0) return fallback;
+  if (value.length > MAX_LAYER_NAME_LENGTH) {
+    fail(
+      "invalid-container",
+      `${path} must be no longer than ${MAX_LAYER_NAME_LENGTH} characters.`,
+    );
+  }
+  return value;
+}
+
+function readPaddedPascalString(
+  bytes: Uint8Array,
+  offset: number,
+  containerEnd: number,
+  path: string,
+): { nextOffset: number; value: string } {
+  const length = readUint8At(bytes, offset, `${path} length`);
+  const contentOffset = offset + 1;
+  const paddedLength = Math.ceil((length + 1) / 4) * 4;
+  validateContainedRange(bytes, contentOffset, length, containerEnd, path);
+  validateContainedRange(bytes, offset, paddedLength, containerEnd, path);
+
+  return {
+    nextOffset: offset + paddedLength,
+    value: readAscii(bytes, contentOffset, length),
+  };
+}
+
+function readUnicodeLayerName(
+  bytes: Uint8Array,
+  offset: number,
+  length: number,
+  path: string,
+): string {
+  validateRange(bytes, offset, length, path);
+  if (length < 4) {
+    fail("invalid-container", `${path} Unicode layer name is truncated.`);
+  }
+
+  const characterCount = readUint32BE(bytes, offset);
+  const byteLength = characterCount * 2;
+  if (
+    !Number.isSafeInteger(byteLength) ||
+    byteLength > length - 4 ||
+    characterCount > MAX_LAYER_NAME_LENGTH
+  ) {
+    fail("invalid-container", `${path} Unicode layer name length is invalid.`);
+  }
+
+  const codeUnits: number[] = [];
+  for (let index = 0; index < characterCount; index += 1) {
+    codeUnits.push(readUint16BE(bytes, offset + 4 + index * 2));
+  }
+  return String.fromCharCode(...codeUnits);
+}
+
+function parseLayerAdditionalInfo(
+  bytes: Uint8Array,
+  offset: number,
+  extraEnd: number,
+  layerName: string,
+): {
+  hasAdjustmentOrFill: boolean;
+  hasEffects: boolean;
+  hasSmartObject: boolean;
+  hasText: boolean;
+  hasVectorMask: boolean;
+  isGroup: boolean;
+  name: string;
+} {
+  let cursor = offset;
+  let name = layerName;
+  let hasAdjustmentOrFill = false;
+  let hasEffects = false;
+  let hasSmartObject = false;
+  let hasText = false;
+  let hasVectorMask = false;
+  let isGroup = false;
+
+  while (cursor < extraEnd) {
+    if (extraEnd - cursor < 12) {
+      const remaining = bytes.subarray(cursor, extraEnd);
+      if (remaining.every((byte) => byte === 0)) break;
+      fail("invalid-container", "PSD layer additional information is truncated.");
+    }
+
+    const signature = readAsciiAt(
+      bytes,
+      cursor,
+      4,
+      extraEnd,
+      "PSD layer additional information signature",
+    );
+    const key = readAsciiAt(
+      bytes,
+      cursor + 4,
+      4,
+      extraEnd,
+      "PSD layer additional information key",
+    );
+    const length = readUint32BEAt(
+      bytes,
+      cursor + 8,
+      "PSD layer additional information length",
+    );
+    const dataOffset = cursor + 12;
+    const paddedLength = length + (length % 2);
+    validateContainedRange(
+      bytes,
+      dataOffset,
+      paddedLength,
+      extraEnd,
+      `PSD layer additional information ${key}`,
+    );
+
+    if (signature !== PSD_LAYER_SIGNATURE && signature !== PSD_LAYER_SIGNATURE_64) {
+      fail("invalid-container", "PSD layer additional information signature is invalid.");
+    }
+    if (key === "luni") {
+      name = readUnicodeLayerName(
+        bytes,
+        dataOffset,
+        length,
+        "PSD layer additional information",
+      );
+    } else if (key === "lsct" || key === "lsdk") {
+      isGroup = true;
+    } else if (key === "TySh" || key === "tySh") {
+      hasText = true;
+    } else if (
+      key === "SoLd" ||
+      key === "PlLd" ||
+      key === "lnk2" ||
+      key === "lnk3" ||
+      key === "lnkD" ||
+      key === "lnkE"
+    ) {
+      hasSmartObject = true;
+    } else if (key === "lfx2" || key === "lrFX") {
+      hasEffects = true;
+    } else if (key === "vmsk" || key === "vsms") {
+      hasVectorMask = true;
+    } else if (
+      key === "brit" ||
+      key === "levl" ||
+      key === "curv" ||
+      key === "expA" ||
+      key === "vibA" ||
+      key === "hue2" ||
+      key === "blnc" ||
+      key === "blwh" ||
+      key === "phfl" ||
+      key === "mixr" ||
+      key === "clrL" ||
+      key === "nvrt" ||
+      key === "post" ||
+      key === "thrs" ||
+      key === "grdm" ||
+      key === "selc" ||
+      key === "SoCo" ||
+      key === "GdFl" ||
+      key === "PtFl"
+    ) {
+      hasAdjustmentOrFill = true;
+    } else {
+      fail(
+        "unsupported-feature",
+        `PSD layer metadata block ${JSON.stringify(key)} is not supported.`,
+      );
+    }
+
+    cursor = dataOffset + paddedLength;
+  }
+
+  return {
+    hasAdjustmentOrFill,
+    hasEffects,
+    hasSmartObject,
+    hasText,
+    hasVectorMask,
+    isGroup,
+    name,
+  };
+}
+
+function parseNativeLayerExtraData(
+  bytes: Uint8Array,
+  offset: number,
+  length: number,
+  fallbackName: string,
+  layerLabel: string,
+): {
+  hasAdjustmentOrFill: boolean;
+  hasEffects: boolean;
+  hasMask: boolean;
+  hasSmartObject: boolean;
+  hasText: boolean;
+  hasVectorMask: boolean;
+  isGroup: boolean;
+  name: string;
+} {
+  const extraEnd = offset + length;
+  validateContainedRange(bytes, offset, length, extraEnd, `${layerLabel} extra data`);
+
+  const maskLength = readUint32BEAt(bytes, offset, `${layerLabel} mask data length`);
+  let cursor = offset + 4;
+  validateContainedRange(bytes, cursor, maskLength, extraEnd, `${layerLabel} mask data`);
+  cursor += maskLength;
+
+  const blendingRangesLength = readUint32BEAt(
+    bytes,
+    cursor,
+    `${layerLabel} blending ranges length`,
+  );
+  cursor += 4;
+  validateContainedRange(
+    bytes,
+    cursor,
+    blendingRangesLength,
+    extraEnd,
+    `${layerLabel} blending ranges`,
+  );
+  if (blendingRangesLength !== 0) {
+    fail(
+      "unsupported-feature",
+      `${layerLabel} uses layer blending ranges, which are not supported.`,
+    );
+  }
+  cursor += blendingRangesLength;
+
+  const pascalName = readPaddedPascalString(
+    bytes,
+    cursor,
+    extraEnd,
+    `${layerLabel} name`,
+  );
+  cursor = pascalName.nextOffset;
+  const additionalInfo = parseLayerAdditionalInfo(
+    bytes,
+    cursor,
+    extraEnd,
+    pascalName.value,
+  );
+
+  return {
+    ...additionalInfo,
+    hasMask: maskLength !== 0,
+    name: normalizeLayerName(additionalInfo.name, fallbackName, `${layerLabel} name`),
+  };
+}
+
+function validateNativeLayerBounds(
+  layer: Pick<NativePsdLayerRecord, "bottom" | "left" | "right" | "top">,
+  metadata: PsdMetadata,
+  layerLabel: string,
+): void {
+  const width = layer.right - layer.left;
+  const height = layer.bottom - layer.top;
+  if (width < 1 || height < 1) {
+    fail("invalid-container", `${layerLabel} raster bounds must be positive.`);
+  }
+  if (
+    layer.left < 0 ||
+    layer.top < 0 ||
+    layer.right > metadata.width ||
+    layer.bottom > metadata.height
+  ) {
+    fail("invalid-container", `${layerLabel} raster bounds must fit within the PSD canvas.`);
+  }
+  if (width * height > MAX_LAYER_PIXELS) {
+    fail(
+      "allocation-limit",
+      `PSD decoded layer pixels exceed the ${MAX_LAYER_PIXELS}-pixel adapter limit.`,
+    );
+  }
+}
+
+function parseNativeLayerRecord(
+  bytes: Uint8Array,
+  offset: number,
+  layerInfoEnd: number,
+  metadata: PsdMetadata,
+  layerIndex: number,
+): { nextOffset: number; record: NativePsdLayerRecord } {
+  const layerLabel = `PSD layer ${layerIndex + 1}`;
+  const top = readInt32BEAt(bytes, offset, `${layerLabel} top`);
+  const left = readInt32BEAt(bytes, offset + 4, `${layerLabel} left`);
+  const bottom = readInt32BEAt(bytes, offset + 8, `${layerLabel} bottom`);
+  const right = readInt32BEAt(bytes, offset + 12, `${layerLabel} right`);
+  const channelCount = readUint16BEAt(bytes, offset + 16, `${layerLabel} channel count`);
+  let cursor = offset + 18;
+
+  validateNativeLayerBounds({ bottom, left, right, top }, metadata, layerLabel);
+  if (channelCount < 3 || channelCount > 4) {
+    fail(
+      "unsupported-feature",
+      `${layerLabel} must contain 3 RGB channels and optional transparency.`,
+    );
+  }
+
+  const channelRecords: NativePsdChannelRecord[] = [];
+  for (let index = 0; index < channelCount; index += 1) {
+    channelRecords.push({
+      id: readInt16BEAt(bytes, cursor, `${layerLabel} channel id`),
+      length: readUint32BEAt(bytes, cursor + 2, `${layerLabel} channel data length`),
+    });
+    cursor += 6;
+  }
+
+  const signature = readAsciiAt(
+    bytes,
+    cursor,
+    4,
+    layerInfoEnd,
+    `${layerLabel} blend mode signature`,
+  );
+  const blendModeKey = readAsciiAt(
+    bytes,
+    cursor + 4,
+    4,
+    layerInfoEnd,
+    `${layerLabel} blend mode key`,
+  );
+  if (signature !== PSD_LAYER_SIGNATURE && signature !== PSD_LAYER_SIGNATURE_64) {
+    fail("invalid-container", `${layerLabel} blend mode signature is invalid.`);
+  }
+  cursor += 8;
+
+  const opacity = readUint8At(bytes, cursor, `${layerLabel} opacity`);
+  const clipping = readUint8At(bytes, cursor + 1, `${layerLabel} clipping`) !== 0;
+  const flags = readUint8At(bytes, cursor + 2, `${layerLabel} flags`);
+  cursor += 4;
+
+  const extraLength = readUint32BEAt(bytes, cursor, `${layerLabel} extra data length`);
+  cursor += 4;
+  validateContainedRange(bytes, cursor, extraLength, layerInfoEnd, `${layerLabel} extra data`);
+  const extra = parseNativeLayerExtraData(
+    bytes,
+    cursor,
+    extraLength,
+    `Layer ${layerIndex + 1}`,
+    layerLabel,
+  );
+
+  return {
+    nextOffset: cursor + extraLength,
+    record: {
+      ...extra,
+      blendMode: blendModeKey === PSD_NORMAL_BLEND_MODE_KEY ? SUPPORTED_BLEND_MODE : blendModeKey,
+      bottom,
+      channelRecords,
+      clipping,
+      left,
+      opacity,
+      right,
+      top,
+      visible: (flags & PSD_LAYER_HIDDEN_FLAG) === 0,
+    },
+  };
+}
+
+function decodePackBitsRow(
+  bytes: Uint8Array,
+  offset: number,
+  length: number,
+  output: Uint8Array,
+  outputOffset: number,
+  expectedLength: number,
+  path: string,
+): void {
+  const sourceEnd = offset + length;
+  const outputEnd = outputOffset + expectedLength;
+  let source = offset;
+  let destination = outputOffset;
+
+  while (source < sourceEnd) {
+    const header = bytes[source];
+    source += 1;
+
+    if (header <= 127) {
+      const count = header + 1;
+      if (source + count > sourceEnd || destination + count > outputEnd) {
+        fail("invalid-container", `${path} PackBits literal run is invalid.`);
+      }
+      output.set(bytes.subarray(source, source + count), destination);
+      source += count;
+      destination += count;
+    } else if (header >= 129) {
+      const count = 257 - header;
+      if (source >= sourceEnd || destination + count > outputEnd) {
+        fail("invalid-container", `${path} PackBits repeat run is invalid.`);
+      }
+      output.fill(bytes[source], destination, destination + count);
+      source += 1;
+      destination += count;
+    }
+  }
+
+  if (destination !== outputEnd) {
+    fail("invalid-container", `${path} PackBits row decoded to the wrong length.`);
+  }
+}
+
+function decodePackBitsChannel(
+  bytes: Uint8Array,
+  offset: number,
+  length: number,
+  width: number,
+  height: number,
+  path: string,
+): Uint8Array {
+  const dataEnd = offset + length;
+  const rowByteCountsLength = height * 2;
+  validateRange(bytes, offset, rowByteCountsLength, `${path} PackBits row lengths`);
+  if (rowByteCountsLength > length) {
+    fail("invalid-container", `${path} PackBits row lengths are truncated.`);
+  }
+
+  const rowByteCounts: number[] = [];
+  let rowCountsOffset = offset;
+  for (let row = 0; row < height; row += 1) {
+    rowByteCounts.push(readUint16BE(bytes, rowCountsOffset));
+    rowCountsOffset += 2;
+  }
+
+  const output = new Uint8Array(width * height);
+  let cursor = offset + rowByteCountsLength;
+  for (let row = 0; row < height; row += 1) {
+    const rowByteCount = rowByteCounts[row];
+    validateRange(bytes, cursor, rowByteCount, `${path} PackBits row ${row + 1}`);
+    if (cursor + rowByteCount > dataEnd) {
+      fail("invalid-container", `${path} PackBits row exceeds its channel data.`);
+    }
+    decodePackBitsRow(
+      bytes,
+      cursor,
+      rowByteCount,
+      output,
+      row * width,
+      width,
+      `${path} row ${row + 1}`,
+    );
+    cursor += rowByteCount;
+  }
+
+  if (cursor !== dataEnd) {
+    fail("invalid-container", `${path} PackBits channel has trailing bytes.`);
+  }
+  return output;
+}
+
+function decodeNativeChannelData(
+  bytes: Uint8Array,
+  offset: number,
+  length: number,
+  width: number,
+  height: number,
+  path: string,
+): Uint8Array {
+  if (length < 2) {
+    fail("invalid-container", `${path} channel data is truncated.`);
+  }
+
+  const compression = readUint16BEAt(bytes, offset, `${path} compression`);
+  const dataOffset = offset + 2;
+  const dataLength = length - 2;
+  const expectedLength = width * height;
+
+  if (compression === PSD_COMPRESSION_RAW) {
+    if (dataLength !== expectedLength) {
+      fail("invalid-container", `${path} raw channel byte count must match layer bounds.`);
+    }
+    return bytes.slice(dataOffset, dataOffset + dataLength);
+  }
+  if (compression === PSD_COMPRESSION_PACK_BITS) {
+    return decodePackBitsChannel(bytes, dataOffset, dataLength, width, height, path);
+  }
+
+  fail("unsupported-feature", `${path} uses unsupported PSD channel compression.`);
+}
+
+function decodeNativeLayerImageData(
+  bytes: Uint8Array,
+  offset: number,
+  layerInfoEnd: number,
+  record: NativePsdLayerRecord,
+  layerIndex: number,
+): { imageData: ImageData; nextOffset: number } {
+  const width = record.right - record.left;
+  const height = record.bottom - record.top;
+  const channels = new Map<number, Uint8Array>();
+  let cursor = offset;
+
+  for (const channelRecord of record.channelRecords) {
+    const path = `PSD layer ${layerIndex + 1} channel ${channelRecord.id}`;
+    if (
+      channelRecord.id !== PSD_CHANNEL_RED &&
+      channelRecord.id !== PSD_CHANNEL_GREEN &&
+      channelRecord.id !== PSD_CHANNEL_BLUE &&
+      channelRecord.id !== PSD_CHANNEL_ALPHA
+    ) {
+      fail("unsupported-feature", `${path} is not supported.`);
+    }
+    if (channels.has(channelRecord.id)) {
+      fail("invalid-container", `${path} is duplicated.`);
+    }
+    validateContainedRange(bytes, cursor, channelRecord.length, layerInfoEnd, path);
+    channels.set(
+      channelRecord.id,
+      decodeNativeChannelData(
+        bytes,
+        cursor,
+        channelRecord.length,
+        width,
+        height,
+        path,
+      ),
+    );
+    cursor += channelRecord.length;
+  }
+
+  const red = channels.get(PSD_CHANNEL_RED);
+  const green = channels.get(PSD_CHANNEL_GREEN);
+  const blue = channels.get(PSD_CHANNEL_BLUE);
+  const alpha = channels.get(PSD_CHANNEL_ALPHA);
+  if (red === undefined || green === undefined || blue === undefined) {
+    fail("invalid-container", `PSD layer ${layerIndex + 1} is missing required RGB channels.`);
+  }
+
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let pixelIndex = 0; pixelIndex < width * height; pixelIndex += 1) {
+    const outputOffset = pixelIndex * 4;
+    data[outputOffset] = red[pixelIndex];
+    data[outputOffset + 1] = green[pixelIndex];
+    data[outputOffset + 2] = blue[pixelIndex];
+    data[outputOffset + 3] = alpha?.[pixelIndex] ?? 255;
+  }
+
+  return {
+    imageData: { colorSpace: "srgb", data, height, width },
+    nextOffset: cursor,
+  };
+}
+
+function parseNativePsdDocument(
+  bytes: Uint8Array,
+  metadata: PsdMetadata,
+): PsdParserDocument {
+  const sectionEnd = metadata.layerMaskInfoStart + metadata.layerMaskInfoLength;
+  const layerInfoLength = readUint32BEAt(
+    bytes,
+    metadata.layerMaskInfoStart,
+    "PSD layer info section length",
+  );
+  const layerInfoStart = metadata.layerMaskInfoStart + 4;
+  validateContainedRange(
+    bytes,
+    layerInfoStart,
+    layerInfoLength,
+    sectionEnd,
+    "PSD layer info section",
+  );
+  const layerInfoEnd = layerInfoStart + layerInfoLength;
+  const rawLayerCount = readInt16BEAt(bytes, layerInfoStart, "PSD layer count");
+  const layerCount = Math.abs(rawLayerCount);
+  if (layerCount !== metadata.layerCount) {
+    fail("invalid-container", "PSD layer count changed during raster decoding.");
+  }
+
+  const records: NativePsdLayerRecord[] = [];
+  let cursor = layerInfoStart + 2;
+  for (let index = 0; index < layerCount; index += 1) {
+    const parsed = parseNativeLayerRecord(bytes, cursor, layerInfoEnd, metadata, index);
+    records.push(parsed.record);
+    cursor = parsed.nextOffset;
+  }
+
+  const layers: PsdParserLayer[] = [];
+  for (const [index, record] of records.entries()) {
+    const decoded = decodeNativeLayerImageData(bytes, cursor, layerInfoEnd, record, index);
+    cursor = decoded.nextOffset;
+    layers.push({
+      ...record,
+      children: [],
+      hasImageData: true,
+      imageData: decoded.imageData,
+    });
+  }
+
+  if (cursor < layerInfoEnd) {
+    const trailing = bytes.subarray(cursor, layerInfoEnd);
+    if (!trailing.every((byte) => byte === 0)) {
+      fail("invalid-container", "PSD layer image data has trailing bytes.");
+    }
+  }
+
+  return {
+    bitsPerChannel: metadata.bitsPerChannel,
+    channels: metadata.channels,
+    colorMode: metadata.colorMode,
+    frames: [{ index: 0, durationMs: DEFAULT_FRAME_DURATION_MS }],
+    height: metadata.height,
+    layers,
+    width: metadata.width,
+  };
+}
+
 function psdLayerLabel(layer: PsdParserLayer, sourceLayerIndex: number): string {
   return `PSD layer ${sourceLayerIndex + 1} (${JSON.stringify(layer.name)})`;
 }
@@ -559,6 +1259,7 @@ type SupportedPsdRasterLayer = PsdParserLayer & {
 function isSupportedRasterLayer(
   layer: PsdParserLayer,
   sourceLayerIndex: number,
+  document: PsdParserDocument,
 ): layer is SupportedPsdRasterLayer {
   const label = psdLayerLabel(layer, sourceLayerIndex);
   if (layer.isGroup || layer.children.length > 0) {
@@ -603,6 +1304,14 @@ function isSupportedRasterLayer(
   if (width < 1 || height < 1) {
     fail("invalid-parser-output", `${label} raster bounds must be positive.`);
   }
+  if (
+    layer.left < 0 ||
+    layer.top < 0 ||
+    layer.right > document.width ||
+    layer.bottom > document.height
+  ) {
+    fail("invalid-parser-output", `${label} raster bounds must fit within the PSD canvas.`);
+  }
   if (layer.imageData.width !== width || layer.imageData.height !== height) {
     fail("invalid-parser-output", `${label} ImageData dimensions must match raster bounds.`);
   }
@@ -610,11 +1319,36 @@ function isSupportedRasterLayer(
   return true;
 }
 
+function renderLayerToFullCanvasImageData(
+  layer: SupportedPsdRasterLayer,
+  document: PsdParserDocument,
+): ImageData {
+  const layerWidth = layer.right - layer.left;
+  const layerHeight = layer.bottom - layer.top;
+  const data = new Uint8ClampedArray(document.width * document.height * 4);
+
+  for (let row = 0; row < layerHeight; row += 1) {
+    const sourceOffset = row * layerWidth * 4;
+    const destinationOffset = ((layer.top + row) * document.width + layer.left) * 4;
+    data.set(
+      layer.imageData.data.subarray(sourceOffset, sourceOffset + layerWidth * 4),
+      destinationOffset,
+    );
+  }
+
+  return {
+    colorSpace: "srgb",
+    data,
+    height: document.height,
+    width: document.width,
+  };
+}
+
 function convertPsdDocumentToSpriteProject(document: PsdParserDocument): SpriteProject {
   const layers: SpriteProject["layers"] = [];
 
   for (const [sourceLayerIndex, layer] of document.layers.entries()) {
-    if (!isSupportedRasterLayer(layer, sourceLayerIndex)) continue;
+    if (!isSupportedRasterLayer(layer, sourceLayerIndex, document)) continue;
 
     layers.push({
       id: `psd-layer-${sourceLayerIndex}`,
@@ -624,9 +1358,9 @@ function convertPsdDocumentToSpriteProject(document: PsdParserDocument): SpriteP
       cels: [
         {
           frameIndex: 0,
-          x: layer.left,
-          y: layer.top,
-          imageData: layer.imageData,
+          x: 0,
+          y: 0,
+          imageData: renderLayerToFullCanvasImageData(layer, document),
         },
       ],
     });
@@ -691,6 +1425,10 @@ export async function parsePsdBytes(
   }
 
   const metadata = validatePsdMetadata(bytes);
+  if (dependencies.parser === undefined && dependencies.loadParser === undefined) {
+    return parseNativePsdDocument(bytes, metadata);
+  }
+
   const parser = await getParser(dependencies);
 
   let parsed: unknown;

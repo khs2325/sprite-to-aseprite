@@ -30,7 +30,7 @@ directly to `SpriteProject`:
       name,
       visible,
       opacity,
-      cels: [{ frameIndex: 0, x, y, imageData }],
+      cels: [{ frameIndex: 0, x: 0, y: 0, imageData }],
     },
   ],
 }
@@ -47,8 +47,8 @@ image.
 
 ## Metadata Validation Limits
 
-Before invoking a PSD parser that may allocate decoded pixel buffers, the
-importer validates the document header and high-level section envelope. The MVP
+Before decoding PSD layer pixels, the importer validates the document header
+and high-level section envelope. The MVP
 accepts only:
 
 - Signature `8BPS` and version `1` PSD files. PSB / Large Document Format is
@@ -62,7 +62,7 @@ accepts only:
 
 Invalid section lengths, missing layer-count metadata, unsupported color
 interpretation, unsupported depth, unsafe dimensions, unsafe layer counts, and
-oversized decoded-pixel allocations reject before producing parser output.
+oversized decoded-pixel allocations reject before producing importer output.
 Diagnostics must be adapter-authored messages only: no stack traces, raw source
 bytes, decoded pixels, or local file paths.
 
@@ -93,10 +93,10 @@ Frame mapping for the MVP:
 
 Raster layer mapping:
 
-- Accept only direct raster layers with normal blend mode and supported pixel
-  channels, regardless of visibility. Groups, text, smart objects, adjustments,
-  masks, effects, clipping, and non-normal blending are not raster-layer
-  preservation.
+- Accept only direct raster layers with normal blend mode, supported pixel
+  channels, and raw or PackBits-compressed channel data, regardless of
+  visibility. Groups, text, smart objects, adjustments, masks, effects,
+  clipping, and non-normal blending are not raster-layer preservation.
 - `SpriteProject.layers` preserves the supported PSD root layer stack in
   Photoshop visual order, top layer first. If a parser exposes layers
   bottom-first, the adapter must normalize to top-first before creating
@@ -114,24 +114,26 @@ Raster layer mapping:
   `2..255` map directly as raw opacity bytes; `1` is interpreted as normalized
   full opacity because parser output cannot distinguish that value from a raw
   byte after normalization.
-- Each supported raster layer creates one `SpriteCel` for frame `0`.
-- `SpriteCel.x` is the layer rectangle `left` offset and `SpriteCel.y` is the
-  layer rectangle `top` offset. Offsets are signed integers. Do not bake the
-  offset into pixel data.
-- `SpriteCel.imageData.width` is `right - left`; `SpriteCel.imageData.height`
-  is `bottom - top`. These dimensions must be positive and within allocation
-  limits before constructing `ImageData`.
-- Pixel data is row-major RGBA for the layer rectangle, starting at that
-  rectangle's top-left pixel. PSD channel `0` maps to red, `1` to green, `2` to
-  blue, and `-1` to alpha. If a supported raster layer has no transparency
-  channel, synthesize alpha `255`.
+- Each supported raster layer creates one full-canvas `SpriteCel` for frame
+  `0` with `SpriteCel.x: 0` and `SpriteCel.y: 0`.
+- The PSD layer rectangle (`left`, `top`, `right`, `bottom`) must be positive
+  and fully inside the PSD canvas. The importer applies `left` and `top` while
+  copying decoded pixels into the full-canvas cel.
+- `SpriteCel.imageData.width` is the PSD canvas width and
+  `SpriteCel.imageData.height` is the PSD canvas height. Pixels outside the
+  source layer rectangle remain transparent.
+- Decoded layer pixel data is row-major RGBA for the layer rectangle, starting
+  at that rectangle's top-left pixel. PSD channel `0` maps to red, `1` to
+  green, `2` to blue, and `-1` to alpha. If a supported raster layer has no
+  transparency channel, synthesize alpha `255`.
 - Do not premultiply alpha, apply layer opacity into pixels, composite layers,
   consume the flattened merged image, or use masks/effects to alter cel pixels.
   Layer opacity remains `SpriteLayer.opacity`; per-pixel alpha remains in
   `ImageData`.
 - Missing required channels, duplicate channel IDs, channel dimensions or
   decoded byte counts that do not match the layer rectangle, empty raster
-  layers, and unsafe rectangles must reject the file with a diagnostic.
+  layers, out-of-canvas rectangles, and unsafe rectangles must reject the file
+  with a diagnostic.
 
 ## Unsupported Feature Behavior
 

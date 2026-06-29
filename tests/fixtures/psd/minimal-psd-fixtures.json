@@ -12,9 +12,9 @@
       "layers": [
         {
           "name": "Top hidden half",
-          "top": -1,
+          "top": 0,
           "left": 1,
-          "bottom": 1,
+          "bottom": 2,
           "right": 3,
           "blendMode": "normal",
           "opacity": 0.5,
