@@ -40,11 +40,79 @@ This is not full Photoshop compatibility. It is not perfect or lossless PSD
 conversion. It must not claim to recover layers from a flattened composite
 image.
 
+## PSD To `SpriteProject` Mapping
+
+The PSD importer owns all Photoshop-specific parsing and validation. Its output
+contract is a plain `SpriteProject`; the Aseprite exporter must not inspect PSD
+metadata, decode PSD channels, apply PSD blend behavior, or diagnose PSD
+features.
+
+Canvas mapping:
+
+- `SpriteProject.width` is the PSD header width in pixels.
+- `SpriteProject.height` is the PSD header height in pixels.
+- `SpriteProject.colorMode` is always `"rgba"` for accepted files.
+- Resolution, ruler, guide, thumbnail, and merged-composite metadata do not map
+  to `SpriteProject`.
+- Do not trim, scale, resample, or expand the canvas while importing.
+
+Frame mapping for the MVP:
+
+- Accepted PSD files always produce exactly one frame:
+  `{ index: 0, durationMs: 100 }`.
+- Every supported layer cel has `frameIndex: 0`.
+- PSD timeline, video, frame animation metadata, and layer-name conventions that
+  imply frames are unsupported. Reject those files rather than rebuilding a
+  guessed timeline.
+
+Raster layer mapping:
+
+- Accept only direct raster layers with normal blend mode and supported pixel
+  channels. Groups, text, smart objects, adjustments, masks, effects, clipping,
+  and non-normal blending are not raster-layer preservation.
+- `SpriteProject.layers` preserves the PSD root layer stack in Photoshop visual
+  order, top layer first. If a parser exposes layers bottom-first, the adapter
+  must normalize to top-first before creating `SpriteProject`.
+- `SpriteLayer.id` is generated deterministically from the normalized source
+  layer index, such as `psd-layer-0`.
+- `SpriteLayer.name` uses the Unicode layer name when present. Fall back to the
+  Pascal layer name only when it decodes safely. If no usable name exists, use a
+  deterministic generated name such as `Layer 1`.
+- `SpriteLayer.visible` maps from the PSD layer visibility flag. For parser APIs
+  that expose `hidden`, use `visible = !hidden`.
+- `SpriteLayer.opacity` is the PSD layer opacity mapped to the internal
+  `0..255` integer range. A raw PSD opacity byte maps directly; a parser value
+  in `0..1` maps with `Math.round(value * 255)`.
+- Each supported raster layer creates one `SpriteCel` for frame `0`.
+- `SpriteCel.x` is the layer rectangle `left` offset and `SpriteCel.y` is the
+  layer rectangle `top` offset. Offsets are signed integers. Do not bake the
+  offset into pixel data.
+- `SpriteCel.imageData.width` is `right - left`; `SpriteCel.imageData.height`
+  is `bottom - top`. These dimensions must be positive and within allocation
+  limits before constructing `ImageData`.
+- Pixel data is row-major RGBA for the layer rectangle, starting at that
+  rectangle's top-left pixel. PSD channel `0` maps to red, `1` to green, `2` to
+  blue, and `-1` to alpha. If a supported raster layer has no transparency
+  channel, synthesize alpha `255`.
+- Do not premultiply alpha, apply layer opacity into pixels, composite layers,
+  consume the flattened merged image, or use masks/effects to alter cel pixels.
+  Layer opacity remains `SpriteLayer.opacity`; per-pixel alpha remains in
+  `ImageData`.
+- Missing required channels, duplicate channel IDs, channel dimensions or
+  decoded byte counts that do not match the layer rectangle, empty raster
+  layers, and unsafe rectangles must reject the file with a diagnostic.
+
 ## Unsupported Feature Behavior
 
 Unsupported PSD features must not be silently presented as preserved. They
 should produce clear diagnostics or be documented as omitted when they do not
 affect the `SpriteProject` output.
+
+When rejecting, fail the whole import before producing `SpriteProject`. The
+diagnostic should name the first unsupported or malformed feature in product
+terms, such as `PSD text layers are not supported`, and may include safe layer
+names or section names. It must not expose raw artwork bytes, decoded pixel
+data, stack traces, or local user file paths.
 
 Reject the file with a specific diagnostic for unsupported features that affect
 pixels, layer structure, color interpretation, or timeline behavior, including:
