@@ -11,6 +11,7 @@ Primary references:
   https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/
 - W3C File API:
   https://www.w3.org/TR/FileAPI/
+- PSD limitation contract: [psd-format.md](psd-format.md)
 - Existing product wording policy: [product-spec.md](product-spec.md)
 
 ## Recommendation
@@ -18,6 +19,7 @@ Primary references:
 A browser-local PSD MVP is practical only if it is treated as a small binary
 reader for fixture-backed raster data, not as broad Photoshop import.
 
+The initial target is RGB 8-bit raster layers in one-frame PSD files.
 Proceed with a future PSD MVP only for version-1 `.psd` files with RGB color,
 8 bits per channel, direct raster layers, and exactly one generated
 `SpriteFrame`. The importer should preserve supported layer names, visibility,
