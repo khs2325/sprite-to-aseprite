@@ -36,10 +36,10 @@ directly to `SpriteProject`:
 }
 ```
 
-Within that subset, convert visible supported raster layer names, source order,
-opacity, offsets, and RGBA pixel data when those values are present in supported
-layer records. Hidden source layers are omitted from the one-frame MVP rather
-than presented as preserved layers.
+Within that subset, convert supported raster layer names, source order,
+visibility, opacity, offsets, and RGBA pixel data when those values are present
+in supported layer records. Hidden supported raster layers are preserved as
+`visible: false`.
 
 This is not full Photoshop compatibility. It is not perfect or lossless PSD
 conversion. It must not claim to recover layers from a flattened composite
@@ -94,9 +94,10 @@ Frame mapping for the MVP:
 Raster layer mapping:
 
 - Accept only direct raster layers with normal blend mode and supported pixel
-  channels. Groups, text, smart objects, adjustments, masks, effects, clipping,
-  and non-normal blending are not raster-layer preservation.
-- `SpriteProject.layers` preserves the visible supported PSD root layer stack in
+  channels, regardless of visibility. Groups, text, smart objects, adjustments,
+  masks, effects, clipping, and non-normal blending are not raster-layer
+  preservation.
+- `SpriteProject.layers` preserves the supported PSD root layer stack in
   Photoshop visual order, top layer first. If a parser exposes layers
   bottom-first, the adapter must normalize to top-first before creating
   `SpriteProject`.
@@ -104,13 +105,16 @@ Raster layer mapping:
   layer index, such as `psd-layer-0`.
 - `SpriteLayer.name` uses the Unicode layer name when present. Fall back to the
   Pascal layer name only when it decodes safely. If no usable name exists, use a
-  deterministic generated name such as `Layer 1`.
-- `SpriteLayer.visible` is `true` for converted PSD layers. Source layers whose
-  visibility flag is hidden are omitted from this MVP.
+  deterministic generated name such as `Layer 1`. Duplicate names are preserved
+  as-is; the importer does not rename or deduplicate source layer names.
+- `SpriteLayer.visible` preserves the supported PSD layer visibility flag.
 - `SpriteLayer.opacity` is the PSD layer opacity mapped to the internal
-  `0..255` integer range. A raw PSD opacity byte maps directly; a parser value
-  in `0..1` maps with `Math.round(value * 255)`.
-- Each visible supported raster layer creates one `SpriteCel` for frame `0`.
+  `0..255` integer range. Missing opacity defaults to `255`. Parser values in
+  `0..1` map with `Math.round(value * 255)`. Integer parser values from
+  `2..255` map directly as raw opacity bytes; `1` is interpreted as normalized
+  full opacity because parser output cannot distinguish that value from a raw
+  byte after normalization.
+- Each supported raster layer creates one `SpriteCel` for frame `0`.
 - `SpriteCel.x` is the layer rectangle `left` offset and `SpriteCel.y` is the
   layer rectangle `top` offset. Offsets are signed integers. Do not bake the
   offset into pixel data.
