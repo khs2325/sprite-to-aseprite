@@ -7,6 +7,10 @@ Any future PSD parser must keep processing browser-local: selected PSD bytes,
 decoded pixels, and generated `.aseprite` files must not be uploaded to a
 server or sent to a remote converter.
 
+Test fixtures for this format must follow the synthetic, reproducible strategy
+in [psd-fixtures.md](psd-fixtures.md). Do not commit PSD samples from the web,
+private projects, or user artwork.
+
 ## Initial Target
 
 The initial target is RGB 8-bit raster layers in one-frame PSD files.

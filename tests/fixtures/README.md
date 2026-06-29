@@ -112,6 +112,11 @@ tests must convert those bytes to browser `ImageData` RGBA. `preview.png` and
 `mergedimage.png` are flattened previews and must not be used to recover
 layers.
 
+Planned PSD fixtures are documented in `docs/psd-fixtures.md`. Do not add PSD
+binary fixtures yet. Future `.psd` fixtures must be synthetic, generated
+locally, reproducible byte-for-byte, and free of downloaded, copyrighted,
+private, or user-provided artwork.
+
 The first PNG frame is a coral four-pixel spark around a yellow center. The
 second is the same shape shifted one pixel right and colored cyan. All unused
 pixels are transparent. The flat PNG fixtures rebuild a timeline from frames;
