@@ -355,6 +355,20 @@ editor metadata. Flattened `preview.png` and `mergedimage.png` entries are not
 used to recover source layers. Unsupported or malformed data is rejected with a
 safe diagnostic that does not display raw source contents or stack traces.
 
+## Planned PSD limitations
+
+PSD import is not available in the current browser app. The planned limitation
+contract is documented in [psd-format.md](psd-format.md), and any future PSD
+processing must remain browser-local with no artwork upload or remote
+conversion service.
+
+The initial target is RGB 8-bit raster layers in one-frame PSD files. Text
+layers, smart objects, adjustment layers, layer effects, PSB, unsupported color
+modes, masks, groups, and animation are not fully supported. Unsupported
+features should produce clear diagnostics or be documented as omitted when they
+do not affect the converted `SpriteProject`. PSD support must not be described
+as full Photoshop compatibility, perfect conversion, or lossless conversion.
+
 ## GIF animation
 
 GIF import follows the [documented supported GIF subset](gif-format.md).

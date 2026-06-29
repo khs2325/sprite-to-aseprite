@@ -64,8 +64,13 @@ blend modes, and animation metadata are not preserved. Pixelorama tilemaps,
 effects, layer types outside the supported raster pixel subset, and non-normal
 blend modes are not preserved. Krita masks, vector layers, animation timelines,
 unsupported color depths or profiles, effects, and flattened previews are not
-preserved or used to recover source layers. PSD and other JSON schemas are not
-currently supported.
+preserved or used to recover source layers.
+
+PSD is not currently supported. Planned PSD behavior is documented in
+[docs/psd-format.md](docs/psd-format.md): the initial target is RGB 8-bit
+raster layers in one-frame PSD files, with unsupported Photoshop features
+rejected clearly or documented as omitted. Other JSON schemas are not currently
+supported.
 
 ## Browser-only processing
 
