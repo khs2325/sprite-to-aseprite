@@ -112,6 +112,7 @@ export const MODE_LABELS: Record<FileImportFormat, string> = {
   openraster: "OpenRaster project",
   pixelorama: "Pixelorama project",
   krita: "Krita project",
+  psd: "PSD project",
 };
 
 export function getImportDropInstructions(mode: FileImportFormat): string {
@@ -133,7 +134,10 @@ export function getImportDropInstructions(mode: FileImportFormat): string {
   if (mode === "krita") {
     return "Drop exactly one .kra file from the documented minimal raster subset here, or choose one below.";
   }
-  return "Drag and drop PNG, JSON, Piskel, GIF, APNG, OpenRaster, Pixelorama, or Krita files here, or choose files below.";
+  if (mode === "psd") {
+    return "Drop exactly one .psd file here to detect it. PSD conversion is not available yet.";
+  }
+  return "Drag and drop PNG, JSON, Piskel, GIF, APNG, OpenRaster, Pixelorama, Krita, or PSD files here, or choose files below. PSD conversion is not available yet.";
 }
 
 export type GridAutoCalculation = {
@@ -456,6 +460,7 @@ export function getSourceSelectionError(
   const openRasterCount = files.filter((file) => file.kind === "ora").length;
   const pixeloramaCount = files.filter((file) => file.kind === "pxo").length;
   const kritaCount = files.filter((file) => file.kind === "kra").length;
+  const psdCount = files.filter((file) => file.kind === "psd").length;
 
   if (mode === "png-sequence") {
     return pngCount > 0 && pngCount === files.length
@@ -497,6 +502,11 @@ export function getSourceSelectionError(
       ? null
       : "Krita mode requires exactly one .kra file.";
   }
+  if (mode === "psd") {
+    return psdCount === 1 && files.length === 1
+      ? "PSD files can be selected for detection, but PSD conversion is not available yet."
+      : "PSD mode requires exactly one .psd file.";
+  }
   return files.length === 1 && apngCount + pngCount === 1
     ? null
     : "APNG mode requires exactly one .apng or APNG-compatible .png file.";
@@ -511,6 +521,9 @@ export async function convertSourceFiles(
   const selectionError = getSourceSelectionError(mode, files);
   if (selectionError !== null) {
     throw new Error(selectionError);
+  }
+  if (mode === "psd") {
+    throw new Error("PSD conversion is not available yet.");
   }
 
   const pngFiles = files
@@ -623,6 +636,9 @@ export function getConversionSuccessStatus(
       `and ${layerCount} preserved ${layerNoun}. Ready to download.`
     );
   }
+  if (mode === "psd") {
+    return "PSD conversion is not available yet.";
+  }
   return (
     `Converted ${frameCount} ${frameNoun} ` +
     "into an editable Aseprite timeline. Ready to download."
@@ -666,6 +682,9 @@ export function getConversionErrorMessage(
     return diagnostic === null
       ? "Krita import failed: Check that the .kra file contains supported 8-bit RGBA paint layers from the documented minimal raster subset."
       : `Krita import failed: ${diagnostic}`;
+  }
+  if (mode === "psd") {
+    return "PSD conversion is not available yet.";
   }
   if (mode !== "piskel") {
     return error instanceof Error && error.message.trim().length > 0
@@ -844,7 +863,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   fileInput.accept = SUPPORTED_SOURCE_ACCEPT;
   fileInput.setAttribute(
     "aria-label",
-    "Choose PNG, JSON, Piskel, GIF, APNG, OpenRaster, Pixelorama, or Krita sprite source files",
+    "Choose PNG, JSON, Piskel, GIF, APNG, OpenRaster, Pixelorama, Krita, or PSD sprite source files",
   );
   sourceError.setAttribute("role", "alert");
   sourceError.setAttribute("aria-live", "assertive");
@@ -1301,6 +1320,8 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
                     ? "Converting the Pixelorama project browser-locally. This may take a while."
                     : mode === "krita"
                       ? "Converting the Krita project browser-locally. This may take a while."
+                      : mode === "psd"
+                        ? "PSD conversion is not available yet."
                       : "Converting files browser-locally. This may take a while.",
     });
 
@@ -1330,7 +1351,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
       syncProject(null);
       renderConversionState(conversionElements, {
         isWorking: false,
-        canConvert: true,
+        canConvert: mode !== "psd",
         status:
           mode === "piskel"
             ? "Piskel conversion did not complete."
@@ -1344,6 +1365,8 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
                     ? "Pixelorama conversion did not complete."
                     : mode === "krita"
                       ? "Krita conversion did not complete."
+                      : mode === "psd"
+                        ? "PSD conversion is not available."
                       : "Conversion did not complete.",
         error: getConversionErrorMessage(mode, error),
       });
