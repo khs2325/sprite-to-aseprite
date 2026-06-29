@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   getPsdParserDiagnostic,
+  importPsd,
+  importPsdBytes,
   parsePsdBytes,
   parsePsdFile,
   PsdParserAdapterError,
@@ -68,6 +70,19 @@ function fixture(name: string): PsdFixture {
     throw new Error(`Missing PSD fixture ${name}.`);
   }
   return found;
+}
+
+function visibleRasterFixture(): PsdFixture {
+  const psd = fixture("rgb8-two-raster-layers");
+  return {
+    ...psd,
+    name: "rgb8-visible-raster-layers",
+    layers: psd.layers.map((layer, index) => ({
+      ...layer,
+      hidden: false,
+      name: index === 0 ? "Top visible half" : layer.name,
+    })),
+  };
 }
 
 function uint16BE(value: number): Buffer {
@@ -274,7 +289,7 @@ describe("PSD parser adapter", () => {
     expect(parsed).toMatchObject({ width: 4, height: 3 });
   });
 
-  it("keeps group and text parser metadata visible without converting it", async () => {
+  it("normalizes group and text parser metadata for later diagnostics", async () => {
     const psd = fixture("rgb8-group-and-text-metadata");
     const parsed = await parsePsdBytes(psdFixtureBytes(psd), {
       parser: {
@@ -294,6 +309,148 @@ describe("PSD parser adapter", () => {
         name: "Folder",
       },
     ]);
+  });
+});
+
+describe("PSD importer", () => {
+  it("converts visible supported raster layers into the internal sprite model", async () => {
+    const psd = visibleRasterFixture();
+    const project = await importPsdBytes(psdFixtureBytes(psd), {
+      parser: {
+        readPsd: () => parserDocumentFromFixture(psd),
+      },
+    });
+
+    expect(project).toMatchObject({
+      width: 4,
+      height: 3,
+      colorMode: "rgba",
+      frames: [{ index: 0, durationMs: 100 }],
+      layers: [
+        {
+          id: "psd-layer-0",
+          name: "Top visible half",
+          visible: true,
+          opacity: 128,
+          cels: [
+            {
+              frameIndex: 0,
+              x: 1,
+              y: -1,
+              imageData: {
+                width: 2,
+                height: 2,
+              },
+            },
+          ],
+        },
+        {
+          id: "psd-layer-1",
+          name: "Base visible",
+          visible: true,
+          opacity: 255,
+          cels: [
+            {
+              frameIndex: 0,
+              x: 0,
+              y: 1,
+              imageData: {
+                width: 2,
+                height: 2,
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect([...project.layers[0].cels[0].imageData.data]).toEqual(
+      psd.layers[0].imageData!.rgba,
+    );
+    expect([...project.layers[1].cels[0].imageData.data]).toEqual(
+      psd.layers[1].imageData!.rgba,
+    );
+  });
+
+  it("omits hidden raster layers instead of presenting them as preserved", async () => {
+    const psd = fixture("rgb8-two-raster-layers");
+    const project = await importPsd(createFile(`${psd.name}.psd`, psdFixtureBytes(psd)), {
+      parser: {
+        readPsd: () => parserDocumentFromFixture(psd),
+      },
+    });
+
+    expect(project.frames).toEqual([{ index: 0, durationMs: 100 }]);
+    expect(project.layers).toHaveLength(1);
+    expect(project.layers[0]).toMatchObject({
+      id: "psd-layer-1",
+      name: "Base visible",
+      visible: true,
+      opacity: 255,
+      cels: [{ frameIndex: 0, x: 0, y: 1 }],
+    });
+  });
+
+  it("rejects visible groups instead of preserving unsupported layer structure", async () => {
+    const psd = fixture("rgb8-group-and-text-metadata");
+
+    await expectPsdError(
+      importPsdBytes(psdFixtureBytes(psd), {
+        parser: {
+          readPsd: () => parserDocumentFromFixture(psd),
+        },
+      }),
+      "unsupported-feature",
+      "PSD groups are not supported",
+    );
+  });
+
+  it("rejects visible text layers instead of using parser preview pixels", async () => {
+    const psd = visibleRasterFixture();
+    const textLayer = {
+      ...parserLayerFromFixture(psd.layers[0]),
+      name: "Caption",
+      text: { text: "Synthetic" },
+    };
+
+    await expectPsdError(
+      importPsdBytes(psdFixtureBytes(psd, { layerCount: 1 }), {
+        parser: {
+          readPsd: () => ({
+            ...parserDocumentFromFixture(psd),
+            children: [textLayer],
+          }),
+        },
+      }),
+      "unsupported-feature",
+      "PSD text layers are not supported",
+    );
+  });
+
+  it("rejects raster layers whose decoded pixels do not match layer bounds", async () => {
+    const psd = visibleRasterFixture();
+    const mismatchedLayer = {
+      ...parserLayerFromFixture(psd.layers[0]),
+      imageData: {
+        colorSpace: "srgb",
+        data: new Uint8ClampedArray(2 * 2 * 4),
+        height: 2,
+        width: 2,
+      },
+      right: 4,
+    };
+
+    await expectPsdError(
+      importPsdBytes(psdFixtureBytes(psd, { layerCount: 1 }), {
+        parser: {
+          readPsd: () => ({
+            ...parserDocumentFromFixture(psd),
+            children: [mismatchedLayer],
+          }),
+        },
+      }),
+      "invalid-parser-output",
+      "ImageData dimensions must match raster bounds",
+    );
   });
 });
 

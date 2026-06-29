@@ -1,9 +1,9 @@
 # PSD `.psd` Format Notes
 
-Status: documentation-only. No user-facing PSD importer exists yet.
+Status: core importer MVP. No user-facing PSD importer is wired into the UI yet.
 
-This note defines the intended PSD limitation contract before implementation.
-Any future PSD parser must keep processing browser-local: selected PSD bytes,
+This note defines the PSD limitation contract for the browser-local importer.
+Any PSD parser must keep processing browser-local: selected PSD bytes,
 decoded pixels, and generated `.aseprite` files must not be uploaded to a
 server or sent to a remote converter.
 
@@ -15,7 +15,7 @@ private projects, or user artwork.
 
 The initial target is RGB 8-bit raster layers in one-frame PSD files.
 
-A future importer should accept only version-1 `.psd` files that can map
+The importer accepts only version-1 `.psd` files that can map
 directly to `SpriteProject`:
 
 ```ts
@@ -36,9 +36,10 @@ directly to `SpriteProject`:
 }
 ```
 
-Within that subset, preserve supported raster layer names, source order,
-visibility, opacity, offsets, and RGBA pixel data when those values are present
-in supported layer records.
+Within that subset, convert visible supported raster layer names, source order,
+opacity, offsets, and RGBA pixel data when those values are present in supported
+layer records. Hidden source layers are omitted from the one-frame MVP rather
+than presented as preserved layers.
 
 This is not full Photoshop compatibility. It is not perfect or lossless PSD
 conversion. It must not claim to recover layers from a flattened composite
@@ -95,20 +96,21 @@ Raster layer mapping:
 - Accept only direct raster layers with normal blend mode and supported pixel
   channels. Groups, text, smart objects, adjustments, masks, effects, clipping,
   and non-normal blending are not raster-layer preservation.
-- `SpriteProject.layers` preserves the PSD root layer stack in Photoshop visual
-  order, top layer first. If a parser exposes layers bottom-first, the adapter
-  must normalize to top-first before creating `SpriteProject`.
+- `SpriteProject.layers` preserves the visible supported PSD root layer stack in
+  Photoshop visual order, top layer first. If a parser exposes layers
+  bottom-first, the adapter must normalize to top-first before creating
+  `SpriteProject`.
 - `SpriteLayer.id` is generated deterministically from the normalized source
   layer index, such as `psd-layer-0`.
 - `SpriteLayer.name` uses the Unicode layer name when present. Fall back to the
   Pascal layer name only when it decodes safely. If no usable name exists, use a
   deterministic generated name such as `Layer 1`.
-- `SpriteLayer.visible` maps from the PSD layer visibility flag. For parser APIs
-  that expose `hidden`, use `visible = !hidden`.
+- `SpriteLayer.visible` is `true` for converted PSD layers. Source layers whose
+  visibility flag is hidden are omitted from this MVP.
 - `SpriteLayer.opacity` is the PSD layer opacity mapped to the internal
   `0..255` integer range. A raw PSD opacity byte maps directly; a parser value
   in `0..1` maps with `Math.round(value * 255)`.
-- Each supported raster layer creates one `SpriteCel` for frame `0`.
+- Each visible supported raster layer creates one `SpriteCel` for frame `0`.
 - `SpriteCel.x` is the layer rectangle `left` offset and `SpriteCel.y` is the
   layer rectangle `top` offset. Offsets are signed integers. Do not bake the
   offset into pixel data.
