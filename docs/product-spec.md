@@ -103,6 +103,21 @@ paint-layer payloads. Flattened `preview.png` and `mergedimage.png` entries are
 not used to recover source layers. Artwork is processed locally and is never
 uploaded.
 
+## Planned post-MVP PSD import
+
+PSD (`.psd`) is research-only at first. The
+[PSD feasibility note](psd-feasibility.md) recommends a narrow browser-local
+MVP for RGB 8-bit PSD files with direct raster layers and one generated frame,
+while explicitly rejecting full Photoshop compatibility.
+
+Likely supported data includes layer names, visibility, opacity, offsets, and
+RGBA pixels when those values are present in supported raster layer records.
+Unsupported source features such as text layers, smart objects, adjustment
+layers, effects, masks, groups, PSB, non-RGB color modes, high bit depths, and
+timeline animation must be rejected or documented without implying lossless
+conversion. Artwork must remain local to the browser and must never be
+uploaded.
+
 ## Planned additional free/open art tool project formats
 
 The next project-format roadmap continues to focus on small, deterministic,
