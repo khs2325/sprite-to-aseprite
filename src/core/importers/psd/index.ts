@@ -552,17 +552,14 @@ function psdLayerLabel(layer: PsdParserLayer, sourceLayerIndex: number): string 
   return `PSD layer ${sourceLayerIndex + 1} (${JSON.stringify(layer.name)})`;
 }
 
-type VisibleSupportedPsdRasterLayer = PsdParserLayer & {
+type SupportedPsdRasterLayer = PsdParserLayer & {
   imageData: ImageData;
-  visible: true;
 };
 
-function isVisibleSupportedRasterLayer(
+function isSupportedRasterLayer(
   layer: PsdParserLayer,
   sourceLayerIndex: number,
-): layer is VisibleSupportedPsdRasterLayer {
-  if (!layer.visible) return false;
-
+): layer is SupportedPsdRasterLayer {
   const label = psdLayerLabel(layer, sourceLayerIndex);
   if (layer.isGroup || layer.children.length > 0) {
     fail("unsupported-feature", `${label} is a group. PSD groups are not supported.`);
@@ -617,14 +614,12 @@ function convertPsdDocumentToSpriteProject(document: PsdParserDocument): SpriteP
   const layers: SpriteProject["layers"] = [];
 
   for (const [sourceLayerIndex, layer] of document.layers.entries()) {
-    if (!isVisibleSupportedRasterLayer(layer, sourceLayerIndex)) {
-      continue;
-    }
+    if (!isSupportedRasterLayer(layer, sourceLayerIndex)) continue;
 
     layers.push({
       id: `psd-layer-${sourceLayerIndex}`,
       name: layer.name,
-      visible: true,
+      visible: layer.visible,
       opacity: layer.opacity,
       cels: [
         {
@@ -638,7 +633,7 @@ function convertPsdDocumentToSpriteProject(document: PsdParserDocument): SpriteP
   }
 
   if (layers.length === 0) {
-    fail("unsupported-feature", "PSD contains no visible supported raster layers.");
+    fail("unsupported-feature", "PSD contains no supported raster layers.");
   }
 
   return {
@@ -743,7 +738,7 @@ export async function importPsdBytes(
   return convertPsdDocumentToSpriteProject(await parsePsdBytes(bytes, dependencies));
 }
 
-/** Reads a browser-selected .psd file and converts supported visible raster layers locally. */
+/** Reads a browser-selected .psd file and converts supported raster layers locally. */
 export async function importPsd(
   file: File,
   dependencies: PsdParserAdapterDependencies = {},

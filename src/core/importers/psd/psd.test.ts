@@ -193,6 +193,16 @@ function parserDocumentFromFixture(psd: PsdFixture): Record<string, unknown> {
   };
 }
 
+function parserDocumentWithLayers(
+  psd: PsdFixture,
+  layers: Record<string, unknown>[],
+): Record<string, unknown> {
+  return {
+    ...parserDocumentFromFixture(psd),
+    children: layers,
+  };
+}
+
 function createFile(name: string, bytes: Uint8Array): File {
   const buffer = new ArrayBuffer(bytes.byteLength);
   new Uint8Array(buffer).set(bytes);
@@ -371,7 +381,7 @@ describe("PSD importer", () => {
     );
   });
 
-  it("omits hidden raster layers instead of presenting them as preserved", async () => {
+  it("preserves supported hidden raster layer visibility", async () => {
     const psd = fixture("rgb8-two-raster-layers");
     const project = await importPsd(createFile(`${psd.name}.psd`, psdFixtureBytes(psd)), {
       parser: {
@@ -380,15 +390,115 @@ describe("PSD importer", () => {
     });
 
     expect(project.frames).toEqual([{ index: 0, durationMs: 100 }]);
+    expect(project.layers).toMatchObject([
+      {
+        id: "psd-layer-0",
+        name: "Top hidden half",
+        visible: false,
+        opacity: 128,
+        cels: [{ frameIndex: 0, x: 1, y: -1 }],
+      },
+      {
+        id: "psd-layer-1",
+        name: "Base visible",
+        visible: true,
+        opacity: 255,
+        cels: [{ frameIndex: 0, x: 0, y: 1 }],
+      },
+    ]);
+  });
+
+  it("falls back deterministically when supported layer names are missing", async () => {
+    const psd = visibleRasterFixture();
+    const unnamedLayer = parserLayerFromFixture(psd.layers[0]);
+    delete unnamedLayer.name;
+
+    const project = await importPsdBytes(psdFixtureBytes(psd, { layerCount: 1 }), {
+      parser: {
+        readPsd: () => parserDocumentWithLayers(psd, [unnamedLayer]),
+      },
+    });
+
     expect(project.layers).toHaveLength(1);
     expect(project.layers[0]).toMatchObject({
-      id: "psd-layer-1",
-      name: "Base visible",
+      id: "psd-layer-0",
+      name: "Layer 1",
       visible: true,
-      opacity: 255,
-      cels: [{ frameIndex: 0, x: 0, y: 1 }],
     });
   });
+
+  it("preserves supported duplicate layer names and source order", async () => {
+    const psd = visibleRasterFixture();
+    const layers = psd.layers.map((layer) => ({
+      ...parserLayerFromFixture(layer),
+      name: "Shared name",
+    }));
+
+    const project = await importPsdBytes(psdFixtureBytes(psd), {
+      parser: {
+        readPsd: () => parserDocumentWithLayers(psd, layers),
+      },
+    });
+
+    expect(project.layers.map((layer) => layer.id)).toEqual([
+      "psd-layer-0",
+      "psd-layer-1",
+    ]);
+    expect(project.layers.map((layer) => layer.name)).toEqual([
+      "Shared name",
+      "Shared name",
+    ]);
+    expect(project.layers.map((layer) => layer.cels[0].x)).toEqual([1, 0]);
+  });
+
+  it("maps supported opacity bounds into the internal range", async () => {
+    const psd = visibleRasterFixture();
+    const layers = [
+      {
+        ...parserLayerFromFixture(psd.layers[0]),
+        opacity: 0,
+      },
+      {
+        ...parserLayerFromFixture(psd.layers[1]),
+        opacity: 1,
+      },
+      {
+        ...parserLayerFromFixture(psd.layers[1]),
+        name: "Raw byte opaque",
+        opacity: 255,
+      },
+    ];
+
+    const project = await importPsdBytes(psdFixtureBytes(psd, { layerCount: 3 }), {
+      parser: {
+        readPsd: () => parserDocumentWithLayers(psd, layers),
+      },
+    });
+
+    expect(project.layers.map((layer) => layer.opacity)).toEqual([0, 255, 255]);
+  });
+
+  it.each([-1, 1.5, 256])(
+    "rejects unsupported opacity value %s clearly",
+    async (opacity) => {
+      const psd = visibleRasterFixture();
+
+      await expectPsdError(
+        importPsdBytes(psdFixtureBytes(psd, { layerCount: 1 }), {
+          parser: {
+            readPsd: () => parserDocumentWithLayers(psd, [
+              {
+                ...parserLayerFromFixture(psd.layers[0]),
+                opacity,
+              },
+            ]),
+          },
+        }),
+        "invalid-parser-output",
+        "must be in the range 0..1 or 0..255",
+      );
+    },
+  );
 
   it("rejects visible groups instead of preserving unsupported layer structure", async () => {
     const psd = fixture("rgb8-group-and-text-metadata");
@@ -423,6 +533,25 @@ describe("PSD importer", () => {
       }),
       "unsupported-feature",
       "PSD text layers are not supported",
+    );
+  });
+
+  it("rejects non-normal blend modes clearly", async () => {
+    const psd = visibleRasterFixture();
+
+    await expectPsdError(
+      importPsdBytes(psdFixtureBytes(psd, { layerCount: 1 }), {
+        parser: {
+          readPsd: () => parserDocumentWithLayers(psd, [
+            {
+              ...parserLayerFromFixture(psd.layers[0]),
+              blendMode: "multiply",
+            },
+          ]),
+        },
+      }),
+      "unsupported-feature",
+      "Only normal PSD raster layers are supported",
     );
   });
 
