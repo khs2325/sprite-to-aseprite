@@ -131,6 +131,11 @@ describe("bindFileImportControl", () => {
       kind: "kra",
       bytes: new ArrayBuffer(0),
     })).toMatchObject({ typeLabel: "Krita project" });
+    expect(getSourceFilePresentation({
+      file: new File(["psd"], "sprite.psd"),
+      kind: "psd",
+      bytes: new ArrayBuffer(0),
+    })).toMatchObject({ typeLabel: "PSD project" });
     expect(formatFileSize(1)).toBe("1 byte");
   });
 
@@ -230,6 +235,29 @@ describe("bindFileImportControl", () => {
     ).toBe("kra");
   });
 
+  it("advertises and classifies PSD sources for detection only", () => {
+    const acceptedTypes = SUPPORTED_SOURCE_ACCEPT.split(",");
+    expect(acceptedTypes).toEqual(expect.arrayContaining([
+      ".psd",
+      "image/vnd.adobe.photoshop",
+      "image/x-photoshop",
+      "application/x-photoshop",
+      "application/psd",
+    ]));
+    expect(getSourceKind({ name: "scene.PSD", type: "" })).toBe("psd");
+    expect(getSourceKind({
+      name: "scene",
+      type: "image/vnd.adobe.photoshop",
+    })).toBe("psd");
+    expect(getSourceKind({
+      name: "scene",
+      type: "application/x-photoshop",
+    })).toBe("psd");
+    expect(
+      getSourceKind({ name: "scene.psd", type: "application/octet-stream" }),
+    ).toBe("psd");
+  });
+
   it("reads PNG and JSON files locally with browser File APIs", async () => {
     const input = createInput();
     const errorOutput = createOutput();
@@ -302,6 +330,7 @@ describe("bindFileImportControl", () => {
     ["openraster", "sprite.ora", "image/openraster", "Selected 1 OpenRaster project"],
     ["pixelorama", "sprite.pxo", "application/x-pixelorama", "Selected 1 Pixelorama project"],
     ["krita", "sprite.kra", "application/x-krita", "Selected 1 Krita project"],
+    ["psd", "sprite.psd", "image/vnd.adobe.photoshop", "Selected 1 PSD project. Conversion is not available yet."],
   ] as const)("reads one %s source locally", async (format, name, type, status) => {
     const statusOutput = createOutput();
     const onFilesImported = vi.fn<(files: readonly BrowserSourceFile[]) => void>();
@@ -348,7 +377,7 @@ describe("bindFileImportControl", () => {
     expect(errorOutput).toMatchObject({
       hidden: false,
       textContent:
-        'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, APNG, OpenRaster, Pixelorama, or Krita files only.',
+        'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, APNG, OpenRaster, Pixelorama, Krita, or PSD files only.',
     });
     expect(statusOutput.hidden).toBe(true);
   });
@@ -742,7 +771,7 @@ describe("bindFileImportControl", () => {
 
     await vi.waitFor(() => expect(errorOutput.hidden).toBe(false));
     expect(errorOutput.textContent).toBe(
-      'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, APNG, OpenRaster, Pixelorama, or Krita files only.',
+      'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, APNG, OpenRaster, Pixelorama, Krita, or PSD files only.',
     );
     expect(onFilesImported).not.toHaveBeenCalled();
   });
@@ -765,7 +794,7 @@ describe("bindFileImportControl", () => {
 
     await vi.waitFor(() => expect(errorOutput.hidden).toBe(false));
     expect(errorOutput.textContent).toBe(
-      'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, APNG, OpenRaster, Pixelorama, or Krita files only.',
+      'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, APNG, OpenRaster, Pixelorama, Krita, or PSD files only.',
     );
     expect(readPng).not.toHaveBeenCalled();
     expect(onFilesImported).not.toHaveBeenCalled();

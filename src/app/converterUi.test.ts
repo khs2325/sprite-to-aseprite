@@ -118,6 +118,14 @@ function kra(name: string): BrowserSourceFile {
   };
 }
 
+function psd(name: string): BrowserSourceFile {
+  return {
+    file: new File(["psd"], name, { type: "image/vnd.adobe.photoshop" }),
+    kind: "psd",
+    bytes: new ArrayBuffer(0),
+  };
+}
+
 function elementStub(): HTMLElement {
   const attributes = new Map<string, string>();
   return {
@@ -262,6 +270,22 @@ describe("getSourceSelectionError", () => {
       kra("one.kra"),
       kra("two.kra"),
     ])).toContain("exactly one .kra file");
+    expect(getSourceSelectionError("psd", [png("sprite.png")]))
+      .toContain("exactly one .psd file");
+  });
+
+  it("detects PSD selections without enabling conversion", () => {
+    const selectedPsd = [psd("sprite.psd")];
+
+    expect(getSourceSelectionError("psd", selectedPsd)).toBe(
+      "PSD files can be selected for detection, but PSD conversion is not available yet.",
+    );
+    expect(getSourceSelectionState("psd", selectedPsd)).toEqual({
+      canConvert: false,
+      error:
+        "PSD files can be selected for detection, but PSD conversion is not available yet.",
+      status: "Adjust the selected files for the current import mode.",
+    });
   });
 
   it("revalidates remaining and cleared files without a second selection state", () => {
@@ -297,6 +321,9 @@ describe("getSourceSelectionError", () => {
     expect(getSourceSelectionState("krita", [kra("scene.kra")]).canConvert)
       .toBe(true);
     expect(getSourceSelectionState("krita", []).canConvert).toBe(false);
+    expect(getSourceSelectionState("psd", [psd("scene.psd")]).canConvert)
+      .toBe(false);
+    expect(getSourceSelectionState("psd", []).canConvert).toBe(false);
   });
 
   it("revalidates the same selected files when import mode changes", () => {
@@ -306,12 +333,17 @@ describe("getSourceSelectionError", () => {
     expect(getSourceSelectionState("piskel", files).canConvert).toBe(false);
     expect(getSourceSelectionState("pixelorama", files).canConvert).toBe(false);
     expect(getSourceSelectionState("krita", files).canConvert).toBe(false);
+    expect(getSourceSelectionState("psd", files).canConvert).toBe(false);
   });
 
-  it("exposes Krita mode labels without implying full compatibility", () => {
+  it("exposes project mode labels without implying full compatibility", () => {
     expect(MODE_LABELS.krita).toBe("Krita project");
     expect(getImportDropInstructions("krita")).toBe(
       "Drop exactly one .kra file from the documented minimal raster subset here, or choose one below.",
+    );
+    expect(MODE_LABELS.psd).toBe("PSD project");
+    expect(getImportDropInstructions("psd")).toBe(
+      "Drop exactly one .psd file here to detect it. PSD conversion is not available yet.",
     );
   });
 });
@@ -661,6 +693,32 @@ describe("convertSourceFiles", () => {
     expect(importers.importKrita).not.toHaveBeenCalled();
     expect(importers.importOpenRaster).not.toHaveBeenCalled();
     expect(importers.importPixelorama).not.toHaveBeenCalled();
+
+    await expect(
+      convertSourceFiles("psd", [psd("scene.psd")], gridOptions, importers),
+    ).rejects.toThrow("PSD conversion is not available yet");
+    expect(importers.importPngSequence).not.toHaveBeenCalled();
+    expect(importers.importPiskel).not.toHaveBeenCalled();
+    expect(importers.importSpritesheetGrid).not.toHaveBeenCalled();
+    expect(importers.importSpritesheetJson).not.toHaveBeenCalled();
+    expect(importers.importGif).not.toHaveBeenCalled();
+    expect(importers.importApng).not.toHaveBeenCalled();
+    expect(importers.importKrita).not.toHaveBeenCalled();
+    expect(importers.importOpenRaster).not.toHaveBeenCalled();
+    expect(importers.importPixelorama).not.toHaveBeenCalled();
+  });
+});
+
+describe("PSD conversion messages", () => {
+  it("reports that PSD conversion is unavailable without exposing source details", () => {
+    const privateMessage = "private PSD source details";
+    const message = getConversionErrorMessage("psd", new Error(privateMessage));
+
+    expect(message).toBe("PSD conversion is not available yet.");
+    expect(message).not.toContain(privateMessage);
+    expect(getConversionSuccessStatus("psd", project)).toBe(
+      "PSD conversion is not available yet.",
+    );
   });
 });
 

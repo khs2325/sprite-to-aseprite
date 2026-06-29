@@ -4,6 +4,8 @@ Sprite to Aseprite Converter rebuilds an editable Aseprite timeline from PNG
 frames, spritesheets, a supported Piskel project, a supported OpenRaster
 project, a supported Pixelorama project, a supported Krita project, or a
 supported GIF/APNG animation.
+PSD files can be selected and identified as PSD projects for detection only;
+PSD conversion is not available yet.
 Your artwork stays in the browser. The app does not upload source files to a
 server or send them to an external processing service.
 
@@ -32,13 +34,15 @@ the server with `Ctrl+C`.
 1. Under **Choose an import mode**, select the mode matching the source files.
 2. Under **Add source files**, drag the required files onto the drop area or
    use the file picker. The app accepts `.png`, `.json`, `.piskel`, `.gif`,
-   `.apng`, `.ora`, `.pxo`, and `.kra` files; each mode validates its required
-   file combination. Review the selected-file cards before conversion. PNG
-   cards include browser-local thumbnails, while JSON, Piskel, GIF, APNG,
-   OpenRaster, Pixelorama, and Krita cards show document details without
-   displaying their raw contents. Remove individual files or use
+   `.apng`, `.ora`, `.pxo`, `.kra`, and `.psd` files; PSD is detection-only,
+   and each conversion mode validates its required file combination. Review
+   the selected-file cards before conversion. PNG cards include browser-local
+   thumbnails, while JSON, Piskel, GIF, APNG, OpenRaster, Pixelorama, Krita,
+   and PSD cards show document details without displaying their raw contents.
+   Remove individual files or use
    **Clear selected files** as needed.
-3. Check that the app reports the source files are ready, then select
+3. For supported conversion modes, check that the app reports the source files
+   are ready, then select
    **Convert to .aseprite**. Conversion happens browser-locally.
 4. Review the rebuilt timeline and make any timing or layer-name changes.
 5. Select **Download .aseprite**. The browser downloads
@@ -357,10 +361,11 @@ safe diagnostic that does not display raw source contents or stack traces.
 
 ## Planned PSD limitations
 
-PSD import is not available in the current browser app. The planned limitation
-contract is documented in [psd-format.md](psd-format.md), and any future PSD
-processing must remain browser-local with no artwork upload or remote
-conversion service.
+PSD import is not available in the current browser app. The app can identify a
+selected `.psd` file and show it as a PSD project, but conversion remains
+disabled until a tested importer exists. The planned limitation contract is
+documented in [psd-format.md](psd-format.md), and any future PSD processing
+must remain browser-local with no artwork upload or remote conversion service.
 
 The initial target is RGB 8-bit raster layers in one-frame PSD files. Text
 layers, smart objects, adjustment layers, layer effects, PSB, unsupported color

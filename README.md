@@ -66,11 +66,13 @@ blend modes are not preserved. Krita masks, vector layers, animation timelines,
 unsupported color depths or profiles, effects, and flattened previews are not
 preserved or used to recover source layers.
 
-PSD is not currently supported. Planned PSD behavior is documented in
-[docs/psd-format.md](docs/psd-format.md): the initial target is RGB 8-bit
-raster layers in one-frame PSD files, with unsupported Photoshop features
-rejected clearly or documented as omitted. Other JSON schemas are not currently
-supported.
+PSD conversion is not currently supported. The browser file picker can
+classify `.psd` files as PSD projects for detection only, and the UI keeps
+conversion disabled until a tested importer exists. Planned PSD behavior is
+documented in [docs/psd-format.md](docs/psd-format.md): the initial target is
+RGB 8-bit raster layers in one-frame PSD files, with unsupported Photoshop
+features rejected clearly or documented as omitted. Other JSON schemas are not
+currently supported.
 
 ## Browser-only processing
 
@@ -78,10 +80,10 @@ Artwork and metadata are read and processed in the browser. Conversion and
 `.aseprite` generation do not upload user files to a server or send them to a
 remote image-processing service. The generated file is downloaded locally
 using browser APIs. Selected files can be reviewed and removed before
-conversion; GIF, APNG, OpenRaster, Pixelorama, and Krita sources use
-document-style file cards, while PNG thumbnail previews and the spritesheet
-grid overlay use browser-local object URLs that are released when no longer
-needed.
+conversion; GIF, APNG, OpenRaster, Pixelorama, Krita, and PSD detection
+sources use document-style file cards, while PNG thumbnail previews and the
+spritesheet grid overlay use browser-local object URLs that are released when
+no longer needed.
 
 In spritesheet grid mode, the UI reads the selected PNG dimensions locally and
 auto-calculates rows and columns from the current frame size. A responsive grid
