@@ -1,0 +1,111 @@
+{
+  "fixtures": [
+    {
+      "name": "rgb8-two-raster-layers",
+      "header": {
+        "channels": 4,
+        "height": 3,
+        "width": 4,
+        "bitsPerChannel": 8,
+        "colorMode": 3
+      },
+      "layers": [
+        {
+          "name": "Top hidden half",
+          "top": -1,
+          "left": 1,
+          "bottom": 1,
+          "right": 3,
+          "blendMode": "normal",
+          "opacity": 0.5,
+          "hidden": true,
+          "imageData": {
+            "width": 2,
+            "height": 2,
+            "rgba": [
+              0,
+              0,
+              0,
+              0,
+              255,
+              209,
+              102,
+              255,
+              239,
+              71,
+              111,
+              255,
+              17,
+              138,
+              178,
+              255
+            ]
+          }
+        },
+        {
+          "name": "Base visible",
+          "top": 1,
+          "left": 0,
+          "bottom": 3,
+          "right": 2,
+          "blendMode": "normal",
+          "opacity": 255,
+          "hidden": false,
+          "imageData": {
+            "width": 2,
+            "height": 2,
+            "rgba": [
+              17,
+              138,
+              178,
+              255,
+              0,
+              0,
+              0,
+              0,
+              239,
+              71,
+              111,
+              255,
+              255,
+              209,
+              102,
+              255
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "rgb8-group-and-text-metadata",
+      "header": {
+        "channels": 4,
+        "height": 2,
+        "width": 2,
+        "bitsPerChannel": 8,
+        "colorMode": 3
+      },
+      "layers": [
+        {
+          "name": "Folder",
+          "top": 0,
+          "left": 0,
+          "bottom": 0,
+          "right": 0,
+          "children": [
+            {
+              "name": "Caption",
+              "top": 0,
+              "left": 0,
+              "bottom": 1,
+              "right": 1,
+              "text": {
+                "text": "Synthetic"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
