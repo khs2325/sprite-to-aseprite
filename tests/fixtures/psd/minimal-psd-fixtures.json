@@ -107,5 +107,112 @@
         }
       ]
     }
+  ],
+  "unsupportedMetadataFixtures": [
+    {
+      "name": "psb-large-document",
+      "version": 2,
+      "header": {
+        "channels": 4,
+        "height": 3,
+        "width": 4,
+        "bitsPerChannel": 8,
+        "colorMode": 3
+      },
+      "layerCount": 1,
+      "expectedCode": "unsupported-feature",
+      "expectedDiagnostic": "PSB/Large Document Format is unsupported."
+    },
+    {
+      "name": "unsupported-cmyk",
+      "header": {
+        "channels": 4,
+        "height": 3,
+        "width": 4,
+        "bitsPerChannel": 8,
+        "colorMode": 4
+      },
+      "layerCount": 1,
+      "expectedCode": "unsupported-feature",
+      "expectedDiagnostic": "PSD color mode must be RGB"
+    },
+    {
+      "name": "unsupported-depth-16",
+      "header": {
+        "channels": 4,
+        "height": 3,
+        "width": 4,
+        "bitsPerChannel": 16,
+        "colorMode": 3
+      },
+      "layerCount": 1,
+      "expectedCode": "unsupported-feature",
+      "expectedDiagnostic": "PSD channel depth must be 8 bits per channel."
+    },
+    {
+      "name": "unsupported-zero-width",
+      "header": {
+        "channels": 4,
+        "height": 3,
+        "width": 0,
+        "bitsPerChannel": 8,
+        "colorMode": 3
+      },
+      "layerCount": 1,
+      "expectedCode": "allocation-limit",
+      "expectedDiagnostic": "PSD dimensions must be from 1x1"
+    },
+    {
+      "name": "unsupported-large-height",
+      "header": {
+        "channels": 4,
+        "height": 2049,
+        "width": 4,
+        "bitsPerChannel": 8,
+        "colorMode": 3
+      },
+      "layerCount": 1,
+      "expectedCode": "allocation-limit",
+      "expectedDiagnostic": "PSD dimensions must be from 1x1"
+    },
+    {
+      "name": "unsupported-zero-layer-count",
+      "header": {
+        "channels": 4,
+        "height": 3,
+        "width": 4,
+        "bitsPerChannel": 8,
+        "colorMode": 3
+      },
+      "layerCount": 0,
+      "expectedCode": "allocation-limit",
+      "expectedDiagnostic": "PSD layer count must be from 1 through 64."
+    },
+    {
+      "name": "unsafe-layer-count",
+      "header": {
+        "channels": 4,
+        "height": 3,
+        "width": 4,
+        "bitsPerChannel": 8,
+        "colorMode": 3
+      },
+      "layerCount": 65,
+      "expectedCode": "allocation-limit",
+      "expectedDiagnostic": "PSD layer count must be from 1 through 64."
+    },
+    {
+      "name": "oversized-decoded-layer-allocation",
+      "header": {
+        "channels": 4,
+        "height": 2048,
+        "width": 2048,
+        "bitsPerChannel": 8,
+        "colorMode": 3
+      },
+      "layerCount": 5,
+      "expectedCode": "allocation-limit",
+      "expectedDiagnostic": "PSD decoded layer allocation exceeds"
+    }
   ]
 }

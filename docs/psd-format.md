@@ -44,6 +44,27 @@ This is not full Photoshop compatibility. It is not perfect or lossless PSD
 conversion. It must not claim to recover layers from a flattened composite
 image.
 
+## Metadata Validation Limits
+
+Before invoking a PSD parser that may allocate decoded pixel buffers, the
+importer validates the document header and high-level section envelope. The MVP
+accepts only:
+
+- Signature `8BPS` and version `1` PSD files. PSB / Large Document Format is
+  rejected.
+- RGB color mode (`3`) and 8 bits per channel.
+- Canvas width and height from `1..2048`.
+- Declared PSD layer count from `1..64`.
+- Total potential decoded layer pixels at or below `16,777,216`, computed as
+  `width * height * declaredLayerCount`.
+- Files at or below `25 MiB`.
+
+Invalid section lengths, missing layer-count metadata, unsupported color
+interpretation, unsupported depth, unsafe dimensions, unsafe layer counts, and
+oversized decoded-pixel allocations reject before producing parser output.
+Diagnostics must be adapter-authored messages only: no stack traces, raw source
+bytes, decoded pixels, or local file paths.
+
 ## PSD To `SpriteProject` Mapping
 
 The PSD importer owns all Photoshop-specific parsing and validation. Its output

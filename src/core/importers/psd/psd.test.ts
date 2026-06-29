@@ -13,6 +13,7 @@ import {
 
 type FixtureSet = {
   fixtures: PsdFixture[];
+  unsupportedMetadataFixtures: UnsupportedMetadataFixture[];
 };
 
 type PsdFixture = {
@@ -25,6 +26,15 @@ type PsdFixture = {
   };
   layers: PsdFixtureLayer[];
   name: string;
+};
+
+type UnsupportedMetadataFixture = {
+  expectedCode: PsdParserAdapterErrorCode;
+  expectedDiagnostic: string;
+  header: PsdFixture["header"];
+  layerCount: number;
+  name: string;
+  version?: number;
 };
 
 type PsdFixtureLayer = {
@@ -72,14 +82,32 @@ function uint32BE(value: number): Buffer {
   return bytes;
 }
 
+function int16BE(value: number): Buffer {
+  const bytes = Buffer.alloc(2);
+  bytes.writeInt16BE(value);
+  return bytes;
+}
+
+function psdLayerMaskSectionBytes(layerCount: number): Buffer {
+  const layerInfoSection = layerCount === 0
+    ? Buffer.alloc(0)
+    : Buffer.concat([int16BE(layerCount)]);
+  return Buffer.concat([
+    uint32BE(layerInfoSection.byteLength),
+    layerInfoSection,
+  ]);
+}
+
 function psdHeaderBytes(
   header: PsdFixture["header"],
   overrides: Partial<PsdFixture["header"]> = {},
+  options: { layerCount?: number; version?: number } = {},
 ): Uint8Array {
   const values = { ...header, ...overrides };
+  const layerMaskSection = psdLayerMaskSectionBytes(options.layerCount ?? 1);
   return new Uint8Array(Buffer.concat([
     Buffer.from("8BPS", "ascii"),
-    uint16BE(1),
+    uint16BE(options.version ?? 1),
     Buffer.alloc(6),
     uint16BE(values.channels),
     uint32BE(values.height),
@@ -88,9 +116,27 @@ function psdHeaderBytes(
     uint16BE(values.colorMode),
     uint32BE(0),
     uint32BE(0),
-    uint32BE(0),
+    uint32BE(layerMaskSection.byteLength),
+    layerMaskSection,
     uint16BE(0),
   ]));
+}
+
+function countFixtureLayers(layers: PsdFixtureLayer[]): number {
+  return layers.reduce(
+    (count, layer) => count + 1 + countFixtureLayers(layer.children ?? []),
+    0,
+  );
+}
+
+function psdFixtureBytes(
+  psd: PsdFixture,
+  options: { header?: Partial<PsdFixture["header"]>; layerCount?: number; version?: number } = {},
+): Uint8Array {
+  return psdHeaderBytes(psd.header, options.header, {
+    layerCount: options.layerCount ?? countFixtureLayers(psd.layers),
+    version: options.version,
+  });
 }
 
 function createImageDataFixture(
@@ -160,7 +206,7 @@ async function expectPsdError(
 describe("PSD parser adapter", () => {
   it("parses a synthetic RGB8 raster fixture through the injected parser without network calls", async () => {
     const psd = fixture("rgb8-two-raster-layers");
-    const bytes = psdHeaderBytes(psd.header);
+    const bytes = psdFixtureBytes(psd);
     const readPsd = vi.fn((input: Uint8Array, options: PsdReadOptions) => {
       expect(input).toBe(bytes);
       expect(options).toEqual({
@@ -218,7 +264,7 @@ describe("PSD parser adapter", () => {
 
   it("reads a browser File without changing the local-only import boundary", async () => {
     const psd = fixture("rgb8-two-raster-layers");
-    const bytes = psdHeaderBytes(psd.header);
+    const bytes = psdFixtureBytes(psd);
     const parsed = await parsePsdFile(createFile(`${psd.name}.psd`, bytes), {
       parser: {
         readPsd: () => parserDocumentFromFixture(psd),
@@ -230,7 +276,7 @@ describe("PSD parser adapter", () => {
 
   it("keeps group and text parser metadata visible without converting it", async () => {
     const psd = fixture("rgb8-group-and-text-metadata");
-    const parsed = await parsePsdBytes(psdHeaderBytes(psd.header), {
+    const parsed = await parsePsdBytes(psdFixtureBytes(psd), {
       parser: {
         readPsd: () => parserDocumentFromFixture(psd),
       },
@@ -256,7 +302,7 @@ describe("PSD parser adapter diagnostics", () => {
     const psd = fixture("rgb8-two-raster-layers");
     const privateError = new Error("C:\\Users\\private\\sprite.psd raw channel bytes");
     const error = await expectPsdError(
-      parsePsdBytes(psdHeaderBytes(psd.header), {
+      parsePsdBytes(psdFixtureBytes(psd), {
         parser: {
           readPsd: () => {
             throw privateError;
@@ -276,7 +322,7 @@ describe("PSD parser adapter diagnostics", () => {
     const psd = fixture("rgb8-two-raster-layers");
     const privateError = new Error("registry or local module path detail");
     const error = await expectPsdError(
-      parsePsdBytes(psdHeaderBytes(psd.header), {
+      parsePsdBytes(psdFixtureBytes(psd), {
         loadParser: async () => Promise.reject(privateError),
       }),
       "parser-unavailable",
@@ -292,14 +338,14 @@ describe("PSD parser adapter diagnostics", () => {
     const readPsd = vi.fn();
 
     await expectPsdError(
-      parsePsdBytes(psdHeaderBytes(psd.header, { colorMode: 4 }), {
+      parsePsdBytes(psdFixtureBytes(psd, { header: { colorMode: 4 } }), {
         parser: { readPsd },
       }),
       "unsupported-feature",
       "color mode must be RGB",
     );
     await expectPsdError(
-      parsePsdBytes(psdHeaderBytes(psd.header, { bitsPerChannel: 16 }), {
+      parsePsdBytes(psdFixtureBytes(psd, { header: { bitsPerChannel: 16 } }), {
         parser: { readPsd },
       }),
       "unsupported-feature",
@@ -309,11 +355,31 @@ describe("PSD parser adapter diagnostics", () => {
     expect(readPsd).not.toHaveBeenCalled();
   });
 
+  it.each(fixtures.unsupportedMetadataFixtures)(
+    "rejects unsupported metadata fixture $name before invoking the parser",
+    async (metadata) => {
+      const readPsd = vi.fn();
+
+      await expectPsdError(
+        parsePsdBytes(psdHeaderBytes(metadata.header, {}, {
+          layerCount: metadata.layerCount,
+          version: metadata.version,
+        }), {
+          parser: { readPsd },
+        }),
+        metadata.expectedCode,
+        metadata.expectedDiagnostic,
+      );
+
+      expect(readPsd).not.toHaveBeenCalled();
+    },
+  );
+
   it("rejects invalid parser output instead of passing through unsafe data", async () => {
     const psd = fixture("rgb8-two-raster-layers");
 
     await expectPsdError(
-      parsePsdBytes(psdHeaderBytes(psd.header), {
+      parsePsdBytes(psdFixtureBytes(psd, { layerCount: 1 }), {
         parser: {
           readPsd: () => ({
             ...parserDocumentFromFixture(psd),

@@ -3,7 +3,9 @@ const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_DIMENSION = 2048;
 const MAX_LAYERS = 64;
 const MAX_LAYER_PIXELS = 16_777_216;
+const MAX_TOTAL_LAYER_PIXELS = 16_777_216;
 const MAX_LAYER_NAME_LENGTH = 1024;
+const PSD_HEADER_BYTES = 26;
 const PSD_SIGNATURE = "8BPS";
 const PSD_VERSION = 1;
 const PSD_COLOR_MODE_RGB = 3;
@@ -96,6 +98,10 @@ type PsdHeader = {
   width: number;
 };
 
+type PsdMetadata = PsdHeader & {
+  layerCount: number;
+};
+
 type RawPsdDocument = {
   bitsPerChannel?: unknown;
   channels?: unknown;
@@ -148,12 +154,78 @@ function readUint32BE(bytes: Uint8Array, offset: number): number {
   );
 }
 
+function readInt16BE(bytes: Uint8Array, offset: number): number {
+  const value = readUint16BE(bytes, offset);
+  return value > 0x7fff ? value - 0x10000 : value;
+}
+
 function readAscii(bytes: Uint8Array, offset: number, length: number): string {
   return String.fromCharCode(...bytes.subarray(offset, offset + length));
 }
 
+function validateRange(
+  bytes: Uint8Array,
+  offset: number,
+  length: number,
+  label: string,
+): void {
+  if (
+    !Number.isSafeInteger(offset) ||
+    !Number.isSafeInteger(length) ||
+    offset < 0 ||
+    length < 0 ||
+    offset + length > bytes.byteLength
+  ) {
+    fail("invalid-container", `${label} is truncated.`);
+  }
+}
+
+function readUint32BEAt(bytes: Uint8Array, offset: number, label: string): number {
+  validateRange(bytes, offset, 4, label);
+  return readUint32BE(bytes, offset);
+}
+
+function readInt16BEAt(bytes: Uint8Array, offset: number, label: string): number {
+  validateRange(bytes, offset, 2, label);
+  return readInt16BE(bytes, offset);
+}
+
+function readLengthPrefixedSection(
+  bytes: Uint8Array,
+  offset: number,
+  label: string,
+): { length: number; nextOffset: number; start: number } {
+  const length = readUint32BEAt(bytes, offset, `${label} length`);
+  const start = offset + 4;
+  validateRange(bytes, start, length, label);
+  return { length, nextOffset: start + length, start };
+}
+
+function validateLayerCount(layerCount: number): void {
+  if (layerCount < 1 || layerCount > MAX_LAYERS) {
+    fail(
+      "allocation-limit",
+      `PSD layer count must be from 1 through ${MAX_LAYERS}.`,
+    );
+  }
+}
+
+function validateDecodedLayerAllocation(
+  width: number,
+  height: number,
+  layerCount: number,
+): void {
+  const pixels = width * height * layerCount;
+  if (!Number.isSafeInteger(pixels) || pixels > MAX_TOTAL_LAYER_PIXELS) {
+    fail(
+      "allocation-limit",
+      `PSD decoded layer allocation exceeds the ${MAX_TOTAL_LAYER_PIXELS}-pixel adapter limit.`,
+    );
+  }
+}
+
 function validatePsdHeader(bytes: Uint8Array): PsdHeader {
-  if (bytes.byteLength < 26) {
+  if (bytes.byteLength < PSD_HEADER_BYTES) {
     fail("invalid-container", "PSD header is truncated.");
   }
   if (readAscii(bytes, 0, 4) !== PSD_SIGNATURE) {
@@ -188,6 +260,65 @@ function validatePsdHeader(bytes: Uint8Array): PsdHeader {
   }
 
   return { bitsPerChannel, channels, colorMode, height, version, width };
+}
+
+function readLayerCountFromLayerMaskSection(
+  bytes: Uint8Array,
+  sectionStart: number,
+  sectionLength: number,
+): number {
+  if (sectionLength === 0) return 0;
+  if (sectionLength < 4) {
+    fail("invalid-container", "PSD layer and mask information section is truncated.");
+  }
+
+  const sectionEnd = sectionStart + sectionLength;
+  const layerInfoLength = readUint32BEAt(
+    bytes,
+    sectionStart,
+    "PSD layer info section length",
+  );
+  const layerInfoStart = sectionStart + 4;
+  validateRange(bytes, layerInfoStart, layerInfoLength, "PSD layer info section");
+  if (layerInfoStart + layerInfoLength > sectionEnd) {
+    fail("invalid-container", "PSD layer info section exceeds its container.");
+  }
+  if (layerInfoLength === 0) return 0;
+  if (layerInfoLength < 2) {
+    fail("invalid-container", "PSD layer count is truncated.");
+  }
+
+  const rawLayerCount = readInt16BEAt(bytes, layerInfoStart, "PSD layer count");
+  return Math.abs(rawLayerCount);
+}
+
+function validatePsdMetadata(bytes: Uint8Array): PsdMetadata {
+  const header = validatePsdHeader(bytes);
+  const colorModeData = readLengthPrefixedSection(
+    bytes,
+    PSD_HEADER_BYTES,
+    "PSD color mode data section",
+  );
+  const imageResources = readLengthPrefixedSection(
+    bytes,
+    colorModeData.nextOffset,
+    "PSD image resources section",
+  );
+  const layerMaskInfo = readLengthPrefixedSection(
+    bytes,
+    imageResources.nextOffset,
+    "PSD layer and mask information section",
+  );
+  const layerCount = readLayerCountFromLayerMaskSection(
+    bytes,
+    layerMaskInfo.start,
+    layerMaskInfo.length,
+  );
+
+  validateLayerCount(layerCount);
+  validateDecodedLayerAllocation(header.width, header.height, layerCount);
+
+  return { ...header, layerCount };
 }
 
 function expectInteger(value: unknown, path: string): number {
@@ -310,7 +441,29 @@ function adaptLayer(value: unknown, layerIndex: number, path: string): PsdParser
   };
 }
 
-function adaptPsdDocument(value: unknown, header: PsdHeader): PsdParserDocument {
+function countParserLayers(layers: unknown[], path: string): number {
+  let count = 0;
+  for (let index = 0; index < layers.length; index += 1) {
+    count += 1;
+    validateLayerCount(count);
+
+    const layer = layers[index];
+    if (!isRecord(layer)) continue;
+    if (layer.children === undefined) continue;
+    if (!Array.isArray(layer.children)) {
+      fail(
+        "invalid-parser-output",
+        `${path}[${index}].children must be an array when present.`,
+      );
+    }
+
+    count += countParserLayers(layer.children, `${path}[${index}].children`);
+    validateLayerCount(count);
+  }
+  return count;
+}
+
+function adaptPsdDocument(value: unknown, metadata: PsdMetadata): PsdParserDocument {
   if (!isRecord(value)) {
     fail("invalid-parser-output", "PSD parser returned an invalid document.");
   }
@@ -324,24 +477,24 @@ function adaptPsdDocument(value: unknown, header: PsdHeader): PsdParserDocument 
   );
   const colorMode = expectInteger(parsed.colorMode, "PSD document colorMode");
 
-  if (width !== header.width || height !== header.height) {
+  if (width !== metadata.width || height !== metadata.height) {
     fail("invalid-parser-output", "PSD parser dimensions do not match the file header.");
   }
-  if (channels !== header.channels || bitsPerChannel !== header.bitsPerChannel) {
+  if (channels !== metadata.channels || bitsPerChannel !== metadata.bitsPerChannel) {
     fail("invalid-parser-output", "PSD parser channel metadata does not match the file header.");
   }
-  if (colorMode !== header.colorMode) {
+  if (colorMode !== metadata.colorMode) {
     fail("invalid-parser-output", "PSD parser color mode does not match the file header.");
   }
   if (!Array.isArray(parsed.children)) {
     fail("invalid-parser-output", "PSD parser output must contain a root layer array.");
   }
-  if (parsed.children.length < 1 || parsed.children.length > MAX_LAYERS) {
-    fail(
-      "allocation-limit",
-      `PSD layer count must be from 1 through ${MAX_LAYERS}.`,
-    );
+  const layerCount = countParserLayers(parsed.children, "PSD parser layers");
+  validateLayerCount(layerCount);
+  if (layerCount !== metadata.layerCount) {
+    fail("invalid-parser-output", "PSD parser layer count does not match the file metadata.");
   }
+  validateDecodedLayerAllocation(width, height, layerCount);
 
   return {
     bitsPerChannel,
@@ -401,7 +554,7 @@ export async function parsePsdBytes(
     fail("allocation-limit", `PSD file exceeds the ${MAX_FILE_BYTES}-byte adapter limit.`);
   }
 
-  const header = validatePsdHeader(bytes);
+  const metadata = validatePsdMetadata(bytes);
   const parser = await getParser(dependencies);
 
   let parsed: unknown;
@@ -415,7 +568,7 @@ export async function parsePsdBytes(
       { cause: error },
     );
   }
-  return adaptPsdDocument(parsed, header);
+  return adaptPsdDocument(parsed, metadata);
 }
 
 /** Reads a browser-selected .psd file without uploading or remotely fetching it. */
