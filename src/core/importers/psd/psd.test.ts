@@ -97,9 +97,19 @@ function uint32BE(value: number): Buffer {
   return bytes;
 }
 
+function uint8(value: number): Buffer {
+  return Buffer.from([value]);
+}
+
 function int16BE(value: number): Buffer {
   const bytes = Buffer.alloc(2);
   bytes.writeInt16BE(value);
+  return bytes;
+}
+
+function int32BE(value: number): Buffer {
+  const bytes = Buffer.alloc(4);
+  bytes.writeInt32BE(value);
   return bytes;
 }
 
@@ -154,6 +164,158 @@ function psdFixtureBytes(
   });
 }
 
+function psdDocumentBytes(
+  header: PsdFixture["header"],
+  layerMaskSection: Buffer,
+): Uint8Array {
+  return new Uint8Array(Buffer.concat([
+    Buffer.from("8BPS", "ascii"),
+    uint16BE(1),
+    Buffer.alloc(6),
+    uint16BE(header.channels),
+    uint32BE(header.height),
+    uint32BE(header.width),
+    uint16BE(header.bitsPerChannel),
+    uint16BE(header.colorMode),
+    uint32BE(0),
+    uint32BE(0),
+    uint32BE(layerMaskSection.byteLength),
+    layerMaskSection,
+    uint16BE(0),
+  ]));
+}
+
+function psdPascalString(value: string): Buffer {
+  const text = Buffer.from(value, "ascii");
+  const length = Math.min(text.byteLength, 255);
+  const paddedLength = Math.ceil((length + 1) / 4) * 4;
+  const bytes = Buffer.alloc(paddedLength);
+  bytes[0] = length;
+  text.copy(bytes, 1, 0, length);
+  return bytes;
+}
+
+function extractFixtureChannel(
+  imageData: NonNullable<PsdFixtureLayer["imageData"]>,
+  component: number,
+): number[] {
+  const values: number[] = [];
+  for (let index = component; index < imageData.rgba.length; index += 4) {
+    values.push(imageData.rgba[index]);
+  }
+  return values;
+}
+
+function packBitsChannelRows(
+  channel: number[],
+  width: number,
+  height: number,
+): Buffer {
+  const rowCounts: Buffer[] = [];
+  const rows: Buffer[] = [];
+
+  for (let row = 0; row < height; row += 1) {
+    const rowBytes = channel.slice(row * width, row * width + width);
+    const encoded = Buffer.from([rowBytes.length - 1, ...rowBytes]);
+    rowCounts.push(uint16BE(encoded.byteLength));
+    rows.push(encoded);
+  }
+
+  return Buffer.concat([...rowCounts, ...rows]);
+}
+
+function psdChannelImageData(
+  imageData: NonNullable<PsdFixtureLayer["imageData"]>,
+  component: number,
+  compression: "packbits" | "raw",
+): Buffer {
+  const channel = extractFixtureChannel(imageData, component);
+  if (compression === "raw") {
+    return Buffer.concat([uint16BE(0), Buffer.from(channel)]);
+  }
+
+  return Buffer.concat([
+    uint16BE(1),
+    packBitsChannelRows(channel, imageData.width, imageData.height),
+  ]);
+}
+
+function rawOpacity(value: number | undefined): number {
+  if (value === undefined) return 255;
+  return value >= 0 && value <= 1 ? Math.round(value * 255) : value;
+}
+
+function psdRasterFixtureBytes(
+  psd: PsdFixture,
+  options: {
+    compression?: "packbits" | "raw";
+    includeAlpha?: boolean;
+    layers?: PsdFixtureLayer[];
+    truncateFirstChannel?: boolean;
+  } = {},
+): Uint8Array {
+  const layers = options.layers ?? psd.layers;
+  const compression = options.compression ?? "raw";
+  const includeAlpha = options.includeAlpha ?? psd.header.channels > 3;
+  const layerRecords: Buffer[] = [];
+  const layerImageData: Buffer[] = [];
+
+  layers.forEach((layer, layerIndex) => {
+    if (layer.imageData === undefined) {
+      throw new Error("Raster PSD fixture layer must define imageData.");
+    }
+
+    const channels = [
+      { component: 0, id: 0 },
+      { component: 1, id: 1 },
+      { component: 2, id: 2 },
+      ...(includeAlpha ? [{ component: 3, id: -1 }] : []),
+    ].map(({ component, id }, channelIndex) => {
+      let data = psdChannelImageData(layer.imageData!, component, compression);
+      if (options.truncateFirstChannel && layerIndex === 0 && channelIndex === 0) {
+        data = data.subarray(0, data.byteLength - 1);
+      }
+      return { data, id };
+    });
+    const extraData = Buffer.concat([
+      uint32BE(0),
+      uint32BE(0),
+      psdPascalString(layer.name),
+    ]);
+
+    layerRecords.push(Buffer.concat([
+      int32BE(layer.top),
+      int32BE(layer.left),
+      int32BE(layer.bottom),
+      int32BE(layer.right),
+      uint16BE(channels.length),
+      ...channels.map((channel) => Buffer.concat([
+        int16BE(channel.id),
+        uint32BE(channel.data.byteLength),
+      ])),
+      Buffer.from("8BIMnorm", "ascii"),
+      uint8(rawOpacity(layer.opacity)),
+      uint8(0),
+      uint8(layer.hidden === true ? 0x02 : 0),
+      uint8(0),
+      uint32BE(extraData.byteLength),
+      extraData,
+    ]));
+    layerImageData.push(...channels.map((channel) => channel.data));
+  });
+
+  const layerInfoSection = Buffer.concat([
+    int16BE(layers.length),
+    ...layerRecords,
+    ...layerImageData,
+  ]);
+  return psdDocumentBytes(psd.header, Buffer.concat([
+    uint32BE(layerInfoSection.byteLength),
+    layerInfoSection,
+    uint32BE(0),
+  ]));
+}
+
 function createImageDataFixture(
   imageData: PsdFixtureLayer["imageData"],
 ): ImageData | undefined {
@@ -164,6 +326,11 @@ function createImageDataFixture(
     height: imageData.height,
     width: imageData.width,
   };
+}
+
+function pixel(image: ImageData, x: number, y: number): number[] {
+  const offset = (y * image.width + x) * 4;
+  return [...image.data.slice(offset, offset + 4)];
 }
 
 function parserLayerFromFixture(layer: PsdFixtureLayer): Record<string, unknown> {
@@ -260,13 +427,13 @@ describe("PSD parser adapter", () => {
       layers: [
         {
           blendMode: "normal",
-          bottom: 1,
+          bottom: 2,
           hasImageData: true,
           left: 1,
           name: "Top hidden half",
           opacity: 128,
           right: 3,
-          top: -1,
+          top: 0,
           visible: false,
         },
         {
@@ -345,11 +512,11 @@ describe("PSD importer", () => {
           cels: [
             {
               frameIndex: 0,
-              x: 1,
-              y: -1,
+              x: 0,
+              y: 0,
               imageData: {
-                width: 2,
-                height: 2,
+                width: 4,
+                height: 3,
               },
             },
           ],
@@ -363,21 +530,131 @@ describe("PSD importer", () => {
             {
               frameIndex: 0,
               x: 0,
-              y: 1,
+              y: 0,
               imageData: {
-                width: 2,
-                height: 2,
+                width: 4,
+                height: 3,
               },
             },
           ],
         },
       ],
     });
-    expect([...project.layers[0].cels[0].imageData.data]).toEqual(
-      psd.layers[0].imageData!.rgba,
+    expect(pixel(project.layers[0].cels[0].imageData, 2, 0)).toEqual([
+      255, 209, 102, 255,
+    ]);
+    expect(pixel(project.layers[0].cels[0].imageData, 1, 1)).toEqual([
+      239, 71, 111, 255,
+    ]);
+    expect(pixel(project.layers[0].cels[0].imageData, 0, 2)).toEqual([
+      0, 0, 0, 0,
+    ]);
+    expect(pixel(project.layers[1].cels[0].imageData, 0, 1)).toEqual([
+      17, 138, 178, 255,
+    ]);
+    expect(pixel(project.layers[1].cels[0].imageData, 1, 2)).toEqual([
+      255, 209, 102, 255,
+    ]);
+    expect(pixel(project.layers[1].cels[0].imageData, 2, 2)).toEqual([
+      0, 0, 0, 0,
+    ]);
+  });
+
+  it.each(["raw", "packbits"] as const)(
+    "decodes native %s PSD raster channels into full-canvas RGBA cels",
+    async (compression) => {
+      const psd = visibleRasterFixture();
+      const project = await importPsdBytes(psdRasterFixtureBytes(psd, { compression }));
+
+      expect(project.layers.map((layer) => ({
+        name: layer.name,
+        opacity: layer.opacity,
+        visible: layer.visible,
+        x: layer.cels[0].x,
+        y: layer.cels[0].y,
+      }))).toEqual([
+        {
+          name: "Top visible half",
+          opacity: 128,
+          visible: true,
+          x: 0,
+          y: 0,
+        },
+        {
+          name: "Base visible",
+          opacity: 255,
+          visible: true,
+          x: 0,
+          y: 0,
+        },
+      ]);
+      expect([...project.layers[0].cels[0].imageData.data]).toEqual([
+        0, 0, 0, 0, 0, 0, 0, 0, 255, 209, 102, 255, 0, 0, 0, 0,
+        0, 0, 0, 0, 239, 71, 111, 255, 17, 138, 178, 255, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      ]);
+      expect([...project.layers[1].cels[0].imageData.data]).toEqual([
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        17, 138, 178, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        239, 71, 111, 255, 255, 209, 102, 255, 0, 0, 0, 0, 0, 0, 0, 0,
+      ]);
+    },
+  );
+
+  it("synthesizes opaque alpha for native RGB layers without transparency channels", async () => {
+    const psd = visibleRasterFixture();
+    const rgbPsd = {
+      ...psd,
+      header: { ...psd.header, channels: 3, height: 2, width: 2 },
+      layers: [
+        {
+          ...psd.layers[0],
+          bottom: 2,
+          left: 0,
+          right: 2,
+          top: 0,
+        },
+      ],
+    };
+
+    const project = await importPsdBytes(psdRasterFixtureBytes(rgbPsd, {
+      includeAlpha: false,
+    }));
+
+    expect(project.layers).toHaveLength(1);
+    expect([...project.layers[0].cels[0].imageData.data]).toEqual([
+      0, 0, 0, 255,
+      255, 209, 102, 255,
+      239, 71, 111, 255,
+      17, 138, 178, 255,
+    ]);
+  });
+
+  it("rejects native PSD raster layer rectangles outside the canvas", async () => {
+    const psd = visibleRasterFixture();
+    const outOfBoundsLayer = {
+      ...psd.layers[0],
+      left: -1,
+      right: 1,
+    };
+
+    await expectPsdError(
+      importPsdBytes(psdRasterFixtureBytes(psd, { layers: [outOfBoundsLayer] })),
+      "invalid-container",
+      "raster bounds must fit within the PSD canvas",
     );
-    expect([...project.layers[1].cels[0].imageData.data]).toEqual(
-      psd.layers[1].imageData!.rgba,
+  });
+
+  it("rejects malformed native PSD channel byte counts", async () => {
+    const psd = visibleRasterFixture();
+
+    await expectPsdError(
+      importPsdBytes(psdRasterFixtureBytes(psd, {
+        layers: [psd.layers[0]],
+        truncateFirstChannel: true,
+      })),
+      "invalid-container",
+      "raw channel byte count must match layer bounds",
     );
   });
 
@@ -396,14 +673,14 @@ describe("PSD importer", () => {
         name: "Top hidden half",
         visible: false,
         opacity: 128,
-        cels: [{ frameIndex: 0, x: 1, y: -1 }],
+        cels: [{ frameIndex: 0, x: 0, y: 0 }],
       },
       {
         id: "psd-layer-1",
         name: "Base visible",
         visible: true,
         opacity: 255,
-        cels: [{ frameIndex: 0, x: 0, y: 1 }],
+        cels: [{ frameIndex: 0, x: 0, y: 0 }],
       },
     ]);
   });
@@ -448,7 +725,13 @@ describe("PSD importer", () => {
       "Shared name",
       "Shared name",
     ]);
-    expect(project.layers.map((layer) => layer.cels[0].x)).toEqual([1, 0]);
+    expect(project.layers.map((layer) => layer.cels[0].x)).toEqual([0, 0]);
+    expect(pixel(project.layers[0].cels[0].imageData, 2, 0)).toEqual([
+      255, 209, 102, 255,
+    ]);
+    expect(pixel(project.layers[1].cels[0].imageData, 0, 1)).toEqual([
+      17, 138, 178, 255,
+    ]);
   });
 
   it("maps supported opacity bounds into the internal range", async () => {
