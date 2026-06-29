@@ -182,3 +182,40 @@ Required adapter safeguards:
    conversion.
 6. Verify browser behavior in a worker, including cancellation and memory caps.
 
+## Task 065 Adapter Spike Notes
+
+The PSD adapter is isolated in `src/core/importers/psd` and keeps the selected
+parser behind dependency injection plus a lazy loader. It does not wire PSD into
+the UI and does not convert PSD files into `SpriteProject` yet. The adapter
+returns only constrained document metadata, root layer metadata, nested child
+metadata, and `ImageData` values already produced by the parser with
+`useImageData: true`; it does not expose the raw parser document.
+
+The adapter requests these `ag-psd` read options:
+
+- `useImageData: true`
+- `skipCompositeImageData: true`
+- `skipThumbnail: true`
+- `skipLinkedFilesData: true`
+- `throwForMissingFeatures: true`
+
+Package files were not changed in this pass. The managed Windows sandbox could
+not fetch `ag-psd@31.0.0` from the npm registry (`EACCES` on the registry
+request), so the dependency and lockfile were not hand-edited. The adapter tests
+use synthetic, reviewable fixture definitions and an injected `ag-psd`-shaped
+parser module to prove the adapter contract without network calls. A follow-up
+dependency task still needs to run `npm install ag-psd@31.0.0 --save-exact`
+outside the restricted sandbox, record the actual Vite production bundle delta,
+and re-run the fixture tests against the real package.
+
+Current package risk notes for that follow-up:
+
+- Latest package metadata observed from the upstream repository reports
+  `ag-psd` version `31.0.0`.
+- License remains MIT for the software; upstream image or brush files are not
+  covered by that license and must not be copied as fixtures.
+- Runtime dependencies remain `base64-js@1.5.1` and `pako@2.1.0`.
+- Browser risk remains bounded by lazy loading, local `File`/`Blob` reads only,
+  skipped thumbnail/composite/linked-file data, safe diagnostics, fixture-backed
+  parser behavior, and future worker isolation before UI wiring.
+
