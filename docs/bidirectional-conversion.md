@@ -36,6 +36,7 @@ semantics are present and tested.
 | PNG sequence | A tested flattened frame compositor, frame order, canvas size, visible layer compositing, cel offsets | Exports pixels only; layer names, palettes, and editor metadata are not preserved. Timing and supported tags may be written only to an optional manifest as planned in [png-sequence-output.md](png-sequence-output.md). |
 | Spritesheet PNG + JSON | Same flattened compositor plus deterministic sheet layout and max-canvas limits | Exports pixels and timing metadata only. The planned first subset is fixed-grid and row-major as documented in [spritesheet-output.md](spritesheet-output.md). |
 | GIF/APNG | Flattened frames, timing conversion rules, transparency/disposal limits, encoder-specific validation | Animated outputs cannot preserve Aseprite layer structure. |
+| PSD `.psd` | Layer order, names, visibility, opacity, selected-frame cel offsets, and RGBA pixels | Research-only. A minimal PSD writer may export a static layered frame, but Photoshop timeline metadata and `.aseprite` round-trip fidelity are out of scope. See [psd-output-feasibility.md](psd-output-feasibility.md). |
 | Layered future outputs | Layer order, names, visibility, opacity, cel offsets, frame coverage, and format-specific limits | Groups, blend modes, masks, slices, palettes, and color profiles need separate model/exporter scope before preservation is claimed. |
 
 ## Loss Boundaries
