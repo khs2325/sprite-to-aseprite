@@ -80,6 +80,22 @@ function uint16(value) {
   return bytes;
 }
 
+function int16(value) {
+  const bytes = Buffer.alloc(2);
+  bytes.writeInt16BE(value);
+  return bytes;
+}
+
+function int32(value) {
+  const bytes = Buffer.alloc(4);
+  bytes.writeInt32BE(value);
+  return bytes;
+}
+
+function uint8(value) {
+  return Buffer.from([value]);
+}
+
 function encodeRgbaRows(width, height, pixels) {
   const rows = [];
   for (let y = 0; y < height; y += 1) {
@@ -731,6 +747,109 @@ function pixeloramaFixture({
   return encodeZip(entries);
 }
 
+function psdPascalString(value) {
+  const text = Buffer.from(value, "ascii");
+  const length = Math.min(text.byteLength, 255);
+  const paddedLength = Math.ceil((length + 1) / 4) * 4;
+  const bytes = Buffer.alloc(paddedLength);
+  bytes[0] = length;
+  text.copy(bytes, 1, 0, length);
+  return bytes;
+}
+
+function psdLayerChannel(layer, component, { truncate = false } = {}) {
+  const width = layer.right - layer.left;
+  const height = layer.bottom - layer.top;
+  const values = [];
+  for (const pixel of layer.pixels) {
+    values.push(pixel[component]);
+  }
+  if (values.length !== width * height) {
+    throw new Error(`PSD fixture layer ${layer.name} pixel count does not match bounds.`);
+  }
+
+  const payload = Buffer.from(truncate ? values.slice(0, -1) : values);
+  return Buffer.concat([uint16(0), payload]);
+}
+
+function psdFixture({
+  channels = 4,
+  colorMode = 3,
+  height,
+  layers,
+  truncateFirstChannel = false,
+  width,
+}) {
+  const layerRecords = [];
+  const layerImageData = [];
+
+  layers.forEach((layer, layerIndex) => {
+    const channelSpecs = [
+      { component: 0, id: 0 },
+      { component: 1, id: 1 },
+      { component: 2, id: 2 },
+      ...(channels > 3 ? [{ component: 3, id: -1 }] : []),
+    ].map(({ component, id }, channelIndex) => ({
+      data: psdLayerChannel(layer, component, {
+        truncate: truncateFirstChannel && layerIndex === 0 && channelIndex === 0,
+      }),
+      id,
+    }));
+    const extraData = Buffer.concat([
+      uint32(0),
+      uint32(0),
+      psdPascalString(layer.name),
+    ]);
+
+    layerRecords.push(Buffer.concat([
+      int32(layer.top),
+      int32(layer.left),
+      int32(layer.bottom),
+      int32(layer.right),
+      uint16(channelSpecs.length),
+      ...channelSpecs.map((channel) => Buffer.concat([
+        int16(channel.id),
+        uint32(channel.data.byteLength),
+      ])),
+      Buffer.from(`8BIM${layer.blendModeKey ?? "norm"}`, "ascii"),
+      uint8(layer.opacity ?? 255),
+      uint8(0),
+      uint8(layer.hidden === true ? 0x02 : 0),
+      uint8(0),
+      uint32(extraData.byteLength),
+      extraData,
+    ]));
+    layerImageData.push(...channelSpecs.map((channel) => channel.data));
+  });
+
+  const layerInfoSection = Buffer.concat([
+    int16(layers.length),
+    ...layerRecords,
+    ...layerImageData,
+  ]);
+  const layerMaskSection = Buffer.concat([
+    uint32(layerInfoSection.byteLength),
+    layerInfoSection,
+    uint32(0),
+  ]);
+
+  return Buffer.concat([
+    Buffer.from("8BPS", "ascii"),
+    uint16(1),
+    Buffer.alloc(6),
+    uint16(channels),
+    uint32(height),
+    uint32(width),
+    uint16(8),
+    uint16(colorMode),
+    uint32(0),
+    uint32(0),
+    uint32(layerMaskSection.byteLength),
+    layerMaskSection,
+    uint16(0),
+  ]);
+}
+
 const spritesheet = [];
 for (let y = 0; y < 4; y += 1) {
   spritesheet.push(...frameOne.slice(y * 4, y * 4 + 4));
@@ -913,6 +1032,79 @@ outputs.set(
     layers: [pixeloramaLayer({ name: "Metadata unsupported" })],
     metadata: { fixture_note: "reject ambiguous project metadata" },
   }),
+);
+
+const psdOneLayer = {
+  width: 2,
+  height: 2,
+  layers: [
+    {
+      name: "Single visible",
+      top: 0,
+      left: 0,
+      bottom: 2,
+      right: 2,
+      pixels: [
+        coral, transparent,
+        cyan, yellow,
+      ],
+    },
+  ],
+};
+const psdTwoLayers = {
+  width: 4,
+  height: 3,
+  layers: [
+    {
+      name: "Top hidden half",
+      top: 0,
+      left: 1,
+      bottom: 2,
+      right: 3,
+      opacity: 128,
+      hidden: true,
+      pixels: [
+        transparent, yellow,
+        coral, cyan,
+      ],
+    },
+    {
+      name: "Base visible",
+      top: 1,
+      left: 0,
+      bottom: 3,
+      right: 2,
+      pixels: [
+        cyan, transparent,
+        transparent, yellow,
+      ],
+    },
+  ],
+};
+const psdUnsupportedBlend = {
+  width: 2,
+  height: 2,
+  layers: [
+    {
+      name: "Multiply unsupported",
+      top: 0,
+      left: 0,
+      bottom: 2,
+      right: 2,
+      blendModeKey: "mul ",
+      pixels: [
+        coral, transparent,
+        cyan, yellow,
+      ],
+    },
+  ],
+};
+outputs.set("psd/one-layer.psd", psdFixture(psdOneLayer));
+outputs.set("psd/two-layers.psd", psdFixture(psdTwoLayers));
+outputs.set("psd/unsupported-blend-mode.psd", psdFixture(psdUnsupportedBlend));
+outputs.set(
+  "psd/malformed-channel-length.psd",
+  psdFixture({ ...psdOneLayer, truncateFirstChannel: true }),
 );
 
 const opaqueRed = [255, 0, 0, 255];
