@@ -3,9 +3,8 @@
 Sprite to Aseprite Converter rebuilds an editable Aseprite timeline from PNG
 frames, spritesheets, a supported Piskel project, a supported OpenRaster
 project, a supported Pixelorama project, a supported Krita project, or a
-supported GIF/APNG animation.
-PSD files can be selected and identified as PSD projects for detection only;
-PSD conversion is not available yet.
+supported PSD project or GIF/APNG animation.
+PSD support is limited to RGB 8-bit raster layers in one-frame PSD files.
 Your artwork stays in the browser. The app does not upload source files to a
 server or send them to an external processing service.
 
@@ -34,11 +33,11 @@ the server with `Ctrl+C`.
 1. Under **Choose an import mode**, select the mode matching the source files.
 2. Under **Add source files**, drag the required files onto the drop area or
    use the file picker. The app accepts `.png`, `.json`, `.piskel`, `.gif`,
-   `.apng`, `.ora`, `.pxo`, `.kra`, and `.psd` files; PSD is detection-only,
-   and each conversion mode validates its required file combination. Review
-   the selected-file cards before conversion. PNG cards include browser-local
-   thumbnails, while JSON, Piskel, GIF, APNG, OpenRaster, Pixelorama, Krita,
-   and PSD cards show document details without displaying their raw contents.
+   `.apng`, `.ora`, `.pxo`, `.kra`, and `.psd` files. Each conversion mode
+   validates its required file combination. Review the selected-file cards
+   before conversion. PNG cards include browser-local thumbnails, while JSON,
+   Piskel, GIF, APNG, OpenRaster, Pixelorama, Krita, and PSD cards show
+   document details without displaying their raw contents.
    Remove individual files or use
    **Clear selected files** as needed.
 3. For supported conversion modes, check that the app reports the source files
@@ -359,20 +358,32 @@ editor metadata. Flattened `preview.png` and `mergedimage.png` entries are not
 used to recover source layers. Unsupported or malformed data is rejected with a
 safe diagnostic that does not display raw source contents or stack traces.
 
-## Planned PSD limitations
+## PSD project
 
-PSD import is not available in the current browser app. The app can identify a
-selected `.psd` file and show it as a PSD project, but conversion remains
-disabled until a tested importer exists. The planned limitation contract is
-documented in [psd-format.md](psd-format.md), and any future PSD processing
-must remain browser-local with no artwork upload or remote conversion service.
+PSD import follows the [documented supported PSD subset](psd-format.md).
 
-The initial target is RGB 8-bit raster layers in one-frame PSD files. Text
-layers, smart objects, adjustment layers, layer effects, PSB, unsupported color
-modes, masks, groups, and animation are not fully supported. Unsupported
-features should produce clear diagnostics or be documented as omitted when they
-do not affect the converted `SpriteProject`. PSD support must not be described
-as full Photoshop compatibility, perfect conversion, or lossless conversion.
+1. Select **PSD project** under **Choose an import mode**.
+2. Choose exactly one `.psd` file from the RGB 8-bit raster-layer subset.
+3. Review the document-style file card, then select
+   **Convert to .aseprite**. PSD parsing, raster-layer decoding, validation,
+   and conversion happen browser-locally; no artwork is uploaded.
+4. Confirm the single rebuilt frame and inspect the preserved supported raster
+   layers under **Layer names** before downloading.
+
+The importer converts supported one-frame RGB 8-bit PSD raster layers and
+preserves supported layer names, order, visibility, opacity, offsets, and
+decoded RGBA pixels only when the PSD source contains that supported raster
+layer data. It does not provide full Photoshop compatibility. It does not
+claim perfect or lossless PSD conversion, and it does not recover layers from a
+flattened composite image.
+
+Text layers, smart objects, adjustment or fill layers, layer effects, masks,
+groups, clipping, PSB files, unsupported color modes or channel depths,
+non-normal blend modes, animation timelines, linked files, embedded objects,
+unsafe dimensions, and malformed channel data are not supported. Unsupported
+features are rejected with a safe diagnostic or documented as omitted when they
+do not affect the converted `SpriteProject`; they are not flattened into the
+output as preserved source layers.
 
 ## GIF animation
 
@@ -444,7 +455,7 @@ download can be compared with the source.
 5. Confirm the expected canvas dimensions and layer names. PNG sequences and
    spritesheets are flat sources, so one generated layer is expected; this
    check must not be treated as recovery of layers that were absent from the
-   source. Supported Piskel, OpenRaster, Pixelorama, and Krita sources may
+   source. Supported Piskel, OpenRaster, Pixelorama, Krita, and PSD sources may
    contain multiple preserved layers.
 6. Make a small edit and use **File > Save As** to a new file. Reopen that copy
    if editability is part of the compatibility check, leaving the downloaded
