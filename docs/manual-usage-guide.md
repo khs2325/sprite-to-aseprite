@@ -87,6 +87,13 @@ Peak usage can be substantially higher than these estimates. The browser may
 simultaneously retain compressed input files, decoded source images, canvas or
 frame copies, the `SpriteProject` cel data, and the generated `.aseprite` blob.
 A tab that runs out of memory may slow down, fail conversion, reload, or crash.
+Layered formats multiply this cost by retained layer and cel data, so PSD and
+future Aseprite input can need much more memory than a flat file with the same
+canvas size. Archive-based formats can also expand far beyond their compressed
+file size while they are parsed and decoded.
+
+For architecture-level memory limits and future format risks, see
+[browser-memory-limits.md](browser-memory-limits.md).
 
 For large conversions:
 

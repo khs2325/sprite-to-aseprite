@@ -87,6 +87,12 @@ document-style file cards, while PNG thumbnail previews and the
 spritesheet grid overlay use browser-local object URLs that are released when
 no longer needed.
 
+Large imports are limited by the browser tab's available memory. Decoded RGBA
+pixels scale with canvas size, frame count, layer count, importer working
+buffers, previews, and exported bytes, so a compressed source file can require
+much more memory than its file size suggests. See
+[docs/browser-memory-limits.md](docs/browser-memory-limits.md).
+
 In spritesheet grid mode, the UI reads the selected PNG dimensions locally and
 auto-calculates rows and columns from the current frame size. A responsive grid
 overlay updates with the selected image and visible grid settings so slicing

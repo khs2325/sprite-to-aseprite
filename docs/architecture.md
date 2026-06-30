@@ -67,6 +67,12 @@ Each layer may contain at most one cel per frame. UI code may rename layers and
 edit frame durations, but core file parsing and binary writing stay independent
 from UI components.
 
+Because `SpriteProject` stores decoded RGBA `ImageData`, browser memory scales
+with pixel dimensions, frame count, layer count, importer working buffers, and
+export bytes rather than only source file size. Architecture-level guidance and
+future-format risks are documented in
+[browser-memory-limits.md](browser-memory-limits.md).
+
 ## Importer responsibilities
 
 All current importers live under `src/core/importers/*` and return
