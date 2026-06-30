@@ -6,6 +6,10 @@ reconstruct information that is absent from the source.
 
 ## Supported inputs
 
+For a quick status summary across current, planned, research-only, and
+unsupported format scope, see
+[docs/supported-formats.md](docs/supported-formats.md).
+
 The current conversion core supports:
 
 - **PNG sequence:** each PNG becomes one frame, in the order supplied. Every

@@ -10,6 +10,10 @@ Create a static browser-based app that helps users convert sprite-related files 
 
 The tool should help users rebuild an editable Aseprite timeline from assets such as PNG sequences, spritesheets, and metadata JSON files.
 
+Current input-format status is summarized in
+[supported-formats.md](supported-formats.md), including supported subsets,
+planned scope, research-only notes, and unsupported features.
+
 ## MVP scope
 
 1. PNG sequence -> `.aseprite`
@@ -103,20 +107,20 @@ paint-layer payloads. Flattened `preview.png` and `mergedimage.png` entries are
 not used to recover source layers. Artwork is processed locally and is never
 uploaded.
 
-## Planned post-MVP PSD import
+## Supported post-MVP PSD import
 
-PSD (`.psd`) is research-only at first. The
-[PSD feasibility note](psd-feasibility.md) recommends a narrow browser-local
-MVP for RGB 8-bit PSD files with direct raster layers and one generated frame,
-while explicitly rejecting full Photoshop compatibility.
+PSD (`.psd`) is supported as a browser-local import path through the canonical
+`SpriteProject` model and the existing Aseprite exporter. The browser UI accepts
+exactly one `.psd` file and routes it to the documented
+[PSD format subset](psd-format.md): version-1 RGB 8-bit PSD files with direct
+normal raster layers and one generated frame.
 
-Likely supported data includes layer names, visibility, opacity, offsets, and
-RGBA pixels when those values are present in supported raster layer records.
-Unsupported source features such as text layers, smart objects, adjustment
-layers, effects, masks, groups, PSB, non-RGB color modes, high bit depths, and
-timeline animation must be rejected or documented without implying lossless
-conversion. Artwork must remain local to the browser and must never be
-uploaded.
+This support preserves layers only when the PSD source contains supported
+raster layer data. It does not implement full Photoshop compatibility. Text
+layers, smart objects, adjustment layers, effects, masks, groups, PSB files,
+non-RGB color modes, high bit depths, and timeline animation are unsupported
+and must be rejected or documented without implying lossless conversion.
+Artwork must remain local to the browser and must never be uploaded.
 
 ## Planned additional free/open art tool project formats
 
