@@ -163,6 +163,11 @@ enabled default, while PNG sequence, spritesheet PNG, GIF, APNG, and
 research-only PSD stay disabled until their browser-local exporter scope,
 limits, and tests exist.
 
+PNG sequence output is planned as the first flattened non-Aseprite export path.
+Its requirements for filenames, frame order, timing metadata, browser-local
+downloads, and layer/tag limitations are documented in
+[png-sequence-output.md](png-sequence-output.md).
+
 ## Core user promise
 
 User files stay in the browser whenever the web app processes artwork.
