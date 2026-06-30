@@ -20,18 +20,53 @@ describe("large file warning", () => {
 
     renderLargeFileWarning(output, "png-sequence", files);
 
-    expect(output).toMatchObject({
-      hidden: false,
-      textContent: LARGE_FILE_WARNING,
-    });
+    expect(output.hidden).toBe(false);
+    expect(output.textContent).toContain(LARGE_FILE_WARNING);
+    expect(output.textContent).toContain("does not block conversion");
+    expect(output.textContent).toContain("browser-local");
   });
 
   it("warns when the selected source files have a very large total size", () => {
-    expect(
-      getLargeFileWarning("spritesheet-grid", [
-        { size: LARGE_SOURCE_SIZE_BYTES },
-      ]),
-    ).toBe(LARGE_FILE_WARNING);
+    const warning = getLargeFileWarning("spritesheet-grid", [
+      { size: LARGE_SOURCE_SIZE_BYTES },
+    ]);
+
+    expect(warning).toContain(LARGE_FILE_WARNING);
+    expect(warning).toContain(
+      "Compressed source size is only a rough risk signal",
+    );
+    expect(warning).toContain("not uploaded for estimation");
+  });
+
+  it("warns when decoded RGBA pixels are large even if the source file is small", () => {
+    const warning = getLargeFileWarning(
+      "spritesheet-grid",
+      [{ size: 1024 }],
+      { decodedRgbaEstimate: { width: 8192, height: 8192 } },
+    );
+
+    expect(warning).toContain("about 256 MiB");
+    expect(warning).toContain("8192 x 8192 x 4 bytes");
+    expect(warning).toContain("no telemetry");
+  });
+
+  it("includes frame and layer multipliers in decoded RGBA estimates", () => {
+    const warning = getLargeFileWarning(
+      "psd",
+      [{ size: 1024 }],
+      {
+        decodedRgbaEstimate: {
+          width: 1024,
+          height: 1024,
+          frames: 10,
+          layers: 3,
+        },
+      },
+    );
+
+    expect(warning).toContain("about 120 MiB");
+    expect(warning).toContain("1024 x 1024 x 4 bytes x 10 frames x 3 layers");
+    expect(warning).toContain("source format contains layer data");
   });
 
   it("keeps the warning hidden for ordinary selections", () => {
@@ -40,9 +75,12 @@ describe("large file warning", () => {
       textContent: "stale warning",
     } as HTMLElement;
 
-    renderLargeFileWarning(output, "png-sequence", [
-      { size: LARGE_SOURCE_SIZE_BYTES - 1 },
-    ]);
+    renderLargeFileWarning(
+      output,
+      "png-sequence",
+      [{ size: LARGE_SOURCE_SIZE_BYTES - 1 }],
+      { decodedRgbaEstimate: { width: 128, height: 128 } },
+    );
 
     expect(output).toMatchObject({ hidden: true, textContent: "" });
   });

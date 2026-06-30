@@ -14,6 +14,11 @@ driven by decoded pixels and intermediate buffers. RGBA pixels cost roughly:
 width x height x 4 bytes
 ```
 
+When the browser can read dimensions locally, the app may show an advisory
+decoded RGBA estimate using that formula plus known frame or layer counts. The
+estimate is calculated in the tab; it does not upload artwork, send telemetry,
+or act as a hard conversion limit.
+
 That cost multiplies as data moves through the browser:
 
 - frame multiplication: a flat sequence or animation can require one decoded
