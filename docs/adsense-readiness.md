@@ -8,6 +8,8 @@ placeholders, or any backend.
 
 ## Before live ads are added
 
+- Use [adsense-review-checklist.md](adsense-review-checklist.md) before
+  requesting review or enabling any ad code.
 - The site needs an approved Google AdSense account before live ads are added.
 - The future AdSense publisher ID should not be hardcoded until it is available.
 - Add `ads.txt` later after the AdSense publisher ID is known.

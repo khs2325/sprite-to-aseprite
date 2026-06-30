@@ -127,8 +127,9 @@ Policy, Terms, and conversion guides. Live ads are not active: the app does not
 load AdSense, analytics, tracking scripts, fake ads, ad placeholders, or a
 backend.
 
-See [docs/adsense-readiness.md](docs/adsense-readiness.md) before adding any
-future advertising code.
+See [docs/adsense-readiness.md](docs/adsense-readiness.md) and
+[docs/adsense-review-checklist.md](docs/adsense-review-checklist.md) before
+adding any future advertising code.
 
 ## Flat-image limitations
 
