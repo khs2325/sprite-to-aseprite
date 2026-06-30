@@ -4,6 +4,7 @@ import { KritaImportError } from "../core/importers/krita";
 import { OpenRasterImportError } from "../core/importers/openraster";
 import { PixeloramaImportError } from "../core/importers/pixelorama";
 import { PiskelImportError } from "../core/importers/piskel";
+import { PsdParserAdapterError } from "../core/importers/psd";
 import { SpritesheetJsonImportError } from "../core/importers/spritesheetJson";
 import {
   bindFileImportControl,
@@ -235,7 +236,7 @@ describe("bindFileImportControl", () => {
     ).toBe("kra");
   });
 
-  it("advertises and classifies PSD sources for detection only", () => {
+  it("advertises and classifies PSD sources", () => {
     const acceptedTypes = SUPPORTED_SOURCE_ACCEPT.split(",");
     expect(acceptedTypes).toEqual(expect.arrayContaining([
       ".psd",
@@ -330,7 +331,7 @@ describe("bindFileImportControl", () => {
     ["openraster", "sprite.ora", "image/openraster", "Selected 1 OpenRaster project"],
     ["pixelorama", "sprite.pxo", "application/x-pixelorama", "Selected 1 Pixelorama project"],
     ["krita", "sprite.kra", "application/x-krita", "Selected 1 Krita project"],
-    ["psd", "sprite.psd", "image/vnd.adobe.photoshop", "Selected 1 PSD project. Conversion is not available yet."],
+    ["psd", "sprite.psd", "image/vnd.adobe.photoshop", "Selected 1 PSD project. The supported RGB 8-bit raster-layer subset will be checked browser-locally."],
   ] as const)("reads one %s source locally", async (format, name, type, status) => {
     const statusOutput = createOutput();
     const onFilesImported = vi.fn<(files: readonly BrowserSourceFile[]) => void>();
@@ -683,6 +684,69 @@ describe("bindFileImportControl", () => {
     expect(errorOutput.textContent).toBe(
       "Krita project import failed. " +
         "Check that the .kra file contains documented minimal 8-bit RGBA paint-layer data.",
+    );
+    expect(errorOutput.textContent).not.toContain(privateMessage);
+  });
+
+  it("includes safe PSD importer detail in selection errors", async () => {
+    const errorOutput = createOutput();
+    const control = bindFileImportControl(
+      createInput(),
+      errorOutput,
+      createOutput(),
+      {
+        format: "psd",
+        onFilesImported: () => {
+          throw new PsdParserAdapterError(
+            "unsupported-feature",
+            "PSD text layers are not supported.",
+          );
+        },
+      },
+    );
+
+    expect(
+      await control.selectFiles([
+        new File(["psd"], "scene.psd", {
+          type: "image/vnd.adobe.photoshop",
+        }),
+      ]),
+    ).toBe(false);
+
+    expect(errorOutput.textContent).toBe(
+      "PSD project import failed. " +
+        "PSD text layers are not supported. " +
+        "Check that the .psd file contains supported RGB 8-bit raster layers from the documented subset.",
+    );
+    expect(errorOutput.textContent).not.toContain("PsdParserAdapterError");
+  });
+
+  it("does not expose arbitrary PSD source details from selection errors", async () => {
+    const privateMessage = "private PSD source details";
+    const errorOutput = createOutput();
+    const control = bindFileImportControl(
+      createInput(),
+      errorOutput,
+      createOutput(),
+      {
+        format: "psd",
+        onFilesImported: () => {
+          throw new Error(privateMessage);
+        },
+      },
+    );
+
+    expect(
+      await control.selectFiles([
+        new File(["psd"], "scene.psd", {
+          type: "image/vnd.adobe.photoshop",
+        }),
+      ]),
+    ).toBe(false);
+
+    expect(errorOutput.textContent).toBe(
+      "PSD project import failed. " +
+        "Check that the .psd file contains supported RGB 8-bit raster layers from the documented subset.",
     );
     expect(errorOutput.textContent).not.toContain(privateMessage);
   });

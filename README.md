@@ -45,6 +45,11 @@ The current conversion core supports:
   supported single-frame 8-bit RGBA paint layers and preserves supported layer
   names, order, visibility, opacity, offsets, and decoded RGBA pixels when the
   `.kra` source contains supported paint-layer data.
+- **PSD project:** accepts exactly one `.psd` file in the
+  [documented supported subset](docs/psd-format.md). It converts supported
+  one-frame RGB 8-bit raster layers and preserves supported layer names, order,
+  visibility, opacity, offsets, and decoded RGBA pixels when the PSD contains
+  supported raster layer data.
 - **GIF animation:** accepts exactly one `.gif` file in the
   [documented supported subset](docs/gif-format.md). Supported frames, timing,
   transparency, offsets, and disposal behavior are rebuilt on one generated
@@ -55,24 +60,21 @@ The current conversion core supports:
   one generated layer.
 
 These inputs rebuild a timeline from the extracted frames. Piskel, OpenRaster,
-Pixelorama, and Krita support is limited to each documented subset and is not
-described as universal, perfect, or lossless conversion. GIF and APNG support
-is likewise limited to each documented subset. These flat animation formats do
-not provide editable source layers, so the converter does not claim to preserve
-or recover layers from them. OpenRaster groups, masks, effects, non-normal
-blend modes, and animation metadata are not preserved. Pixelorama tilemaps,
-effects, layer types outside the supported raster pixel subset, and non-normal
-blend modes are not preserved. Krita masks, vector layers, animation timelines,
-unsupported color depths or profiles, effects, and flattened previews are not
-preserved or used to recover source layers.
-
-PSD conversion is not currently supported. The browser file picker can
-classify `.psd` files as PSD projects for detection only, and the UI keeps
-conversion disabled until a tested importer exists. Planned PSD behavior is
-documented in [docs/psd-format.md](docs/psd-format.md): the initial target is
-RGB 8-bit raster layers in one-frame PSD files, with unsupported Photoshop
-features rejected clearly or documented as omitted. Other JSON schemas are not
-currently supported.
+Pixelorama, Krita, and PSD support is limited to each documented subset and is
+not described as universal, perfect, or lossless conversion. GIF and APNG
+support is likewise limited to each documented subset. These flat animation
+formats do not provide editable source layers, so the converter does not claim
+to preserve or recover layers from them. OpenRaster groups, masks, effects,
+non-normal blend modes, and animation metadata are not preserved. Pixelorama
+tilemaps, effects, layer types outside the supported raster pixel subset, and
+non-normal blend modes are not preserved. Krita masks, vector layers, animation
+timelines, unsupported color depths or profiles, effects, and flattened
+previews are not preserved or used to recover source layers. PSD text layers,
+smart objects, adjustment layers, effects, masks, groups, PSB files,
+non-RGB or non-8-bit documents, non-normal blend modes, and animation metadata
+are not supported. Unsupported PSD features are rejected clearly or documented
+as omitted when they do not affect the converted `SpriteProject`. Other JSON
+schemas are not currently supported.
 
 ## Browser-only processing
 
@@ -80,8 +82,8 @@ Artwork and metadata are read and processed in the browser. Conversion and
 `.aseprite` generation do not upload user files to a server or send them to a
 remote image-processing service. The generated file is downloaded locally
 using browser APIs. Selected files can be reviewed and removed before
-conversion; GIF, APNG, OpenRaster, Pixelorama, Krita, and PSD detection
-sources use document-style file cards, while PNG thumbnail previews and the
+conversion; GIF, APNG, OpenRaster, Pixelorama, Krita, and PSD sources use
+document-style file cards, while PNG thumbnail previews and the
 spritesheet grid overlay use browser-local object URLs that are released when
 no longer needed.
 
@@ -131,8 +133,8 @@ named `Main` and place one cel on it for each converted frame.
 
 Layer names, visibility, opacity, and multiple layers can be written when a
 source format contains that layer data and an importer preserves it. Supported
-Piskel, OpenRaster, Pixelorama, and Krita inputs may contain supported layer
-data; PNG sequences, spritesheets, GIF, and APNG do not. Conversion is
+Piskel, OpenRaster, Pixelorama, Krita, and PSD inputs may contain supported
+layer data; PNG sequences, spritesheets, GIF, and APNG do not. Conversion is
 therefore not described as lossless or as restoring an original Aseprite file.
 
 ## Aseprite output support

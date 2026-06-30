@@ -1,6 +1,6 @@
 # PSD `.psd` Format Notes
 
-Status: core importer MVP. No user-facing PSD importer is wired into the UI yet.
+Status: core importer MVP wired into the browser UI for the supported subset.
 
 This note defines the PSD limitation contract for the browser-local importer.
 Any PSD parser must keep processing browser-local: selected PSD bytes,
@@ -44,6 +44,13 @@ in supported layer records. Hidden supported raster layers are preserved as
 This is not full Photoshop compatibility. It is not perfect or lossless PSD
 conversion. It must not claim to recover layers from a flattened composite
 image.
+
+Browser UI copy must keep these limits visible before conversion: PSD support
+means RGB 8-bit raster layers in one-frame `.psd` files, conversion remains
+browser-local with no artwork upload, and layers are preserved only when the
+PSD source contains supported raster layer data. Do not describe text layers,
+smart objects, effects, PSB files, animation, or lossless PSD conversion as
+supported.
 
 ## Metadata Validation Limits
 

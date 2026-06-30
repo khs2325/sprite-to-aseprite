@@ -6,6 +6,7 @@ import { GifImportError } from "../core/importers/gif";
 import { KritaImportError } from "../core/importers/krita";
 import { OpenRasterImportError } from "../core/importers/openraster";
 import { PixeloramaImportError } from "../core/importers/pixelorama";
+import { PsdParserAdapterError } from "../core/importers/psd";
 import {
   PiskelImportError,
   type PiskelImportErrorCode,
@@ -221,6 +222,7 @@ describe("getSourceSelectionError", () => {
     expect(getSourceSelectionError("pixelorama", [pxo("scene.pxo")]))
       .toBeNull();
     expect(getSourceSelectionError("krita", [kra("scene.kra")])).toBeNull();
+    expect(getSourceSelectionError("psd", [psd("scene.psd")])).toBeNull();
   });
 
   it("rejects mode/file mismatches before conversion", () => {
@@ -274,17 +276,14 @@ describe("getSourceSelectionError", () => {
       .toContain("exactly one .psd file");
   });
 
-  it("detects PSD selections without enabling conversion", () => {
+  it("accepts PSD selections with the documented subset limitation", () => {
     const selectedPsd = [psd("sprite.psd")];
 
-    expect(getSourceSelectionError("psd", selectedPsd)).toBe(
-      "PSD files can be selected for detection, but PSD conversion is not available yet.",
-    );
+    expect(getSourceSelectionError("psd", selectedPsd)).toBeNull();
     expect(getSourceSelectionState("psd", selectedPsd)).toEqual({
-      canConvert: false,
-      error:
-        "PSD files can be selected for detection, but PSD conversion is not available yet.",
-      status: "Adjust the selected files for the current import mode.",
+      canConvert: true,
+      error: null,
+      status: "Source files are ready to convert.",
     });
   });
 
@@ -322,7 +321,7 @@ describe("getSourceSelectionError", () => {
       .toBe(true);
     expect(getSourceSelectionState("krita", []).canConvert).toBe(false);
     expect(getSourceSelectionState("psd", [psd("scene.psd")]).canConvert)
-      .toBe(false);
+      .toBe(true);
     expect(getSourceSelectionState("psd", []).canConvert).toBe(false);
   });
 
@@ -342,9 +341,12 @@ describe("getSourceSelectionError", () => {
       "Drop exactly one .kra file from the documented minimal raster subset here, or choose one below.",
     );
     expect(MODE_LABELS.psd).toBe("PSD project");
-    expect(getImportDropInstructions("psd")).toBe(
-      "Drop exactly one .psd file here to detect it. PSD conversion is not available yet.",
+    const psdInstructions = getImportDropInstructions("psd");
+    expect(psdInstructions).toBe(
+      "Drop exactly one .psd file from the RGB 8-bit raster-layer subset here, or choose one below.",
     );
+    expect(psdInstructions).not.toContain("lossless");
+    expect(psdInstructions).not.toContain("text layers");
   });
 });
 
@@ -562,6 +564,7 @@ describe("convertSourceFiles", () => {
     const importOpenRaster = vi.fn(async () => project);
     const importPixelorama = vi.fn(async () => project);
     const importPiskel = vi.fn(async () => project);
+    const importPsd = vi.fn(async () => project);
     const importSpritesheetGrid = vi.fn(async () => project);
     const importSpritesheetJson = vi.fn(async () => project);
     const importers = {
@@ -572,6 +575,7 @@ describe("convertSourceFiles", () => {
       importPixelorama,
       importPngSequence,
       importPiskel,
+      importPsd,
       importSpritesheetGrid,
       importSpritesheetJson,
     };
@@ -584,6 +588,7 @@ describe("convertSourceFiles", () => {
     const openRasterProject = ora("scene.ora");
     const pixeloramaProject = pxo("scene.pxo");
     const kritaProject = kra("scene.kra");
+    const psdProject = psd("scene.psd");
 
     await expect(
       convertSourceFiles(
@@ -661,6 +666,9 @@ describe("convertSourceFiles", () => {
       importers,
     );
     expect(importKrita).toHaveBeenCalledWith(kritaProject.file);
+
+    await convertSourceFiles("psd", [psdProject], gridOptions, importers);
+    expect(importPsd).toHaveBeenCalledWith(psdProject.file);
   });
 
   it("does not call an importer for an invalid selection", async () => {
@@ -672,6 +680,7 @@ describe("convertSourceFiles", () => {
       importPixelorama: vi.fn(async () => project),
       importPngSequence: vi.fn(async () => project),
       importPiskel: vi.fn(async () => project),
+      importPsd: vi.fn(async () => project),
       importSpritesheetGrid: vi.fn(async () => project),
       importSpritesheetJson: vi.fn(async () => project),
     };
@@ -693,10 +702,11 @@ describe("convertSourceFiles", () => {
     expect(importers.importKrita).not.toHaveBeenCalled();
     expect(importers.importOpenRaster).not.toHaveBeenCalled();
     expect(importers.importPixelorama).not.toHaveBeenCalled();
+    expect(importers.importPsd).not.toHaveBeenCalled();
 
     await expect(
-      convertSourceFiles("psd", [psd("scene.psd")], gridOptions, importers),
-    ).rejects.toThrow("PSD conversion is not available yet");
+      convertSourceFiles("psd", [png("scene.png")], gridOptions, importers),
+    ).rejects.toThrow("PSD mode requires exactly one .psd file");
     expect(importers.importPngSequence).not.toHaveBeenCalled();
     expect(importers.importPiskel).not.toHaveBeenCalled();
     expect(importers.importSpritesheetGrid).not.toHaveBeenCalled();
@@ -706,19 +716,58 @@ describe("convertSourceFiles", () => {
     expect(importers.importKrita).not.toHaveBeenCalled();
     expect(importers.importOpenRaster).not.toHaveBeenCalled();
     expect(importers.importPixelorama).not.toHaveBeenCalled();
+    expect(importers.importPsd).not.toHaveBeenCalled();
   });
 });
 
 describe("PSD conversion messages", () => {
-  it("reports that PSD conversion is unavailable without exposing source details", () => {
+  const layeredProject: SpriteProject = {
+    ...project,
+    layers: [
+      project.layers[0],
+      {
+        id: "shadow",
+        name: "Shadow",
+        visible: true,
+        opacity: 128,
+        cels: [],
+      },
+    ],
+  };
+
+  it("reports supported RGB 8-bit raster layers without overclaiming compatibility", () => {
+    const message = getConversionSuccessStatus("psd", layeredProject);
+
+    expect(message).toBe(
+      "Converted supported PSD RGB 8-bit raster layers into an editable Aseprite timeline with 1 frame and 2 preserved layers. Ready to download.",
+    );
+    expect(message).not.toContain("lossless");
+    expect(message).not.toContain("Photoshop compatibility");
+  });
+
+  it("shows importer-authored diagnostics without exposing stack traces", () => {
+    const error = new PsdParserAdapterError(
+      "unsupported-feature",
+      "PSD text layers are not supported.",
+    );
+    error.stack = "private-psd-stack";
+
+    expect(getConversionErrorMessage("psd", error)).toBe(
+      "PSD import failed: PSD text layers are not supported.",
+    );
+    expect(getConversionErrorMessage("psd", error)).not.toContain(
+      "private-psd-stack",
+    );
+  });
+
+  it("does not expose arbitrary PSD source details", () => {
     const privateMessage = "private PSD source details";
     const message = getConversionErrorMessage("psd", new Error(privateMessage));
 
-    expect(message).toBe("PSD conversion is not available yet.");
-    expect(message).not.toContain(privateMessage);
-    expect(getConversionSuccessStatus("psd", project)).toBe(
-      "PSD conversion is not available yet.",
+    expect(message).toBe(
+      "PSD import failed: Check that the .psd file contains supported RGB 8-bit raster layers from the documented subset.",
     );
+    expect(message).not.toContain(privateMessage);
   });
 });
 

@@ -17,6 +17,10 @@ import {
 } from "../core/importers/pixelorama";
 import { importPngSequence } from "../core/importers/pngSequence";
 import {
+  getPsdParserDiagnostic,
+  importPsd,
+} from "../core/importers/psd";
+import {
   getPiskelImportDiagnostic,
   importPiskel,
   PiskelImportError,
@@ -60,6 +64,7 @@ type ConverterImporters = {
   importOpenRaster: typeof importOpenRaster;
   importPixelorama: typeof importPixelorama;
   importPngSequence: typeof importPngSequence;
+  importPsd: typeof importPsd;
   importPiskel: typeof importPiskel;
   importSpritesheetGrid: typeof importSpritesheetGrid;
   importSpritesheetJson: typeof importSpritesheetJson;
@@ -97,6 +102,7 @@ const DEFAULT_IMPORTERS: ConverterImporters = {
   importOpenRaster,
   importPixelorama,
   importPngSequence,
+  importPsd,
   importPiskel,
   importSpritesheetGrid,
   importSpritesheetJson,
@@ -135,9 +141,9 @@ export function getImportDropInstructions(mode: FileImportFormat): string {
     return "Drop exactly one .kra file from the documented minimal raster subset here, or choose one below.";
   }
   if (mode === "psd") {
-    return "Drop exactly one .psd file here to detect it. PSD conversion is not available yet.";
+    return "Drop exactly one .psd file from the RGB 8-bit raster-layer subset here, or choose one below.";
   }
-  return "Drag and drop PNG, JSON, Piskel, GIF, APNG, OpenRaster, Pixelorama, Krita, or PSD files here, or choose files below. PSD conversion is not available yet.";
+  return "Drag and drop PNG, JSON, Piskel, GIF, APNG, OpenRaster, Pixelorama, Krita, or PSD files here, or choose files below.";
 }
 
 export type GridAutoCalculation = {
@@ -504,7 +510,7 @@ export function getSourceSelectionError(
   }
   if (mode === "psd") {
     return psdCount === 1 && files.length === 1
-      ? "PSD files can be selected for detection, but PSD conversion is not available yet."
+      ? null
       : "PSD mode requires exactly one .psd file.";
   }
   return files.length === 1 && apngCount + pngCount === 1
@@ -521,9 +527,6 @@ export async function convertSourceFiles(
   const selectionError = getSourceSelectionError(mode, files);
   if (selectionError !== null) {
     throw new Error(selectionError);
-  }
-  if (mode === "psd") {
-    throw new Error("PSD conversion is not available yet.");
   }
 
   const pngFiles = files
@@ -579,6 +582,13 @@ export async function convertSourceFiles(
       throw new Error("Krita source file is missing.");
     }
     return importers.importKrita(kritaFile.file);
+  }
+  if (mode === "psd") {
+    const psdFile = files.find((file) => file.kind === "psd");
+    if (psdFile === undefined) {
+      throw new Error("PSD source file is missing.");
+    }
+    return importers.importPsd(psdFile.file);
   }
 
   const jsonFile = files.find((file) => file.kind === "json");
@@ -637,7 +647,13 @@ export function getConversionSuccessStatus(
     );
   }
   if (mode === "psd") {
-    return "PSD conversion is not available yet.";
+    const layerCount = project.layers.length;
+    const layerNoun = layerCount === 1 ? "layer" : "layers";
+    return (
+      "Converted supported PSD RGB 8-bit raster layers " +
+      `into an editable Aseprite timeline with ${frameCount} ${frameNoun} ` +
+      `and ${layerCount} preserved ${layerNoun}. Ready to download.`
+    );
   }
   return (
     `Converted ${frameCount} ${frameNoun} ` +
@@ -684,7 +700,10 @@ export function getConversionErrorMessage(
       : `Krita import failed: ${diagnostic}`;
   }
   if (mode === "psd") {
-    return "PSD conversion is not available yet.";
+    const diagnostic = getPsdParserDiagnostic(error);
+    return diagnostic === null
+      ? "PSD import failed: Check that the .psd file contains supported RGB 8-bit raster layers from the documented subset."
+      : `PSD import failed: ${diagnostic}`;
   }
   if (mode !== "piskel") {
     return error instanceof Error && error.message.trim().length > 0
@@ -747,7 +766,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   );
   title.textContent = "Sprite to Aseprite Converter";
   introduction.textContent =
-    "Convert frames into an editable Aseprite timeline from PNG sequences, spritesheets, Piskel projects, OpenRaster projects, Pixelorama projects, Krita projects, and GIF/APNG animations.";
+    "Convert frames into an editable Aseprite timeline from PNG sequences, spritesheets, Piskel projects, OpenRaster projects, Pixelorama projects, Krita projects, PSD raster-layer projects, and GIF/APNG animations.";
   privacy.textContent =
     "Files are processed browser-locally. Your artwork is never uploaded.";
   privacy.className = "privacy-notice";
@@ -1321,7 +1340,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
                     : mode === "krita"
                       ? "Converting the Krita project browser-locally. This may take a while."
                       : mode === "psd"
-                        ? "PSD conversion is not available yet."
+                        ? "Converting the PSD project browser-locally. This may take a while."
                       : "Converting files browser-locally. This may take a while.",
     });
 
@@ -1351,7 +1370,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
       syncProject(null);
       renderConversionState(conversionElements, {
         isWorking: false,
-        canConvert: mode !== "psd",
+        canConvert: true,
         status:
           mode === "piskel"
             ? "Piskel conversion did not complete."
@@ -1366,7 +1385,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
                     : mode === "krita"
                       ? "Krita conversion did not complete."
                       : mode === "psd"
-                        ? "PSD conversion is not available."
+                        ? "PSD conversion did not complete."
                       : "Conversion did not complete.",
         error: getConversionErrorMessage(mode, error),
       });

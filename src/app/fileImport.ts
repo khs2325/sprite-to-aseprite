@@ -5,6 +5,7 @@ import { getKritaImportDiagnostic } from "../core/importers/krita";
 import { getOpenRasterImportDiagnostic } from "../core/importers/openraster";
 import { getPixeloramaImportDiagnostic } from "../core/importers/pixelorama";
 import { getPiskelImportDiagnostic } from "../core/importers/piskel";
+import { getPsdParserDiagnostic } from "../core/importers/psd";
 import { getSpritesheetJsonImportDiagnostic } from "../core/importers/spritesheetJson";
 
 export const SUPPORTED_SOURCE_ACCEPT =
@@ -295,7 +296,8 @@ const FORMAT_HELP: Record<FileImportFormat, FormatHelp> = {
   },
   psd: {
     label: "PSD project",
-    suggestion: "PSD conversion is not available yet.",
+    suggestion:
+      "Check that the .psd file contains supported RGB 8-bit raster layers from the documented subset.",
   },
 };
 
@@ -383,7 +385,12 @@ function getImporterMessage(
       : getKritaImportDiagnostic(error);
   }
   if (format === "psd") {
-    return null;
+    const message = error instanceof Error
+      ? error.message.replace(/\s+/g, " ").trim()
+      : "";
+    return message === "PSD mode requires exactly one .psd file."
+      ? message
+      : getPsdParserDiagnostic(error);
   }
   if (
     format === "spritesheet-json" ||
@@ -421,7 +428,7 @@ function getSelectionStatus(
     return "Selected 1 Krita project. Ready to convert browser-locally.";
   }
   if (format === "psd") {
-    return "Selected 1 PSD project. Conversion is not available yet.";
+    return "Selected 1 PSD project. The supported RGB 8-bit raster-layer subset will be checked browser-locally.";
   }
   const noun = fileCount === 1 ? "file" : "files";
   return `Selected ${fileCount} supported ${noun}.`;
@@ -577,7 +584,7 @@ export function mountFileImportUi(
   dropInstructions.textContent =
     "Drag and drop files here, or choose files with the control below.";
   supportedTypes.textContent =
-    "Supported files: PNG images (.png), JSON metadata (.json), Piskel projects (.piskel), GIF animations (.gif), APNG animations (.apng or .png), OpenRaster projects (.ora), Pixelorama projects (.pxo), Krita projects (.kra, documented minimal raster subset), and PSD projects (.psd, detection only).";
+    "Supported files: PNG images (.png), JSON metadata (.json), Piskel projects (.piskel), GIF animations (.gif), APNG animations (.apng or .png), OpenRaster projects (.ora), Pixelorama projects (.pxo), Krita projects (.kra, documented minimal raster subset), and PSD projects (.psd, RGB 8-bit raster-layer subset).";
   privacyNotice.textContent =
     "Your files stay in this browser and are never uploaded.";
   input.type = "file";
