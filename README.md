@@ -143,6 +143,19 @@ Piskel, OpenRaster, Pixelorama, Krita, and PSD inputs may contain supported
 layer data; PNG sequences, spritesheets, GIF, and APNG do not. Conversion is
 therefore not described as lossless or as restoring an original Aseprite file.
 
+## Round-trip limitations
+
+Future bidirectional paths are not guaranteed to be lossless. Aseprite, PSD,
+PNG sequences, spritesheets, GIF, and APNG expose different feature sets, so a
+file exported to one format and imported again may keep only the data that both
+formats and the converter's documented subset can represent.
+
+Flat formats such as PNG sequences, spritesheets, GIF, and APNG store rendered
+frames rather than editable source layers, so they cannot recover original
+source layers. Tags, palettes, effects, groups, masks, and format-specific
+metadata may also be unsupported or omitted unless a specific path documents
+and tests preservation.
+
 ## Aseprite output support
 
 Generated `.aseprite` files support the subset represented by the internal

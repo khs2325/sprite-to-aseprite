@@ -14,6 +14,13 @@ from these sources. The MVP PNG import modes create one layer named `Main`.
 Layers can only be preserved when the source format contains layer data and
 the corresponding importer supports it.
 
+Bidirectional conversion is not guaranteed to be lossless. Aseprite, PSD, PNG
+sequences, spritesheets, GIF, and APNG do not share the same layer, timing,
+tag, palette, effects, groups, masks, or metadata features. A round trip may
+therefore keep only the supported frame pixels, timing, layer data, and tags
+that both the source path, `SpriteProject`, and the destination path can
+represent. Flat formats still cannot recover original source layers.
+
 ## Run the app locally
 
 From the repository root, install the development dependencies if necessary,

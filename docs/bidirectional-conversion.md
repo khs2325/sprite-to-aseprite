@@ -7,6 +7,13 @@ Bidirectional conversion means the app can eventually import from and export to
 multiple sprite formats through the shared `SpriteProject` model. It does not
 mean byte-for-byte round trips or full editor feature preservation.
 
+The user-facing promise must stay narrower than "open any sprite file and get
+the same project back." Aseprite, PSD, PNG sequences, spritesheets, GIF, and
+APNG all expose different data. Some are layered editor formats, while others
+are flattened frame or atlas formats. Conversion can preserve only the
+intersection represented by the importer, `SpriteProject`, and the selected
+exporter.
+
 ## Boundary
 
 All importers, including any future `.ase` or `.aseprite` reader, must decode
@@ -53,6 +60,25 @@ If a future task needs any of those features, it must update the reader,
 internal model, exporter, fixtures, and product copy together. Until then, the
 reader should reject files that depend on unsupported features or clearly report
 that the metadata is not preserved.
+
+Format mismatches are expected:
+
+- Aseprite can contain frame tags, palettes, slices, tilemaps, groups, masks,
+  linked cels, color profiles, and user metadata that flattened output paths do
+  not carry.
+- PSD can contain layer groups, masks, effects, adjustment layers, smart
+  objects, text layers, color profiles, and Photoshop metadata that the planned
+  minimal PSD path does not represent.
+- PNG sequences and spritesheets contain rendered pixels and optional external
+  timing or atlas metadata, but they do not contain the original source layers,
+  effects, groups, masks, palettes, or editor state.
+- GIF and APNG contain animation frames with format-specific timing,
+  transparency, blending, and disposal behavior, but they do not contain
+  editable source layer structure.
+
+Flat formats must never be described as recovering source layers. They can
+rebuild timeline frames and convert frames into another supported output, but
+original layer structure is absent once the source is flattened.
 
 ## Reader Task Seed
 
