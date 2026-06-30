@@ -154,6 +154,15 @@ rebuild frames on a generated layer rather than claim layer recovery. All
 planned processing remains in the browser with no artwork upload or server
 conversion.
 
+## Planned output format selector
+
+A future selector may offer additional export targets after the relevant
+exporters are specified and tested. The current plan is documented in
+[output-format-selector.md](output-format-selector.md): Aseprite remains the
+enabled default, while PNG sequence, spritesheet PNG, GIF, APNG, and
+research-only PSD stay disabled until their browser-local exporter scope,
+limits, and tests exist.
+
 ## Core user promise
 
 User files stay in the browser whenever the web app processes artwork.
