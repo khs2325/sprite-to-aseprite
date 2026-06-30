@@ -168,6 +168,12 @@ Its requirements for filenames, frame order, timing metadata, browser-local
 downloads, and layer/tag limitations are documented in
 [png-sequence-output.md](png-sequence-output.md).
 
+Spritesheet PNG plus JSON output is planned as a later flattened export path.
+Its first subset should use a deterministic fixed grid, preserve transparency
+and frame durations, and document that layers, tags, and source editor metadata
+are not preserved by that exporter. See
+[spritesheet-output.md](spritesheet-output.md).
+
 ## Core user promise
 
 User files stay in the browser whenever the web app processes artwork.

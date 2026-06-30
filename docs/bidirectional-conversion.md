@@ -34,7 +34,7 @@ semantics are present and tested.
 | --- | --- | --- |
 | Aseprite `.aseprite` | Canvas, ordered frames, durations, supported tags, normal layers, layer visibility/opacity, cel offsets, RGBA pixels | Generates a new file through the existing exporter subset; unsupported source chunks are not round-tripped. |
 | PNG sequence | A tested flattened frame compositor, frame order, canvas size, visible layer compositing, cel offsets | Exports pixels only; layer names, palettes, and editor metadata are not preserved. Timing and supported tags may be written only to an optional manifest as planned in [png-sequence-output.md](png-sequence-output.md). |
-| Spritesheet PNG | Same flattened compositor plus deterministic sheet layout and max-canvas limits | Exports pixels only and may change frame packing. |
+| Spritesheet PNG + JSON | Same flattened compositor plus deterministic sheet layout and max-canvas limits | Exports pixels and timing metadata only. The planned first subset is fixed-grid and row-major as documented in [spritesheet-output.md](spritesheet-output.md). |
 | GIF/APNG | Flattened frames, timing conversion rules, transparency/disposal limits, encoder-specific validation | Animated outputs cannot preserve Aseprite layer structure. |
 | Layered future outputs | Layer order, names, visibility, opacity, cel offsets, frame coverage, and format-specific limits | Groups, blend modes, masks, slices, palettes, and color profiles need separate model/exporter scope before preservation is claimed. |
 
