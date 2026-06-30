@@ -1,6 +1,5 @@
 import {
-  MAX_FRAME_DURATION_MS,
-  MIN_FRAME_DURATION_MS,
+  normalizeFrameDurationMs,
   type SpriteCel,
   type SpriteProject,
 } from "../../SpriteProject";
@@ -869,10 +868,7 @@ function parseCel(value: unknown, frameIndex: number, celIndex: number): void {
 }
 
 function frameDurationMs(duration: number, fps: number): number {
-  return Math.max(
-    MIN_FRAME_DURATION_MS,
-    Math.min(MAX_FRAME_DURATION_MS, Math.round((duration * 1000) / fps)),
-  );
+  return normalizeFrameDurationMs((duration * 1000) / fps);
 }
 
 function rawCelToImageData(
