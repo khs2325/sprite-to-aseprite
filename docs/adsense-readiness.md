@@ -11,6 +11,12 @@ placeholders, or any backend.
 - The site needs an approved Google AdSense account before live ads are added.
 - The future AdSense publisher ID should not be hardcoded until it is available.
 - Add `ads.txt` later after the AdSense publisher ID is known.
+- Before requesting review, verify the deployed static page reaches About
+  (`#about`), Contact (`#contact`), Privacy Policy (`#privacy-policy`), Terms
+  (`#terms`), Guides (`#guides`), Browser-local conversion guide
+  (`#browser-local-conversion-guide`), Supported formats guide
+  (`#supported-formats-guide`), and Conversion limitations guide
+  (`#conversion-limitations-guide`).
 - Keep the browser-local conversion promise accurate: files are processed in
   the browser and are not uploaded to a project server for conversion.
 - Keep payment handling off-site through external support providers only; this

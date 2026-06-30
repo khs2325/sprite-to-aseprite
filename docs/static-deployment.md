@@ -98,12 +98,22 @@ After publishing, verify the deployed URL in a clean browser session:
 
 1. Confirm that the page loads over HTTPS without console errors or failed
    asset requests.
-2. Use a small, synthetic PNG fixture to complete a conversion and download
+2. Confirm that every required policy and guide section link scrolls to a
+   visible section on the static page:
+   - About: `#about`
+   - Contact: `#contact`
+   - Privacy Policy: `#privacy-policy`
+   - Terms: `#terms`
+   - Guides: `#guides`
+   - Browser-local conversion guide: `#browser-local-conversion-guide`
+   - Supported formats guide: `#supported-formats-guide`
+   - Conversion limitations guide: `#conversion-limitations-guide`
+3. Use a small, synthetic PNG fixture to complete a conversion and download
    the generated `.aseprite` file.
-3. While selecting, converting, and downloading, inspect the browser's Network
+4. While selecting, converting, and downloading, inspect the browser's Network
    panel. There should be no request containing the fixture, its metadata, or
    the generated file.
-4. Refresh the deployed URL and repeat the check after clearing the browser
+5. Refresh the deployed URL and repeat the check after clearing the browser
    cache to catch incorrect base paths or stale `index.html` caching.
 
 Do not use private artwork for deployment verification. A synthetic fixture is
