@@ -181,6 +181,20 @@ and frame durations, and document that layers, tags, and source editor metadata
 are not preserved by that exporter. See
 [spritesheet-output.md](spritesheet-output.md).
 
+## Bidirectional conversion policy
+
+Bidirectional conversion must not be marketed or documented as inherently
+lossless. Aseprite, PSD, PNG sequences, spritesheets, GIF, and APNG have
+different feature sets, and `SpriteProject` intentionally stores normalized
+sprite data rather than every source-format field. A round trip may omit tags,
+palettes, effects, groups, masks, editor metadata, or other unsupported
+features unless that exact path has documented model support, exporter support,
+and tests.
+
+Flat formats such as PNG sequences, spritesheets, GIF, and APNG contain
+rendered frame pixels, not editable source layer structure. They can be used to
+rebuild timeline frames, but they cannot recover original source layers.
+
 ## Core user promise
 
 User files stay in the browser whenever the web app processes artwork.
