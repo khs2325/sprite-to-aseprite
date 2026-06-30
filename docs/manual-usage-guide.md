@@ -5,8 +5,11 @@ frames, spritesheets, a supported Piskel project, a supported OpenRaster
 project, a supported Pixelorama project, a supported Krita project, or a
 supported PSD project or GIF/APNG animation.
 PSD support is limited to RGB 8-bit raster layers in one-frame PSD files.
-Your artwork stays in the browser. The app does not upload source files to a
-server or send them to an external processing service.
+Your artwork stays in the browser. Selected files are read by browser APIs for
+conversion in the tab; the app does not upload source files to a project server
+or send them to an external processing service. Downloads are generated locally
+from the converted bytes. See
+[privacy-browser-local.md](privacy-browser-local.md).
 For a quick input-format matrix, see
 [supported-formats.md](supported-formats.md). For a compact matrix of what
 cannot be preserved, see
@@ -548,5 +551,6 @@ Include the following in a problem report:
 
 Do not share private artwork to report a problem. A newly created minimal test
 sprite is sufficient when it reproduces the issue. File processing by the app
-remains browser-only; attaching a file to an external issue tracker is a
-separate action and should only be done deliberately.
+remains browser-only; attaching a file to an external issue tracker, support
+request, cloud drive, chat tool, or other service is a separate action governed
+by that service and should only be done deliberately.

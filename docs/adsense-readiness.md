@@ -20,7 +20,11 @@ placeholders, or any backend.
   (`#supported-formats-guide`), and Conversion limitations guide
   (`#conversion-limitations-guide`).
 - Keep the browser-local conversion promise accurate: files are processed in
-  the browser and are not uploaded to a project server for conversion.
+  the browser through browser APIs, are not uploaded to a project server for
+  conversion, and generated downloads are created locally.
+- Keep external sharing distinct from conversion privacy. Files attached to
+  issue trackers, support requests, cloud drives, chat tools, payment provider
+  pages, or other services are governed by those services.
 - Keep payment handling off-site through external support providers only; this
   site does not process payment information.
 - Review any proposed ad placeholder in the live converter UI before release.
