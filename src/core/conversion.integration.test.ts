@@ -8,9 +8,11 @@ import { exportAseprite } from "./exporters/aseprite";
 import { importApngBytes } from "./importers/apng";
 import { importGifBytes } from "./importers/gif";
 import { importKritaBytes } from "./importers/krita";
+import { importOpenRasterBytes } from "./importers/openraster";
 import { importPiskel } from "./importers/piskel";
 import { importPixeloramaBytes } from "./importers/pixelorama";
 import { importPngSequence } from "./importers/pngSequence";
+import { importPsdBytes } from "./importers/psd";
 import { importSpritesheetGrid } from "./importers/spritesheetGrid";
 import { importSpritesheetJson } from "./importers/spritesheetJson";
 
@@ -179,6 +181,18 @@ function expectTwoFrameAseprite(
   expectedDurations: number[],
   expectedRedValues: number[],
 ): void {
+  expect(project).toMatchObject({
+    colorMode: "rgba",
+    frames: expectedDurations.map((durationMs, index) => ({
+      durationMs,
+      index,
+    })),
+    height: 1,
+    layers: [{ opacity: 255, visible: true }],
+    width: 1,
+  });
+  expect(project.layers).toHaveLength(1);
+
   const bytes = exportAseprite(project);
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const frames = parseFrames(bytes);
@@ -235,6 +249,91 @@ function expectTwoFrameAseprite(
       width: 1,
     })),
   );
+}
+
+function expectSingleFrameLayeredAseprite(
+  project: SpriteProject,
+  expected: {
+    cels: Array<{
+      height: number;
+      layerIndex: number;
+      pixels: number[];
+      width: number;
+      x: number;
+      y: number;
+    }>;
+    durationMs: number;
+    height: number;
+    layers: Array<{
+      name: string;
+      opacity: number;
+      visible: boolean;
+    }>;
+    width: number;
+  },
+): void {
+  const bytes = exportAseprite(project);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const frames = parseFrames(bytes);
+
+  expect({
+    colorDepth: view.getUint16(12, true),
+    declaredSize: view.getUint32(0, true),
+    frameCount: view.getUint16(6, true),
+    height: view.getUint16(10, true),
+    magic: view.getUint16(4, true),
+    width: view.getUint16(8, true),
+  }).toEqual({
+    colorDepth: 32,
+    declaredSize: bytes.length,
+    frameCount: 1,
+    height: expected.height,
+    magic: 0xa5e0,
+    width: expected.width,
+  });
+  expect(frames.map(({ durationMs, magic }) => ({ durationMs, magic }))).toEqual([
+    { durationMs: expected.durationMs, magic: 0xf1fa },
+  ]);
+  expect(frames[0].chunks.map(({ type }) => type)).toEqual([
+    ...expected.layers.map(() => 0x2004),
+    ...expected.cels.map(() => 0x2005),
+  ]);
+
+  const layerChunks = frames[0].chunks.filter(({ type }) => type === 0x2004);
+  expect(
+    layerChunks.map(({ bytes: layerBytes }) => {
+      const layerView = new DataView(
+        layerBytes.buffer,
+        layerBytes.byteOffset,
+        layerBytes.byteLength,
+      );
+      const nameLength = layerView.getUint16(22, true);
+      return {
+        name: new TextDecoder().decode(layerBytes.slice(24, 24 + nameLength)),
+        opacity: layerView.getUint8(18),
+        visible: (layerView.getUint16(6, true) & 1) !== 0,
+      };
+    }),
+  ).toEqual(expected.layers);
+
+  const celChunks = frames[0].chunks.filter(({ type }) => type === 0x2005);
+  expect(
+    celChunks.map(({ bytes: celBytes }) => {
+      const celView = new DataView(
+        celBytes.buffer,
+        celBytes.byteOffset,
+        celBytes.byteLength,
+      );
+      return {
+        height: celView.getUint16(24, true),
+        layerIndex: celView.getUint16(6, true),
+        pixels: Array.from(inflateSync(celBytes.slice(26))),
+        width: celView.getUint16(22, true),
+        x: celView.getInt16(8, true),
+        y: celView.getInt16(10, true),
+      };
+    }),
+  ).toEqual(expected.cels);
 }
 
 describe("importer to Aseprite export integration", () => {
@@ -834,6 +933,140 @@ describe("importer to Aseprite export integration", () => {
         y: 0,
       },
     ]);
+  });
+
+  it("preserves supported OpenRaster layers in Aseprite chunks", async () => {
+    const ora = new Uint8Array(
+      readFileSync(
+        new URL(
+          "../../tests/fixtures/openraster/two-layers.ora",
+          import.meta.url,
+        ),
+      ),
+    );
+    const project = await importOpenRasterBytes(ora, {
+      decodePng: async (bytes) => decodeFixturePng(bytes),
+      inflateRaw: async (bytes) => new Uint8Array(inflateRawSync(bytes)),
+    });
+
+    expect(project).toMatchObject({
+      colorMode: "rgba",
+      frames: [{ index: 0, durationMs: 100 }],
+      height: 3,
+      layers: [
+        {
+          cels: [{ frameIndex: 0, x: 1, y: -1 }],
+          name: "Top hidden half",
+          opacity: 128,
+          visible: false,
+        },
+        {
+          cels: [{ frameIndex: 0, x: 0, y: 1 }],
+          name: "Base visible",
+          opacity: 255,
+          visible: true,
+        },
+      ],
+      width: 4,
+    });
+    expect(pixel(project.layers[0].cels[0].imageData, 1, 0)).toEqual([
+      255, 209, 102, 255,
+    ]);
+    expect(pixel(project.layers[1].cels[0].imageData, 0, 0)).toEqual([
+      239, 71, 111, 255,
+    ]);
+
+    expectSingleFrameLayeredAseprite(project, {
+      durationMs: 100,
+      height: 3,
+      layers: [
+        { name: "Top hidden half", opacity: 128, visible: false },
+        { name: "Base visible", opacity: 255, visible: true },
+      ],
+      width: 4,
+      cels: [
+        {
+          height: 2,
+          layerIndex: 0,
+          pixels: Array.from(project.layers[0].cels[0].imageData.data),
+          width: 2,
+          x: 1,
+          y: -1,
+        },
+        {
+          height: 2,
+          layerIndex: 1,
+          pixels: Array.from(project.layers[1].cels[0].imageData.data),
+          width: 2,
+          x: 0,
+          y: 1,
+        },
+      ],
+    });
+  });
+
+  it("preserves supported PSD layers in Aseprite chunks", async () => {
+    const psd = new Uint8Array(
+      readFileSync(
+        new URL("../../tests/fixtures/psd/two-layers.psd", import.meta.url),
+      ),
+    );
+    const project = await importPsdBytes(psd);
+
+    expect(project).toMatchObject({
+      colorMode: "rgba",
+      frames: [{ index: 0, durationMs: 100 }],
+      height: 3,
+      layers: [
+        {
+          cels: [{ frameIndex: 0, x: 0, y: 0 }],
+          name: "Top hidden half",
+          opacity: 128,
+          visible: false,
+        },
+        {
+          cels: [{ frameIndex: 0, x: 0, y: 0 }],
+          name: "Base visible",
+          opacity: 255,
+          visible: true,
+        },
+      ],
+      width: 4,
+    });
+    expect(pixel(project.layers[0].cels[0].imageData, 2, 0)).toEqual([
+      255, 209, 102, 255,
+    ]);
+    expect(pixel(project.layers[1].cels[0].imageData, 0, 1)).toEqual([
+      17, 138, 178, 255,
+    ]);
+
+    expectSingleFrameLayeredAseprite(project, {
+      durationMs: 100,
+      height: 3,
+      layers: [
+        { name: "Top hidden half", opacity: 128, visible: false },
+        { name: "Base visible", opacity: 255, visible: true },
+      ],
+      width: 4,
+      cels: [
+        {
+          height: 3,
+          layerIndex: 0,
+          pixels: Array.from(project.layers[0].cels[0].imageData.data),
+          width: 4,
+          x: 0,
+          y: 0,
+        },
+        {
+          height: 3,
+          layerIndex: 1,
+          pixels: Array.from(project.layers[1].cels[0].imageData.data),
+          width: 4,
+          x: 0,
+          y: 0,
+        },
+      ],
+    });
   });
 
   it("preserves supported Pixelorama layers and timing in Aseprite chunks", async () => {
