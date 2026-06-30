@@ -1,6 +1,7 @@
-id: "086"
+﻿id: "086"
 title: Add ads.txt after publisher ID is known
-status: backlog
+status: active
+blocked_reason: Waiting for a real AdSense publisher ID before adding ads.txt.
 priority: low
 goal: Add `ads.txt` only after a real AdSense publisher ID exists.
 context: >
@@ -38,3 +39,4 @@ auto_merge:
   allowed: false
   max_changed_files: 3
   forbidden_paths: *forbidden
+
