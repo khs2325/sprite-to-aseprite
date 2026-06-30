@@ -1,6 +1,5 @@
 import {
-  MAX_FRAME_DURATION_MS,
-  MIN_FRAME_DURATION_MS,
+  normalizeFrameDurationMs,
   type SpriteCel,
   type SpriteProject,
 } from "../../SpriteProject";
@@ -670,7 +669,7 @@ async function decodePngInBrowser(pngBytes: Uint8Array): Promise<ImageData> {
 
 /**
  * Imports the documented model-version-2 Piskel subset. The global frame
- * duration rule is clamp(Math.round(1000 / fps), 1, 65535).
+ * duration is normalized to the SpriteProject frame-duration range.
  */
 export async function importPiskelJson(
   json: string,
@@ -678,10 +677,7 @@ export async function importPiskelJson(
 ): Promise<SpriteProject> {
   const parsed = parsePiskelDocument(json);
   const decodePng = dependencies.decodePng ?? decodePngInBrowser;
-  const durationMs = Math.max(
-    MIN_FRAME_DURATION_MS,
-    Math.min(MAX_FRAME_DURATION_MS, Math.round(1000 / parsed.fps)),
-  );
+  const durationMs = normalizeFrameDurationMs(1000 / parsed.fps);
   const outputFrameBySourceFrame = new Map(
     parsed.visibleFrameIndexes.map((sourceFrameIndex, outputFrameIndex) => [
       sourceFrameIndex,

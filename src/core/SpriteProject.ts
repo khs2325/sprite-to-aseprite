@@ -36,7 +36,11 @@ export type SpriteCel = {
   imageData: ImageData;
 };
 
-/** Aseprite stores each frame duration as an unsigned 16-bit millisecond value. */
+/**
+ * SpriteProject stores frame durations as whole milliseconds in this range.
+ * Importers normalize source timing here; exporters may enforce additional
+ * format-specific limits when they consume the model.
+ */
 export const MIN_FRAME_DURATION_MS = 1;
 export const MAX_FRAME_DURATION_MS = 65_535;
 
@@ -89,6 +93,17 @@ export function isValidFrameDuration(durationMs: number): boolean {
     Number.isInteger(durationMs) &&
     durationMs >= MIN_FRAME_DURATION_MS &&
     durationMs <= MAX_FRAME_DURATION_MS
+  );
+}
+
+export function normalizeFrameDurationMs(durationMs: number): number {
+  if (!Number.isFinite(durationMs)) {
+    throw new RangeError("Frame duration must be a finite number.");
+  }
+
+  return Math.max(
+    MIN_FRAME_DURATION_MS,
+    Math.min(MAX_FRAME_DURATION_MS, Math.round(durationMs)),
   );
 }
 

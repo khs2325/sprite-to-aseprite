@@ -72,6 +72,12 @@ from UI components.
 All current importers live under `src/core/importers/*` and return
 `SpriteProject`.
 
+Importers own source-format parsing, validation, decoding, and mapping into the
+canonical model. They may use model helpers from `src/core/SpriteProject.ts` and
+shared validators from `src/core/validation`, but they must not import exporter
+modules or rely on Aseprite writer internals. Timing, layers, cels, and optional
+metadata should be expressed as `SpriteProject` fields before any export step.
+
 - PNG sequence: decodes each PNG with browser image APIs, requires matching
   dimensions, creates one frame per file, and places full-frame cels on one
   generated `Main` layer.
@@ -137,6 +143,11 @@ The Aseprite exporter consumes only `SpriteProject`; it does not parse source
 formats or inspect UI state. It validates supported model fields, rejects
 unsupported color modes and invalid ranges, and writes a binary `.aseprite`
 document.
+
+Exporter-specific limits and binary compatibility checks belong here. If a
+future exporter needs different constraints, it should consume the same
+`SpriteProject` contract and enforce its own output rules without changing
+source importers.
 
 The current writer supports:
 

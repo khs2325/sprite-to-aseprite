@@ -3,7 +3,7 @@ import { inflateRawSync, inflateSync } from "node:zlib";
 
 import { describe, expect, it } from "vitest";
 
-import type { SpriteProject } from "./SpriteProject";
+import { MAX_FRAME_DURATION_MS, type SpriteProject } from "./SpriteProject";
 import { exportAseprite } from "./exporters/aseprite";
 import { importApngBytes } from "./importers/apng";
 import { importGifBytes } from "./importers/gif";
@@ -662,6 +662,25 @@ describe("importer to Aseprite export integration", () => {
         y: 0,
       },
     ]);
+  });
+
+  it("normalizes Piskel timing at the SpriteProject boundary before export", async () => {
+    const contents = readFileSync(
+      new URL("../../tests/fixtures/piskel/multi-layer.piskel", import.meta.url),
+      "utf8",
+    ).replace('"fps": 20', '"fps": 0.00001');
+    const project = await importPiskel(
+      createFile("slow.piskel", contents, "application/json"),
+      { decodePng: async (bytes) => decodeFixturePng(bytes) },
+    );
+
+    expect(project.frames).toEqual([
+      { index: 0, durationMs: MAX_FRAME_DURATION_MS },
+      { index: 1, durationMs: MAX_FRAME_DURATION_MS },
+    ]);
+    expect(
+      parseFrames(exportAseprite(project)).map(({ durationMs }) => durationMs),
+    ).toEqual([MAX_FRAME_DURATION_MS, MAX_FRAME_DURATION_MS]);
   });
 
   it("omits hidden Piskel frames and exports reindexed visible frames", async () => {
