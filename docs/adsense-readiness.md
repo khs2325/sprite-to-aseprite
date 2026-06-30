@@ -45,6 +45,11 @@ Do not add visible ad placeholders until the final ad layout is ready for
 review. Future placeholders or live ads must remain clearly separated from
 converter controls and must not show fake ads or encourage ad interaction.
 
+Safety invariant: ad elements must stay outside import, selected-file,
+private-file, error, conversion, download, and support UI regions. The
+DOM-free AdSense readiness tests enforce this invariant for future ad markup
+such as ad placeholders, `adsbygoogle` elements, or `data-ad-*` elements.
+
 ## Content accuracy
 
 Do not claim perfect or lossless conversion. Do not claim flat images can recover

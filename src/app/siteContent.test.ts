@@ -33,6 +33,7 @@ class ElementStub {
   textContent = "";
   type = "";
   value = "";
+  parent: ElementStub | null = null;
 
   constructor(
     readonly tagName: string,
@@ -48,6 +49,7 @@ class ElementStub {
       if (typeof child === "string") {
         this.textContent += child;
       } else {
+        child.parent = this;
         this.children.push(child);
         if (
           this.tagName === "select" &&
@@ -75,6 +77,12 @@ class ElementStub {
   }
 
   replaceChildren(...children: ElementStub[]): void {
+    for (const child of this.children) {
+      child.parent = null;
+    }
+    for (const child of children) {
+      child.parent = this;
+    }
     this.children.splice(0, this.children.length, ...children);
   }
 
@@ -108,6 +116,117 @@ function findAll(
     ...(predicate(element) ? [element] : []),
     ...element.children.flatMap((child) => findAll(child, predicate)),
   ];
+}
+
+function contains(parent: ElementStub, child: ElementStub): boolean {
+  return parent === child ||
+    parent.children.some((node) => contains(node, child));
+}
+
+function hasClass(element: ElementStub, className: string): boolean {
+  return element.className.split(/\s+/).includes(className);
+}
+
+function findSectionByHeading(
+  root: ElementStub,
+  headingText: string,
+): ElementStub {
+  const heading = findAll(
+    root,
+    (element) =>
+      /^h[1-6]$/.test(element.tagName) && getText(element) === headingText,
+  )[0];
+  let current = heading?.parent ?? null;
+  while (current !== null && current.tagName !== "section") {
+    current = current.parent;
+  }
+  if (current === null) {
+    throw new Error(`Could not find section headed "${headingText}".`);
+  }
+  return current;
+}
+
+const AD_MARKER_PATTERN =
+  /(^|[\s_-])(ad|ads|adsense|adsbygoogle|adslot|ad-slot|ad-unit|ad-placement|ad-placeholder|ad-container|advertisement|advertising|sponsored)(?=$|[\s_-])/i;
+const AD_URL_PATTERN =
+  /(pagead|doubleclick|googlesyndication|googleadservices)/i;
+const AD_LABEL_PATTERN = /\b(advertisement|advertising|sponsored)\b/i;
+const PROHIBITED_REGION_CLASSES = new Set([
+  "drop-zone",
+  "download-area",
+  "memory-warning",
+  "selected-files",
+  "selected-file-card",
+  "selected-file-details",
+  "selected-file-icon",
+  "selected-file-list",
+  "selected-file-thumbnail",
+  "site-footer",
+  "support-entry-link",
+  "support-links",
+  "support-provider-link",
+  "support-provider-list",
+  "support-section",
+]);
+const PROHIBITED_REGION_MARKER_PATTERN =
+  /(^|[\s_-])(file-picker|private-file|selected-file|source-file|source-files|drop-zone|download-area|convert-action|conversion-action|support-provider|support-links|support-section)(?=$|[\s_-])/i;
+
+function hasAdMarker(value: string): boolean {
+  return AD_MARKER_PATTERN.test(value);
+}
+
+function isAdElement(element: ElementStub): boolean {
+  const classValue = [
+    element.className,
+    element.getAttribute("class") ?? "",
+  ].join(" ");
+  const idValue = [element.id, element.getAttribute("id") ?? ""].join(" ");
+  const labelValue = [
+    element.getAttribute("aria-label") ?? "",
+    element.getAttribute("title") ?? "",
+  ].join(" ");
+
+  return (
+    hasAdMarker(classValue) ||
+    hasAdMarker(idValue) ||
+    AD_LABEL_PATTERN.test(labelValue) ||
+    AD_URL_PATTERN.test(element.src) ||
+    [...element.attributes.keys()].some((name) => /^data-ad($|-)/i.test(name))
+  );
+}
+
+function isProhibitedAdRegion(element: ElementStub): boolean {
+  const classes = element.className.split(/\s+/).filter(Boolean);
+  const classValue = classes.join(" ");
+  const labelValue = element.getAttribute("aria-label") ?? "";
+
+  return (
+    classes.some((className) => PROHIBITED_REGION_CLASSES.has(className)) ||
+    PROHIBITED_REGION_MARKER_PATTERN.test(classValue) ||
+    element.id === "support" ||
+    element.getAttribute("role") === "alert" ||
+    (element.tagName === "input" && element.type === "file") ||
+    (element.tagName === "button" &&
+      ["Clear selected files", "Convert to .aseprite", "Download .aseprite"]
+        .includes(getText(element))) ||
+    labelValue === "Aseprite export"
+  );
+}
+
+function getProhibitedAdRegions(root: ElementStub): ElementStub[] {
+  const regions = [
+    ...findAll(root, isProhibitedAdRegion),
+    findSectionByHeading(root, "2. Add source files"),
+    findSectionByHeading(root, "3. Convert and download"),
+  ];
+  return [...new Set(regions)];
+}
+
+function getUnsafeAdPlacements(root: ElementStub): ElementStub[] {
+  const prohibitedRegions = getProhibitedAdRegions(root);
+  return findAll(root, isAdElement).filter((adElement) =>
+    prohibitedRegions.some((region) => contains(region, adElement)),
+  );
 }
 
 describe("AdSense readiness site content", () => {
@@ -214,5 +333,35 @@ describe("AdSense readiness site content", () => {
     expect(text).not.toContain("future advertising space");
     expect(text).not.toContain("fake ad");
     expect(findAll(root, (element) => element.tagName === "script")).toHaveLength(0);
+  });
+
+  it("keeps ad elements out of sensitive converter and private-file UI", () => {
+    const document = new DocumentStub();
+    const root = document.createElement("main");
+    mountConverterUi(root as unknown as HTMLElement);
+    const prohibitedRegions = getProhibitedAdRegions(root);
+
+    expect(prohibitedRegions.some((element) => hasClass(element, "drop-zone")))
+      .toBe(true);
+    expect(
+      prohibitedRegions.some(
+        (element) => element.tagName === "input" && element.type === "file",
+      ),
+    ).toBe(true);
+    expect(
+      prohibitedRegions.some((element) => getText(element) === "Convert to .aseprite"),
+    ).toBe(true);
+    expect(
+      prohibitedRegions.some((element) => hasClass(element, "download-area")),
+    ).toBe(true);
+    expect(prohibitedRegions.some((element) => element.id === "support"))
+      .toBe(true);
+    expect(
+      prohibitedRegions.some((element) => hasClass(element, "selected-files")),
+    ).toBe(true);
+    expect(
+      prohibitedRegions.some((element) => element.getAttribute("role") === "alert"),
+    ).toBe(true);
+    expect(getUnsafeAdPlacements(root)).toEqual([]);
   });
 });
