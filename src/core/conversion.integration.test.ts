@@ -337,6 +337,139 @@ function expectSingleFrameLayeredAseprite(
 }
 
 describe("importer to Aseprite export integration", () => {
+  it("exports SpriteProject order and canvas metadata without reordering", () => {
+    const project: SpriteProject = {
+      width: 3,
+      height: 2,
+      colorMode: "rgba",
+      frames: [
+        { index: 0, durationMs: 90 },
+        { index: 1, durationMs: 110 },
+        { index: 2, durationMs: 130 },
+      ],
+      layers: [
+        {
+          id: "shadow",
+          name: "Shadow",
+          visible: false,
+          opacity: 0,
+          cels: [
+            { frameIndex: 2, x: 1, y: 0, imageData: createImageData([70, 80]) },
+            { frameIndex: 0, x: 0, y: 1, imageData: createImageData([10]) },
+          ],
+        },
+        {
+          id: "ink",
+          name: "Ink",
+          visible: true,
+          opacity: 255,
+          cels: [
+            { frameIndex: 1, x: 2, y: 0, imageData: createImageData([20]) },
+            { frameIndex: 2, x: 0, y: 1, imageData: createImageData([30]) },
+          ],
+        },
+      ],
+    };
+
+    const bytes = exportAseprite(project);
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const frames = parseFrames(bytes);
+
+    expect({
+      colorDepth: view.getUint16(12, true),
+      frameCount: view.getUint16(6, true),
+      height: view.getUint16(10, true),
+      width: view.getUint16(8, true),
+    }).toEqual({ colorDepth: 32, frameCount: 3, height: 2, width: 3 });
+    expect(frames.map(({ durationMs }) => durationMs)).toEqual([90, 110, 130]);
+    expect(frames.map(({ chunks }) => chunks.map(({ type }) => type))).toEqual([
+      [0x2004, 0x2004, 0x2005],
+      [0x2005],
+      [0x2005, 0x2005],
+    ]);
+
+    const layerChunks = frames[0].chunks.filter(({ type }) => type === 0x2004);
+    expect(
+      layerChunks.map(({ bytes: layerBytes }) => {
+        const layerView = new DataView(
+          layerBytes.buffer,
+          layerBytes.byteOffset,
+          layerBytes.byteLength,
+        );
+        const nameLength = layerView.getUint16(22, true);
+        return {
+          name: new TextDecoder().decode(layerBytes.slice(24, 24 + nameLength)),
+          opacity: layerView.getUint8(18),
+          visible: (layerView.getUint16(6, true) & 1) !== 0,
+        };
+      }),
+    ).toEqual([
+      { name: "Shadow", opacity: 0, visible: false },
+      { name: "Ink", opacity: 255, visible: true },
+    ]);
+
+    expect(
+      frames.map(({ chunks }) =>
+        chunks
+          .filter(({ type }) => type === 0x2005)
+          .map(({ bytes: celBytes }) => {
+            const celView = new DataView(
+              celBytes.buffer,
+              celBytes.byteOffset,
+              celBytes.byteLength,
+            );
+            return {
+              height: celView.getUint16(24, true),
+              layerIndex: celView.getUint16(6, true),
+              pixels: Array.from(inflateSync(celBytes.slice(26))),
+              width: celView.getUint16(22, true),
+              x: celView.getInt16(8, true),
+              y: celView.getInt16(10, true),
+            };
+          }),
+      ),
+    ).toEqual([
+      [
+        {
+          height: 1,
+          layerIndex: 0,
+          pixels: [10, 0, 0, 255],
+          width: 1,
+          x: 0,
+          y: 1,
+        },
+      ],
+      [
+        {
+          height: 1,
+          layerIndex: 1,
+          pixels: [20, 0, 0, 255],
+          width: 1,
+          x: 2,
+          y: 0,
+        },
+      ],
+      [
+        {
+          height: 1,
+          layerIndex: 0,
+          pixels: [70, 0, 0, 255, 80, 0, 0, 255],
+          width: 2,
+          x: 1,
+          y: 0,
+        },
+        {
+          height: 1,
+          layerIndex: 1,
+          pixels: [30, 0, 0, 255],
+          width: 1,
+          x: 0,
+          y: 1,
+        },
+      ],
+    ]);
+  });
+
   it("converts a synthetic PNG sequence into an Aseprite timeline", async () => {
     const files = [
       createFile("frame-1.png", PNG_SIGNATURE, "image/png"),
