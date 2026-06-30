@@ -2,76 +2,155 @@
 
 ## Main idea
 
-Every input format is converted into a shared internal model called `SpriteProject`.
+Sprite to Aseprite Converter is a static browser app. User artwork and metadata
+are read, decoded, converted, previewed, and exported in the browser. The app
+does not upload source files to a server or call remote image-processing APIs.
 
-Every output format is generated from `SpriteProject`.
-
-```text
-PNG sequence       -> SpriteProject -> .aseprite
-Spritesheet grid   -> SpriteProject -> .aseprite
-Spritesheet + JSON -> SpriteProject -> .aseprite
-Piskel             -> SpriteProject -> .aseprite
-GIF/APNG           -> SpriteProject -> .aseprite
-```
-
-## Layers
-
-Flat formats such as spritesheets, PNG sequences, and GIFs do not contain original layer information.
-
-For these formats, create a single layer by default.
-
-Layer preservation is only possible when the source format contains layer data.
-
-## Core modules
-
-Suggested structure:
+Every importer converts its supported source format into the shared internal
+model, `SpriteProject`. Every exporter consumes `SpriteProject`.
 
 ```text
-src/
-├─ core/
-│  ├─ SpriteProject.ts
-│  ├─ validation/
-│  ├─ importers/
-│  │  ├─ pngSequence/
-│  │  ├─ spritesheetGrid/
-│  │  └─ spritesheetJson/
-│  └─ exporters/
-│     └─ aseprite/
-├─ app/
-│  ├─ components/
-│  └─ routes/
-└─ tests/
+Browser-selected files
+  -> UI source validation and mode selection
+  -> format importer
+  -> SpriteProject
+  -> preview, frame timing, and layer-name UI
+  -> Aseprite exporter
+  -> local Blob download
 ```
 
-## Binary writer policy
+## Internal model
 
-The `.aseprite` writer must start with a minimal supported subset:
+`SpriteProject` is the boundary between importers, UI tools, validation, and
+exporters.
 
-- RGBA 32-bit
-- Normal layers
-- Normal cels
-- Multiple frames
-- Frame duration
-- Layer names
-- zlib-compressed cel image data if required by the format
+```ts
+type SpriteProject = {
+  width: number;
+  height: number;
+  colorMode: "rgba";
+  frames: SpriteFrame[];
+  frameTags?: SpriteFrameTag[];
+  layers: SpriteLayer[];
+};
 
-Do not add advanced features until the minimal writer has tests.
+type SpriteFrame = {
+  index: number;
+  durationMs: number;
+};
 
-## Browser-only policy
+type SpriteFrameTag = {
+  name: string;
+  from: number;
+  to: number;
+  direction: "forward" | "reverse" | "ping-pong";
+};
 
-The web app must not upload user files.
+type SpriteLayer = {
+  id: string;
+  name: string;
+  visible: boolean;
+  opacity: number;
+  cels: SpriteCel[];
+};
 
-Acceptable:
+type SpriteCel = {
+  frameIndex: number;
+  x: number;
+  y: number;
+  imageData: ImageData;
+};
+```
 
-- FileReader
-- Blob
-- Canvas API
-- createImageBitmap
-- Web Workers
-- JSZip for local ZIP generation
+Importers must emit zero-based, ordered frame indexes and RGBA `ImageData`.
+Each layer may contain at most one cel per frame. UI code may rename layers and
+edit frame durations, but core file parsing and binary writing stay independent
+from UI components.
 
-Avoid:
+## Importer responsibilities
 
-- Uploading artwork to a server
-- Server-side conversion
-- Remote image processing APIs
+All current importers live under `src/core/importers/*` and return
+`SpriteProject`.
+
+- PNG sequence: decodes each PNG with browser image APIs, requires matching
+  dimensions, creates one frame per file, and places full-frame cels on one
+  generated `Main` layer.
+- Spritesheet grid: decodes one PNG, requires a grid that exactly covers the
+  image, slices frames in row-major or column-major order, and places each slice
+  on one generated `Main` layer.
+- Spritesheet PNG + JSON: parses the documented atlas JSON subset, decodes one
+  PNG, rebuilds each declared frame rectangle, supports per-frame durations,
+  supported Aseprite frame tags, supported 90-degree clockwise atlas rotation,
+  and complete trim placement metadata. It outputs one generated `Main` layer.
+- GIF: parses, decodes, composites, and times the supported GIF subset locally.
+  It rebuilds animation frames on one generated `GIF frames` layer.
+- APNG: parses, decodes, composites, and times the supported APNG subset
+  locally. It rebuilds animation frames on one generated `APNG frames` layer.
+- Piskel: parses the documented model-version-2 `.piskel` subset, decodes
+  embedded PNG chunks, skips hidden source frames, applies the global FPS timing,
+  and preserves supported source layer names, order, visibility, opacity, and
+  pixels.
+- OpenRaster: parses the documented single-frame `.ora` ZIP subset, reads
+  `stack.xml` and PNG-backed normal raster layers, and preserves supported layer
+  names, order, visibility, opacity, x/y offsets, and pixels.
+- Pixelorama: parses the documented `.pxo` ZIP subset, converts supported frame
+  timing and raw RGBA cel data, and preserves supported raster layer names,
+  order, visibility, opacity, and pixels.
+- Krita: parses the documented single-frame `.kra` raster subset, reads native
+  paint-layer payloads, and preserves supported layer names, order, visibility,
+  opacity, x/y offsets, and pixels.
+- PSD: parses the documented RGB 8-bit PSD raster-layer subset, converts
+  supported layers into one-frame full-canvas cels, and preserves supported
+  layer names, order, visibility, opacity, and pixels.
+
+Flat formats such as PNG sequences, spritesheets, GIF, and APNG do not contain
+editable source-layer structure. These importers rebuild timelines and convert
+frames on generated layers; they do not recover layers from flat images. Layer
+preservation is only possible when the source format contains supported layer
+data.
+
+Parsers should reject malformed or unsupported data clearly instead of silently
+inventing missing geometry, timing, layer, or pixel semantics.
+
+## UI responsibilities
+
+The app UI classifies browser-selected files by extension or MIME type, reads
+text or bytes with browser file APIs, and validates the selected file count for
+the active import mode before conversion.
+
+`convertSourceFiles` is the UI-to-core handoff. It chooses exactly one importer
+for the active mode and passes only local `File` objects plus mode-specific
+options such as spritesheet grid dimensions and frame order.
+
+After conversion, the UI stores the resulting `SpriteProject` in preview,
+layer-name, and export controls. The preview and layer-name controls operate on
+the model rather than source files. The export control validates that the
+current value is a valid `SpriteProject` before enabling download.
+
+Browser-only preview behavior is allowed, including object URLs for selected
+PNG thumbnails and grid overlays. Those object URLs must be revoked when they
+are no longer needed.
+
+## Aseprite exporter responsibilities
+
+The Aseprite exporter consumes only `SpriteProject`; it does not parse source
+formats or inspect UI state. It validates supported model fields, rejects
+unsupported color modes and invalid ranges, and writes a binary `.aseprite`
+document.
+
+The current writer supports:
+
+- 32-bit RGBA documents
+- multiple frames with per-frame durations
+- optional ordered frame tags
+- normal layers with names, visibility, and opacity
+- compressed RGBA image cels with x/y positions
+
+The current writer does not export advanced Aseprite features that are not in
+`SpriteProject`, such as indexed or grayscale color modes, layer groups,
+tilemaps, non-normal blend modes, linked cels, per-cel opacity, slices,
+palettes, tilesets, user data, or color profiles.
+
+The download UI wraps exported bytes in a local `Blob` with the Aseprite MIME
+type, creates a local object URL, clicks a download link, and revokes the URL.
+No exported artwork is uploaded.
