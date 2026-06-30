@@ -93,6 +93,12 @@ document-style file cards, while PNG thumbnail previews and the
 spritesheet grid overlay use browser-local object URLs that are released when
 no longer needed.
 
+Browser-local processing means selected files are read by browser APIs for this
+tab's conversion work, not uploaded to a project server for conversion.
+Voluntarily sharing files in GitHub issues, support requests, cloud drives, or
+other external services is separate and governed by those services. See
+[docs/privacy-browser-local.md](docs/privacy-browser-local.md).
+
 Large imports are limited by the browser tab's available memory. Decoded RGBA
 pixels scale with canvas size, frame count, layer count, importer working
 buffers, previews, and exported bytes, so a compressed source file can require

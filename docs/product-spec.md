@@ -204,6 +204,12 @@ rebuild timeline frames, but they cannot recover original source layers.
 ## Core user promise
 
 User files stay in the browser whenever the web app processes artwork.
+Selected files are read with browser APIs and are not uploaded to a project
+server for conversion. Generated downloads are created locally from converted
+bytes in the browser. Voluntary file sharing in issue trackers, support
+requests, cloud drives, chat tools, external validators, or other services is
+outside the browser-local conversion flow and must not be described as private
+project processing.
 
 ## Accurate wording policy
 
