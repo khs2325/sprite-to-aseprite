@@ -10,7 +10,9 @@ For a quick status summary across current, planned, research-only, and
 unsupported format scope, see
 [docs/supported-formats.md](docs/supported-formats.md). For a compact
 preservation summary, see
-[docs/conversion-limitations.md](docs/conversion-limitations.md).
+[docs/conversion-limitations.md](docs/conversion-limitations.md). For common
+conversion and download problems, see
+[docs/troubleshooting.md](docs/troubleshooting.md).
 
 The current conversion core supports:
 
