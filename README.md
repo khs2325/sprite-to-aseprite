@@ -57,7 +57,8 @@ The current conversion core supports:
   [documented supported subset](docs/psd-format.md). It converts supported
   one-frame RGB 8-bit raster layers and preserves supported layer names, order,
   visibility, opacity, offsets, and decoded RGBA pixels when the PSD contains
-  supported raster layer data.
+  supported raster layer data. This status is backed by the
+  [PSD importer tests](src/core/importers/psd/psd.test.ts).
 - **GIF animation:** accepts exactly one `.gif` file in the
   [documented supported subset](docs/gif-format.md). Supported frames, timing,
   transparency, offsets, and disposal behavior are rebuilt on one generated
@@ -79,10 +80,10 @@ non-normal blend modes are not preserved. Krita masks, vector layers, animation
 timelines, unsupported color depths or profiles, effects, and flattened
 previews are not preserved or used to recover source layers. PSD text layers,
 smart objects, adjustment layers, effects, masks, groups, PSB files,
-non-RGB or non-8-bit documents, non-normal blend modes, and animation metadata
-are not supported. Unsupported PSD features are rejected clearly or documented
-as omitted when they do not affect the converted `SpriteProject`. Other JSON
-schemas are not currently supported.
+unsupported color modes or channel depths, non-normal blend modes, and
+animation metadata are not supported. Unsupported PSD features are rejected
+clearly or documented as omitted when they do not affect the converted
+`SpriteProject`. Other JSON schemas are not currently supported.
 
 ## Browser-only processing
 
