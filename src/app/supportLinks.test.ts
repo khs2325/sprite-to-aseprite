@@ -251,6 +251,21 @@ describe("support entry placement", () => {
       "GitHub Sponsors",
       "Support",
     ]);
+    const entryLinks = supportLinks.filter((link) =>
+      link.className.split(/\s+/).includes("support-entry-link"),
+    );
+    expect(entryLinks.map((link) => link.href)).toEqual([
+      "https://github.com/sponsors/khs2325",
+      "https://github.com/sponsors/khs2325",
+    ]);
+    expect(entryLinks.map((link) => link.target)).toEqual([
+      "_blank",
+      "_blank",
+    ]);
+    expect(entryLinks.map((link) => link.rel)).toEqual([
+      "noopener noreferrer",
+      "noopener noreferrer",
+    ]);
     for (const unsafeArea of [
       importPanel,
       dropZone,
