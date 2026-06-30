@@ -171,3 +171,12 @@ palettes, tilesets, user data, or color profiles.
 The download UI wraps exported bytes in a local `Blob` with the Aseprite MIME
 type, creates a local object URL, clicks a download link, and revokes the URL.
 No exported artwork is uploaded.
+
+## Future output selector
+
+Additional output formats should be added through exporter modules that consume
+`SpriteProject`, not by changing importers or binding source formats directly to
+download code. The selector plan in
+[output-format-selector.md](output-format-selector.md) keeps Aseprite as the
+only enabled output until another exporter has documented limits, tests, and
+browser-local Blob download behavior.
