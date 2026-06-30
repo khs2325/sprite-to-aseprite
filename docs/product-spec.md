@@ -12,7 +12,9 @@ The tool should help users rebuild an editable Aseprite timeline from assets suc
 
 Current input-format status is summarized in
 [supported-formats.md](supported-formats.md), including supported subsets,
-planned scope, research-only notes, and unsupported features.
+planned scope, research-only notes, and unsupported features. Preservation
+limits across supported and planned paths are summarized in
+[conversion-limitations.md](conversion-limitations.md).
 
 ## MVP scope
 

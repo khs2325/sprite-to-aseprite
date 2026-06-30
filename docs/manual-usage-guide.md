@@ -8,7 +8,9 @@ PSD support is limited to RGB 8-bit raster layers in one-frame PSD files.
 Your artwork stays in the browser. The app does not upload source files to a
 server or send them to an external processing service.
 For a quick input-format matrix, see
-[supported-formats.md](supported-formats.md).
+[supported-formats.md](supported-formats.md). For a compact matrix of what
+cannot be preserved, see
+[conversion-limitations.md](conversion-limitations.md).
 
 PNG sequences and spritesheets are flat images. They do not contain the
 original layer structure, so the converter cannot recover original layers
