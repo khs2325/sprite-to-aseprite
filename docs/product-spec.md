@@ -163,6 +163,13 @@ enabled default, while PNG sequence, spritesheet PNG, GIF, APNG, and
 research-only PSD stay disabled until their browser-local exporter scope,
 limits, and tests exist.
 
+PSD output feasibility is documented in
+[psd-output-feasibility.md](psd-output-feasibility.md). The cautious target is
+a minimal RGB 8-bit layered PSD for a static frame, preserving supported layer
+names, visibility, opacity, and RGBA image data from `SpriteProject`. It is not
+a Photoshop timeline export and must not be described as lossless `.aseprite`
+round-trip conversion.
+
 PNG sequence output is planned as the first flattened non-Aseprite export path.
 Its requirements for filenames, frame order, timing metadata, browser-local
 downloads, and layer/tag limitations are documented in
