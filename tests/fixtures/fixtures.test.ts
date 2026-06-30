@@ -205,6 +205,34 @@ type PixeloramaFixture = {
   vanishing_points: unknown[];
 };
 
+type PsdChannelFixtureMetadata = {
+  compression: number;
+  id: number;
+  length: number;
+};
+
+type PsdLayerFixtureMetadata = {
+  blendModeKey: string;
+  bottom: number;
+  channels: PsdChannelFixtureMetadata[];
+  hidden: boolean;
+  left: number;
+  name: string;
+  opacity: number;
+  right: number;
+  top: number;
+};
+
+type PsdFixtureMetadata = {
+  bitsPerChannel: number;
+  channels: number;
+  colorMode: number;
+  height: number;
+  layers: PsdLayerFixtureMetadata[];
+  version: number;
+  width: number;
+};
+
 function fixtureCrc32(bytes: Buffer): number {
   let crc = 0xffffffff;
   for (const byte of bytes) {
@@ -214,6 +242,126 @@ function fixtureCrc32(bytes: Buffer): number {
     }
   }
   return (crc ^ 0xffffffff) >>> 0;
+}
+
+function readPsdPascalString(bytes: Buffer, offset: number): {
+  nextOffset: number;
+  value: string;
+} {
+  const length = bytes[offset];
+  const paddedLength = Math.ceil((length + 1) / 4) * 4;
+  return {
+    nextOffset: offset + paddedLength,
+    value: bytes.toString("ascii", offset + 1, offset + 1 + length),
+  };
+}
+
+function inspectPsdFixture(relativePath: string): PsdFixtureMetadata {
+  const psd = readFileSync(join(fixtureDirectory, relativePath));
+  expect(psd.toString("ascii", 0, 4)).toBe("8BPS");
+
+  const metadata: PsdFixtureMetadata = {
+    version: psd.readUInt16BE(4),
+    channels: psd.readUInt16BE(12),
+    height: psd.readUInt32BE(14),
+    width: psd.readUInt32BE(18),
+    bitsPerChannel: psd.readUInt16BE(22),
+    colorMode: psd.readUInt16BE(24),
+    layers: [],
+  };
+
+  let offset = 26;
+  const colorModeDataLength = psd.readUInt32BE(offset);
+  offset += 4;
+  expect(colorModeDataLength).toBe(0);
+  offset += colorModeDataLength;
+
+  const imageResourcesLength = psd.readUInt32BE(offset);
+  offset += 4;
+  expect(imageResourcesLength).toBe(0);
+  offset += imageResourcesLength;
+
+  const layerMaskLength = psd.readUInt32BE(offset);
+  offset += 4;
+  const layerMaskStart = offset;
+  const layerMaskEnd = layerMaskStart + layerMaskLength;
+  const layerInfoLength = psd.readUInt32BE(layerMaskStart);
+  let cursor = layerMaskStart + 4;
+  const layerInfoEnd = cursor + layerInfoLength;
+  const layerCount = psd.readInt16BE(cursor);
+  cursor += 2;
+
+  for (let layerIndex = 0; layerIndex < layerCount; layerIndex += 1) {
+    const top = psd.readInt32BE(cursor);
+    const left = psd.readInt32BE(cursor + 4);
+    const bottom = psd.readInt32BE(cursor + 8);
+    const right = psd.readInt32BE(cursor + 12);
+    const channelCount = psd.readUInt16BE(cursor + 16);
+    cursor += 18;
+
+    const channels: PsdChannelFixtureMetadata[] = [];
+    for (let channelIndex = 0; channelIndex < channelCount; channelIndex += 1) {
+      channels.push({
+        id: psd.readInt16BE(cursor),
+        length: psd.readUInt32BE(cursor + 2),
+        compression: -1,
+      });
+      cursor += 6;
+    }
+
+    expect(psd.toString("ascii", cursor, cursor + 4)).toBe("8BIM");
+    const blendModeKey = psd.toString("ascii", cursor + 4, cursor + 8);
+    cursor += 8;
+    const opacity = psd[cursor];
+    const clipping = psd[cursor + 1];
+    const flags = psd[cursor + 2];
+    cursor += 4;
+    expect(clipping).toBe(0);
+
+    const extraLength = psd.readUInt32BE(cursor);
+    cursor += 4;
+    const extraEnd = cursor + extraLength;
+    const maskLength = psd.readUInt32BE(cursor);
+    cursor += 4;
+    expect(maskLength).toBe(0);
+    cursor += maskLength;
+    const blendingRangesLength = psd.readUInt32BE(cursor);
+    cursor += 4;
+    expect(blendingRangesLength).toBe(0);
+    cursor += blendingRangesLength;
+    const name = readPsdPascalString(psd, cursor);
+    cursor = name.nextOffset;
+    expect(cursor).toBe(extraEnd);
+
+    metadata.layers.push({
+      blendModeKey,
+      bottom,
+      channels,
+      hidden: (flags & 0x02) !== 0,
+      left,
+      name: name.value,
+      opacity,
+      right,
+      top,
+    });
+  }
+
+  for (const layer of metadata.layers) {
+    for (const channel of layer.channels) {
+      expect(channel.length).toBeGreaterThanOrEqual(2);
+      channel.compression = psd.readUInt16BE(cursor);
+      cursor += channel.length;
+    }
+  }
+
+  expect(cursor).toBe(layerInfoEnd);
+  expect(psd.readUInt32BE(layerInfoEnd)).toBe(0);
+  expect(layerInfoEnd + 4).toBe(layerMaskEnd);
+  offset = layerMaskEnd;
+  expect(psd.readUInt16BE(offset)).toBe(0);
+  expect(offset + 2).toBe(psd.length);
+
+  return metadata;
 }
 
 function inspectZipFixture(relativePath: string): ZipFixtureEntry[] {
@@ -1167,6 +1315,97 @@ describe("synthetic sprite fixtures", () => {
     expect(ambiguousMetadata.data.metadata).toEqual({
       fixture_note: "reject ambiguous project metadata",
     });
+  });
+
+  it("provides tiny PSD fixtures with deterministic raster layer metadata", () => {
+    const oneLayer = inspectPsdFixture("psd/one-layer.psd");
+    const twoLayers = inspectPsdFixture("psd/two-layers.psd");
+
+    expect(oneLayer).toMatchObject({
+      version: 1,
+      channels: 4,
+      height: 2,
+      width: 2,
+      bitsPerChannel: 8,
+      colorMode: 3,
+      layers: [
+        {
+          name: "Single visible",
+          top: 0,
+          left: 0,
+          bottom: 2,
+          right: 2,
+          blendModeKey: "norm",
+          opacity: 255,
+          hidden: false,
+        },
+      ],
+    });
+    expect(oneLayer.layers[0].channels).toEqual([
+      { id: 0, length: 6, compression: 0 },
+      { id: 1, length: 6, compression: 0 },
+      { id: 2, length: 6, compression: 0 },
+      { id: -1, length: 6, compression: 0 },
+    ]);
+
+    expect(twoLayers).toMatchObject({
+      version: 1,
+      channels: 4,
+      height: 3,
+      width: 4,
+      bitsPerChannel: 8,
+      colorMode: 3,
+      layers: [
+        {
+          name: "Top hidden half",
+          top: 0,
+          left: 1,
+          bottom: 2,
+          right: 3,
+          blendModeKey: "norm",
+          opacity: 128,
+          hidden: true,
+        },
+        {
+          name: "Base visible",
+          top: 1,
+          left: 0,
+          bottom: 3,
+          right: 2,
+          blendModeKey: "norm",
+          opacity: 255,
+          hidden: false,
+        },
+      ],
+    });
+    expect(twoLayers.layers.every((layer) =>
+      layer.channels.map(({ id }) => id).join(",") === "0,1,2,-1"))
+      .toBe(true);
+  });
+
+  it("provides PSD rejection fixtures for unsupported and malformed data", () => {
+    const unsupportedBlend = inspectPsdFixture("psd/unsupported-blend-mode.psd");
+    const malformed = inspectPsdFixture("psd/malformed-channel-length.psd");
+
+    expect(unsupportedBlend.layers[0]).toMatchObject({
+      name: "Multiply unsupported",
+      blendModeKey: "mul ",
+      hidden: false,
+    });
+    expect(malformed.layers[0]).toMatchObject({
+      name: "Single visible",
+      blendModeKey: "norm",
+    });
+    expect(malformed.layers[0].channels[0]).toEqual({
+      id: 0,
+      length: 5,
+      compression: 0,
+    });
+    expect(malformed.layers[0].channels.slice(1)).toEqual([
+      { id: 1, length: 6, compression: 0 },
+      { id: 2, length: 6, compression: 0 },
+      { id: -1, length: 6, compression: 0 },
+    ]);
   });
 
   it("provides APNG chunk sequences, offsets, and normalized timing", () => {

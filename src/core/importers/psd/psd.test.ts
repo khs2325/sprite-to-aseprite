@@ -72,6 +72,12 @@ function fixture(name: string): PsdFixture {
   return found;
 }
 
+function readPsdFixtureBytes(name: string): Uint8Array {
+  return new Uint8Array(readFileSync(
+    new URL(`../../../../tests/fixtures/psd/${name}`, import.meta.url),
+  ));
+}
+
 function visibleRasterFixture(): PsdFixture {
   const psd = fixture("rgb8-two-raster-layers");
   return {
@@ -560,6 +566,78 @@ describe("PSD importer", () => {
     ]);
   });
 
+  it("imports the generated one-layer PSD fixture with transparent pixels", async () => {
+    const project = await importPsdBytes(readPsdFixtureBytes("one-layer.psd"));
+
+    expect(project).toMatchObject({
+      width: 2,
+      height: 2,
+      colorMode: "rgba",
+      frames: [{ index: 0, durationMs: 100 }],
+      layers: [
+        {
+          id: "psd-layer-0",
+          name: "Single visible",
+          visible: true,
+          opacity: 255,
+          cels: [
+            {
+              frameIndex: 0,
+              x: 0,
+              y: 0,
+              imageData: {
+                width: 2,
+                height: 2,
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect([...project.layers[0].cels[0].imageData.data]).toEqual([
+      239, 71, 111, 255, 0, 0, 0, 0,
+      17, 138, 178, 255, 255, 209, 102, 255,
+    ]);
+  });
+
+  it("imports the generated multi-layer PSD fixture with opacity, visibility, and offsets", async () => {
+    const project = await importPsdBytes(readPsdFixtureBytes("two-layers.psd"));
+
+    expect(project).toMatchObject({
+      width: 4,
+      height: 3,
+      frames: [{ index: 0, durationMs: 100 }],
+      layers: [
+        {
+          id: "psd-layer-0",
+          name: "Top hidden half",
+          visible: false,
+          opacity: 128,
+          cels: [{ frameIndex: 0, x: 0, y: 0 }],
+        },
+        {
+          id: "psd-layer-1",
+          name: "Base visible",
+          visible: true,
+          opacity: 255,
+          cels: [{ frameIndex: 0, x: 0, y: 0 }],
+        },
+      ],
+    });
+    expect(pixel(project.layers[0].cels[0].imageData, 0, 0))
+      .toEqual([0, 0, 0, 0]);
+    expect(pixel(project.layers[0].cels[0].imageData, 2, 0))
+      .toEqual([255, 209, 102, 255]);
+    expect(pixel(project.layers[0].cels[0].imageData, 1, 1))
+      .toEqual([239, 71, 111, 255]);
+    expect(pixel(project.layers[1].cels[0].imageData, 0, 1))
+      .toEqual([17, 138, 178, 255]);
+    expect(pixel(project.layers[1].cels[0].imageData, 1, 2))
+      .toEqual([255, 209, 102, 255]);
+    expect(pixel(project.layers[1].cels[0].imageData, 3, 2))
+      .toEqual([0, 0, 0, 0]);
+  });
+
   it.each(["raw", "packbits"] as const)(
     "decodes native %s PSD raster channels into full-canvas RGBA cels",
     async (compression) => {
@@ -835,6 +913,22 @@ describe("PSD importer", () => {
       }),
       "unsupported-feature",
       "Only normal PSD raster layers are supported",
+    );
+  });
+
+  it("rejects the generated unsupported PSD blend mode fixture", async () => {
+    await expectPsdError(
+      importPsdBytes(readPsdFixtureBytes("unsupported-blend-mode.psd")),
+      "unsupported-feature",
+      "Only normal PSD raster layers are supported",
+    );
+  });
+
+  it("rejects the generated malformed PSD channel fixture", async () => {
+    await expectPsdError(
+      importPsdBytes(readPsdFixtureBytes("malformed-channel-length.psd")),
+      "invalid-container",
+      "raw channel byte count must match layer bounds",
     );
   });
 
