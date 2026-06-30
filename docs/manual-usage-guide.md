@@ -13,7 +13,9 @@ from the converted bytes. See
 For a quick input-format matrix, see
 [supported-formats.md](supported-formats.md). For a compact matrix of what
 cannot be preserved, see
-[conversion-limitations.md](conversion-limitations.md).
+[conversion-limitations.md](conversion-limitations.md). For common conversion,
+download, and Aseprite-open issues, see
+[troubleshooting.md](troubleshooting.md).
 
 PNG sequences and spritesheets are flat images. They do not contain the
 original layer structure, so the converter cannot recover original layers
