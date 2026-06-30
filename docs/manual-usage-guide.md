@@ -86,8 +86,11 @@ Conversion runs entirely in the browser, so the available memory depends on
 the browser, operating system, device, and other open tabs. There is no single
 file-size limit that is safe on every device. The app shows an advisory warning
 when selected source files total at least 64 MiB or a PNG sequence contains 100
-or more files. The warning does not block conversion, and staying below either
-threshold does not guarantee that a conversion will fit in memory.
+or more files. When the browser can read dimensions locally, such as after a
+spritesheet-grid PNG preview loads, the warning may also include an estimated
+decoded RGBA pixel size. The warning does not block conversion, and staying
+below either threshold or estimate does not guarantee that a conversion will
+fit in memory.
 
 Compressed source size is not a reliable measure of working memory. A decoded
 RGBA image needs approximately `width x height x 4` bytes. For example:

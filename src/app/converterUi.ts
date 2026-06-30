@@ -44,7 +44,10 @@ import {
   type FileImportFormat,
 } from "./fileImport";
 import { mountLayerNamingUi } from "./layerNaming";
-import { renderLargeFileWarning } from "./largeFileWarning";
+import {
+  renderLargeFileWarning,
+  type DecodedRgbaEstimate,
+} from "./largeFileWarning";
 import { mountPreviewTimelineUi } from "./previewTimeline";
 import {
   createInformationalPages,
@@ -1041,6 +1044,42 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
       ? selectedFiles[0]
       : null;
 
+  const getDecodedRgbaEstimate = (): DecodedRgbaEstimate | null => {
+    if (
+      mode !== "spritesheet-grid" ||
+      gridImageWidth === null ||
+      gridImageHeight === null
+    ) {
+      return null;
+    }
+
+    const options = readGridOptions();
+    const frameCount = options.columns * options.rows;
+    const sourcePixelCount = gridImageWidth * gridImageHeight;
+    const framePixelCount =
+      options.frameWidth * options.frameHeight * frameCount;
+    if (
+      isPositiveInteger(options.frameWidth) &&
+      isPositiveInteger(options.frameHeight) &&
+      isPositiveInteger(options.columns) &&
+      isPositiveInteger(options.rows) &&
+      Number.isSafeInteger(frameCount) &&
+      Number.isSafeInteger(framePixelCount) &&
+      framePixelCount >= sourcePixelCount
+    ) {
+      return {
+        width: options.frameWidth,
+        height: options.frameHeight,
+        frames: frameCount,
+      };
+    }
+
+    return {
+      width: gridImageWidth,
+      height: gridImageHeight,
+    };
+  };
+
   const renderSelectedFiles = (): void => {
     const pngFiles = selectedFiles
       .filter((source) => source.kind === "png" && mode !== "apng")
@@ -1169,6 +1208,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
       memoryWarning,
       mode,
       selectedFiles.map(({ file }) => file),
+      { decodedRgbaEstimate: getDecodedRgbaEstimate() },
     );
     renderConversionState(conversionElements, {
       isWorking: false,
