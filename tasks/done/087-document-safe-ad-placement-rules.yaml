@@ -1,6 +1,6 @@
-id: "087"
+﻿id: "087"
 title: Document safe ad placement rules
-status: backlog
+status: done
 priority: medium
 goal: Make future ad placement rules explicit before any live ads are added.
 context: >
@@ -39,3 +39,4 @@ auto_merge:
   allowed: true
   max_changed_files: 8
   forbidden_paths: *forbidden
+
