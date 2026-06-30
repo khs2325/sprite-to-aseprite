@@ -180,3 +180,9 @@ download code. The selector plan in
 [output-format-selector.md](output-format-selector.md) keeps Aseprite as the
 only enabled output until another exporter has documented limits, tests, and
 browser-local Blob download behavior.
+
+Bidirectional planning is tracked in
+[bidirectional-conversion.md](bidirectional-conversion.md). Even when future
+`.ase` or `.aseprite` input exists, imported data should cross the same
+`SpriteProject` boundary before export; output files are generated from the
+supported model fields, not from preserved raw source chunks.

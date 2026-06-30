@@ -12,6 +12,7 @@ Primary references:
 - LibreSprite project repository:
   https://github.com/LibreSprite/LibreSprite
 - Existing project architecture: [architecture.md](architecture.md)
+- Bidirectional conversion planning: [bidirectional-conversion.md](bidirectional-conversion.md)
 - Existing product wording policy: [product-spec.md](product-spec.md)
 
 ## Recommendation
@@ -30,11 +31,48 @@ The first supported path should be a minimal, browser-local reader that imports
 only documented raster data into `SpriteProject`. It should not claim
 round-trip fidelity. A file opened and then exported by this app would be a new
 `.aseprite` file generated from `SpriteProject`; unsupported source metadata
-could be dropped or rejected depending on the documented subset.
+would either be rejected or explicitly documented as not preserved.
 
 `.ase` and `.aseprite` should be treated as the same file-format family. The
 extension alone does not prove whether a file was written by Aseprite,
 LibreSprite, or another tool.
+
+For future bidirectional workflows, this reader should be a normalization step,
+not a round-trip archive reader. It should decode the supported Aseprite chunks
+into `SpriteProject`; every output format should then consume `SpriteProject`
+rather than reusing raw Aseprite chunks.
+
+## Bidirectional Reader and Output Scope
+
+The reader subset should be chosen by what downstream exporters can safely use.
+Required Aseprite data should map into stable `SpriteProject` fields before any
+new output path is enabled.
+
+| Needed data | Source coverage | `SpriteProject` or output need | Initial policy |
+| --- | --- | --- | --- |
+| Canvas and frame count | File header, frame headers | `width`, `height`, ordered `frames` | Required for every accepted file. |
+| Frame duration | Frame header duration, deprecated header speed fallback | `SpriteFrame.durationMs`; animated outputs | Required; reject zero/invalid durations after fallback. |
+| Layers | Layer chunk `0x2004` | Layer order, names, visibility, opacity, cels | Accept direct normal image layers only. |
+| Layer opacity | Header flags plus layer chunk `0x2004` opacity byte | `SpriteLayer.opacity`; layered and flattened outputs | Use only when valid by header flags; otherwise default opaque. |
+| Cels and placement | Cel chunk `0x2005` | `SpriteCel.frameIndex`, `x`, `y`, `imageData` | Accept bounded RGBA image cels; reject unsupported z-index or opacity. |
+| Image data | Cel `0x2005` raw or zlib-compressed pixel payload | RGBA `ImageData`; all outputs | Start with compressed RGBA cels; add raw cels only with fixtures. |
+| Tags | Tags chunk `0x2018`; optional following user-data `0x2020` color | `frameTags` and animation UI/output metadata | Import only when tag export or explicit non-preservation behavior is tested. |
+| Palettes | New palette `0x2019`; old palettes `0x0004` and `0x0011` | Indexed conversion or future palette-preserving outputs | Validate/ignore for RGBA; require explicit indexed-color task for conversion. |
+
+Downstream output tasks should treat unsupported source features as either
+reader rejections or explicit, user-visible non-preservation. Flattened outputs
+such as future PNG sequence, spritesheet, GIF, or APNG exporters would need a
+tested compositor that respects supported layer order, visibility, opacity, cel
+offsets, and frame durations. Palette-preserving or indexed-color outputs would
+need a palette field in the internal model; once pixels are converted to RGBA
+`ImageData`, palette identity is not preserved.
+
+Round-trip conversion may be lossy even for accepted files because this app
+would generate a new output file from normalized `SpriteProject` data. Raw chunk
+ordering, UUIDs, editor-only metadata, external references, palette identity,
+color profiles, linked-cel edit relationships, slices, masks, tilesets, groups,
+non-normal blend modes, per-cel opacity, and cel z-index are outside the current
+model unless separate reader, model, and exporter work explicitly adds them.
 
 ## Minimum Viable Chunk Subset
 
