@@ -21,6 +21,10 @@ placeholders, or any backend.
   the browser and are not uploaded to a project server for conversion.
 - Keep payment handling off-site through external support providers only; this
   site does not process payment information.
+- Review any proposed ad placeholder in the live converter UI before release.
+  If it is confusing, unnecessary, too close to conversion controls, or
+  distracts from selecting files, converting frames, or downloading output,
+  hide it or remove it.
 
 ## Placement rules
 
