@@ -136,6 +136,33 @@ describe("AdSense readiness site content", () => {
     ]);
   });
 
+  it("renders a section target for every static informational link", () => {
+    const document = createDocument();
+    const links = createSiteNavigationLinks(document);
+    const pages = createInformationalPages(document) as unknown as ElementStub;
+    const renderedSectionIds = new Set(
+      findAll(pages, (element) => element.tagName === "section").map(
+        (element) => element.id,
+      ),
+    );
+
+    expect(links.map((link) => link.href)).toEqual([
+      "#about",
+      "#contact",
+      "#privacy-policy",
+      "#terms",
+      "#guides",
+      "#browser-local-conversion-guide",
+      "#supported-formats-guide",
+      "#conversion-limitations-guide",
+    ]);
+    expect(
+      links.map((link) => link.href.slice(1)).every((id) =>
+        renderedSectionIds.has(id),
+      ),
+    ).toBe(true);
+  });
+
   it("renders required privacy policy wording for browser-local conversion and future ads", () => {
     const pages = createInformationalPages(createDocument()) as unknown as ElementStub;
     const text = getText(pages);
