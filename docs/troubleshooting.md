@@ -110,6 +110,30 @@ succeeds. If selecting **Download .aseprite** does not produce a file:
 Do not upload artwork to an external service just to work around a browser
 download block.
 
+## Google Search Console Cannot Fetch The Sitemap
+
+If `https://sprite-to-aseprite.pages.dev/sitemap.xml` returns `200 OK`, an
+`application/xml` content type, and a valid XML body with the sitemap
+namespace, the deployed sitemap is reachable. Search Console can still show an
+older **Couldn't fetch** or **Sitemap could not be read** state until Google
+reprocesses a sitemap that previously failed, for example after a byte-order
+mark or malformed response was fixed.
+
+After deploying a fixed sitemap:
+
+1. In Search Console, open **Indexing > Sitemaps**.
+2. Delete the old sitemap submission if it is still listed as failed.
+3. Submit `https://sprite-to-aseprite.pages.dev/sitemap.xml` again.
+4. Do not use **Request indexing** for `/sitemap.xml`; that tool is for pages,
+   not sitemap submissions.
+5. If it still fails, use **URL Inspection > Test live URL** for
+   `/sitemap.xml` and check **Page fetch** plus **Crawl allowed?**.
+
+The repository keeps `public/sitemap.xml` and `public/robots.txt` free of a
+UTF-8 BOM, and the production build must preserve those files exactly. The
+robots file should allow crawling and point to:
+`https://sprite-to-aseprite.pages.dev/sitemap.xml`.
+
 ## Aseprite Open Failures
 
 If Aseprite cannot open the generated file, first confirm that the downloaded
