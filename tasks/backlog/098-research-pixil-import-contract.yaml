@@ -1,0 +1,51 @@
+id: "098"
+title: Research Pixil import contract
+status: backlog
+priority: medium
+goal: Define a conservative, documented Pixil/Pixilart `.pixil` project-file import subset before implementation.
+context: >
+  Pixil/Pixilart project files are not yet supported by the converter and the
+  exact saved project structure must not be guessed. The importer should be
+  built only from documented behavior, safe samples, or synthetic fixtures that
+  prove the format contract.
+scope:
+  summary: Research Pixil/Pixilart project structure and document a minimal browser-local import contract.
+  allowed_paths:
+    - docs/pixil-format.md
+    - docs/roadmap.md
+    - docs/product-spec.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - node_modules/**
+    - package.json
+    - package-lock.json
+    - src/**
+    - tests/**
+non_goals:
+  - Do not implement a Pixil importer, exporter, or browser UI wiring.
+  - Do not claim full Pixil or Pixilart compatibility.
+  - Do not add downloaded, copyrighted, private, or user-provided artwork.
+  - Do not add dependencies, tracking, uploads, or server conversion.
+requirements:
+  - Inspect any Pixil/Pixilart format references, samples, or prior repo notes that are safe to use.
+  - Define the smallest supported `.pixil` subset for a future importer.
+  - Document expected canvas size, frame structure, layer structure, visibility, opacity, frame duration, and pixel RGBA data only where verified.
+  - Document unsupported and unknown features clearly instead of inventing behavior.
+  - Include a fixture strategy that uses synthetic or newly created minimal files only.
+  - Preserve browser-local processing and no-upload privacy wording.
+acceptance_criteria:
+  - "`docs/pixil-format.md` gives future implementation tasks a clear parser contract without guessing undocumented semantics."
+  - The document explains that Pixil support is planned or limited until tested implementation exists.
+  - Unsupported or unknown Pixil/Pixilart behavior is listed with clear reject-or-defer guidance.
+  - No source code, tests, dependencies, workflows, build output, secrets, uploads, tracking, or live services are added.
+verification:
+  - node scripts/auto-dev-cycle.mjs --dry-run
+auto_merge:
+  allowed: false
+  max_changed_files: 6
+  forbidden_paths: *forbidden
+

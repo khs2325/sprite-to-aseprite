@@ -1,0 +1,64 @@
+id: "101"
+title: Wire Pixil importer into converter flow
+status: backlog
+priority: medium
+goal: Expose the implemented Pixil importer through the browser converter so users can export supported projects as `.aseprite`.
+context: >
+  This task should happen only after task 100 adds a tested core Pixil importer.
+  The existing Aseprite exporter remains the output path; this task only routes
+  Pixil input through the established browser-local conversion flow.
+scope:
+  summary: Connect Pixil import mode to the existing UI pipeline, status messages, preview/download state, and focused UI tests.
+  allowed_paths:
+    - src/app/fileImport.ts
+    - src/app/fileImport.test.ts
+    - src/app/converterUi.ts
+    - src/app/converterUi.test.ts
+    - src/styles.css
+    - README.md
+    - docs/manual-usage-guide.md
+    - docs/product-spec.md
+    - docs/pixil-format.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - node_modules/**
+    - package.json
+    - package-lock.json
+    - src/core/exporters/**
+    - src/core/importers/gif/**
+    - src/core/importers/apng/**
+    - src/core/importers/piskel/**
+    - src/core/importers/openraster/**
+    - src/core/importers/pixelorama/**
+    - src/core/importers/krita/**
+    - src/core/importers/psd/**
+non_goals:
+  - Do not rewrite the Pixil importer or Aseprite exporter.
+  - Do not add Pixil export or round-trip claims.
+  - Do not claim unsupported Pixil data is preserved.
+  - Do not add uploads, tracking, backend behavior, or dependencies.
+requirements:
+  - Add a `Pixil project` import mode when the core importer is available.
+  - Require exactly one `.pixil` file for Pixil conversion.
+  - Route Pixil files to the existing Pixil importer and then to the existing `.aseprite` export/download flow.
+  - Show success text that describes converting supported Pixil frames/layers into an editable Aseprite timeline.
+  - Show importer diagnostics without stack traces or private file contents.
+  - Add focused tests for mode availability, one-file validation, importer routing, success state, error state, selected-file cards, and download enablement.
+acceptance_criteria:
+  - Users can select one supported `.pixil` file, convert it in the browser, preview the result, and download a generated `.aseprite` file.
+  - Invalid selections and unsupported Pixil files produce clear content-safe messages.
+  - UI copy preserves the browser-local promise and avoids lossless or full-compatibility claims.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: false
+  max_changed_files: 12
+  forbidden_paths: *forbidden
+

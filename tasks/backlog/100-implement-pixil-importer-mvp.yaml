@@ -1,0 +1,57 @@
+id: "100"
+title: Implement Pixil importer MVP
+status: backlog
+priority: medium
+goal: Convert the documented Pixil/Pixilart `.pixil` subset into the canonical `SpriteProject` model.
+context: >
+  This task depends on task 098's researched contract. Pixil/Pixilart project
+  files may contain undocumented or editor-specific data, so unsupported
+  variants must fail clearly instead of being guessed.
+scope:
+  summary: Add browser-local Pixil parsing, validation, SpriteProject mapping, diagnostics, synthetic fixtures, and focused tests.
+  allowed_paths:
+    - src/core/importers/pixil/**
+    - src/core/conversion.integration.test.ts
+    - tests/fixtures/pixil/**
+    - tests/fixtures/README.md
+    - tests/fixtures/fixtures.test.ts
+    - tests/fixtures/generate.mjs
+    - docs/pixil-format.md
+    - docs/product-spec.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - node_modules/**
+    - package.json
+    - package-lock.json
+    - src/app/**
+    - src/core/exporters/**
+non_goals:
+  - Do not wire Pixil into the browser UI conversion flow.
+  - Do not implement Pixil export or bidirectional conversion.
+  - Do not support undocumented features, server conversion, uploads, tracking, or external network calls.
+  - Do not add dependencies unless a separate approved task explicitly widens package-file scope and justifies the risk.
+requirements:
+  - Parse only the documented minimal `.pixil` subset browser-locally.
+  - Validate file structure, version or schema markers when present, dimensions, frame counts, layer counts, durations, opacity, visibility, indexes, and allocation limits.
+  - Preserve canvas size, frames, frame duration, layer names, layer order, visibility, opacity, cel placement, and RGBA pixel data when present in the supported subset.
+  - Reject malformed or unsupported Pixil files with precise, content-safe diagnostics and no stack traces.
+  - Add deterministic synthetic fixtures that do not include copyrighted, private, or user-provided artwork.
+  - Output the canonical `SpriteProject` model without changing the Aseprite exporter.
+acceptance_criteria:
+  - Supported `.pixil` fixtures import with expected dimensions, frames, durations, layers, names, visibility, opacity, cels, and representative pixels.
+  - Unsupported or malformed fixtures fail with clear diagnostics.
+  - Importer code remains independent from UI code and performs no upload or network work.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: false
+  max_changed_files: 15
+  forbidden_paths: *forbidden
+
