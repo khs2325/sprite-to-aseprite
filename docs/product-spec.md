@@ -137,6 +137,11 @@ browser-local subsets rather than broad compatibility claims:
    first so binary reader scope, chunk coverage, validation, and round-trip
    limitations are understood before implementation. See the
    [input feasibility note](aseprite-input-feasibility.md).
+3. Pixil/Pixilart `.pixil` import is research-only until synthetic fixtures
+   prove the saved project-file schema. The
+   [Pixil/Pixilart format note](pixil-format.md) defines a conservative
+   browser-local contract and rejects unsupported or unknown editor behavior
+   instead of guessing semantics.
 
 For every planned format, the converter should rebuild timelines, convert
 supported frames, and preserve supported raster layer data only when that data
