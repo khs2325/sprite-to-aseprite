@@ -6,6 +6,7 @@ import { GifImportError } from "../core/importers/gif";
 import { KritaImportError } from "../core/importers/krita";
 import { OpenRasterImportError } from "../core/importers/openraster";
 import { PixeloramaImportError } from "../core/importers/pixelorama";
+import { PixilImportError } from "../core/importers/pixil";
 import { PsdParserAdapterError } from "../core/importers/psd";
 import {
   PiskelImportError,
@@ -86,6 +87,39 @@ function pixil(name: string): BrowserSourceFile {
     kind: "pixil",
     bytes: new ArrayBuffer(0),
   };
+}
+
+function validPixilProjectJson(): string {
+  return JSON.stringify({
+    pixil: {
+      format: "pixilart.com/pixil-project",
+      schemaVersion: 1,
+      width: 1,
+      height: 1,
+      frameCount: 1,
+      layerCount: 1,
+      frames: [{ index: 0, durationMs: 100 }],
+      layers: [
+        {
+          index: 0,
+          name: "Ink",
+          visible: true,
+          opacity: 1,
+          blendMode: "normal",
+          cels: [
+            {
+              frameIndex: 0,
+              x: 0,
+              y: 0,
+              width: 1,
+              height: 1,
+              rgbaBase64: "AAAAAA==",
+            },
+          ],
+        },
+      ],
+    },
+  });
 }
 
 function gif(name: string): BrowserSourceFile {
@@ -442,15 +476,14 @@ describe("getSourceSelectionError", () => {
     });
   });
 
-  it("recognizes Pixil selections while keeping conversion unavailable", () => {
+  it("accepts one Pixil project for conversion", () => {
     const selectedPixil = [pixil("sprite.pixil")];
 
     expect(getSourceSelectionError("pixil", selectedPixil)).toBeNull();
     expect(getSourceSelectionState("pixil", selectedPixil)).toEqual({
-      canConvert: false,
+      canConvert: true,
       error: null,
-      status:
-        "Pixil/Pixilart project files are recognized, but conversion is unavailable until the Pixil importer is added.",
+      status: "Source files are ready to convert.",
     });
   });
 
@@ -491,7 +524,7 @@ describe("getSourceSelectionError", () => {
       .toBe(true);
     expect(getSourceSelectionState("psd", []).canConvert).toBe(false);
     expect(getSourceSelectionState("pixil", [pixil("scene.pixil")]).canConvert)
-      .toBe(false);
+      .toBe(true);
     expect(getSourceSelectionState("pixil", []).canConvert).toBe(false);
   });
 
@@ -521,7 +554,7 @@ describe("getSourceSelectionError", () => {
     expect(MODE_LABELS.pixil).toBe("Pixil/Pixilart project");
     const pixilInstructions = getImportDropInstructions("pixil");
     expect(pixilInstructions).toBe(
-      "Drop exactly one .pixil Pixil/Pixilart project file here. Import is limited to the documented project-file subset and conversion is unavailable until the parser is added.",
+      "Drop exactly one .pixil Pixil/Pixilart project file here, or choose one below. Import is limited to the documented project-file subset.",
     );
     expect(pixilInstructions).not.toContain("lossless");
     expect(pixilInstructions).not.toContain("full");
@@ -529,7 +562,7 @@ describe("getSourceSelectionError", () => {
 });
 
 describe("mountConverterUi Pixil selection", () => {
-  it("shows Pixil cards and keeps remove, clear, and conversion state disabled", async () => {
+  it("shows Pixil cards and keeps remove and clear behavior in sync", async () => {
     vi.stubGlobal("HTMLImageElement", class HTMLImageElementStub {});
     const document = new UiDocumentStub();
     const root = document.createElement("main");
@@ -553,7 +586,7 @@ describe("mountConverterUi Pixil selection", () => {
       "Import is limited to the documented project-file subset",
     );
 
-    const pixilFile = new File(["private pixil content"], "sprite.pixil", {
+    const pixilFile = new File([validPixilProjectJson()], "sprite.pixil", {
       type: "application/octet-stream",
     });
     fileInput.files = [pixilFile];
@@ -570,10 +603,10 @@ describe("mountConverterUi Pixil selection", () => {
     expect(getText(root)).toContain("Pixil project");
     expect(getText(root)).toContain("PIXIL");
     expect(getText(root)).toContain(
-      "Pixil/Pixilart project files are recognized, but conversion is unavailable until the Pixil importer is added.",
+      "Source files are ready to convert.",
     );
-    expect(getText(root)).not.toContain("private pixil content");
-    expect(convertButton.disabled).toBe(true);
+    expect(getText(root)).not.toContain("rgbaBase64");
+    expect(convertButton.disabled).toBe(false);
 
     findOne(
       root,
@@ -611,6 +644,95 @@ describe("mountConverterUi Pixil selection", () => {
       ),
     ).toHaveLength(0);
     expect(convertButton.disabled).toBe(true);
+  });
+
+  it("converts a Pixil project into preview and download state", async () => {
+    vi.stubGlobal("HTMLImageElement", class HTMLImageElementStub {});
+    const document = new UiDocumentStub();
+    const root = document.createElement("main");
+    mountConverterUi(root as unknown as HTMLElement);
+
+    const modeSelect = findOne(root, (element) => element.tagName === "select");
+    const fileInput = findOne(
+      root,
+      (element) => element.tagName === "input" && element.type === "file",
+    );
+    const convertButton = findOne(
+      root,
+      (element) =>
+        element.tagName === "button" &&
+        element.textContent === "Convert to .aseprite",
+    );
+    const downloadButton = findOne(
+      root,
+      (element) =>
+        element.tagName === "button" &&
+        element.textContent === "Download .aseprite",
+    );
+
+    modeSelect.value = "pixil";
+    trigger(modeSelect, "change");
+    fileInput.files = [
+      new File([validPixilProjectJson()], "sprite.pixil", {
+        type: "application/octet-stream",
+      }),
+    ];
+    trigger(fileInput, "change");
+
+    await vi.waitFor(() => expect(convertButton.disabled).toBe(false));
+    expect(downloadButton.disabled).toBe(true);
+
+    convertButton.click();
+
+    await vi.waitFor(() => {
+      expect(getText(root)).toContain(
+        "Converted supported Pixil frames and layers into an editable Aseprite timeline with 1 frame and 1 preserved layer. Ready to download.",
+      );
+    });
+    expect(getText(root)).toContain("Frame 1 of 1, 100 milliseconds.");
+    expect(getText(root)).toContain("Layer 1 name");
+    expect(downloadButton.disabled).toBe(false);
+  });
+
+  it("shows Pixil conversion errors without source contents or stack traces", async () => {
+    vi.stubGlobal("HTMLImageElement", class HTMLImageElementStub {});
+    const document = new UiDocumentStub();
+    const root = document.createElement("main");
+    mountConverterUi(root as unknown as HTMLElement);
+
+    const modeSelect = findOne(root, (element) => element.tagName === "select");
+    const fileInput = findOne(
+      root,
+      (element) => element.tagName === "input" && element.type === "file",
+    );
+    const convertButton = findOne(
+      root,
+      (element) =>
+        element.tagName === "button" &&
+        element.textContent === "Convert to .aseprite",
+    );
+    const privateContents = '{"private pixels":"do not display"';
+
+    modeSelect.value = "pixil";
+    trigger(modeSelect, "change");
+    fileInput.files = [
+      new File([privateContents], "sprite.pixil", {
+        type: "application/octet-stream",
+      }),
+    ];
+    trigger(fileInput, "change");
+
+    await vi.waitFor(() => expect(convertButton.disabled).toBe(false));
+    convertButton.click();
+
+    await vi.waitFor(() => {
+      expect(getText(root)).toContain("Pixil conversion did not complete.");
+      expect(getText(root)).toContain(
+        "Pixil/Pixilart import failed: Pixil file is not valid JSON.",
+      );
+    });
+    expect(getText(root)).not.toContain(privateContents);
+    expect(getText(root)).not.toContain("PixilImportError");
   });
 });
 
@@ -827,6 +949,7 @@ describe("convertSourceFiles", () => {
     const importKrita = vi.fn(async () => project);
     const importOpenRaster = vi.fn(async () => project);
     const importPixelorama = vi.fn(async () => project);
+    const importPixil = vi.fn(async () => project);
     const importPiskel = vi.fn(async () => project);
     const importPsd = vi.fn(async () => project);
     const importSpritesheetGrid = vi.fn(async () => project);
@@ -837,6 +960,7 @@ describe("convertSourceFiles", () => {
       importKrita,
       importOpenRaster,
       importPixelorama,
+      importPixil,
       importPngSequence,
       importPiskel,
       importPsd,
@@ -851,6 +975,7 @@ describe("convertSourceFiles", () => {
     const apngAnimation = apng("walk.apng");
     const openRasterProject = ora("scene.ora");
     const pixeloramaProject = pxo("scene.pxo");
+    const pixilProject = pixil("scene.pixil");
     const kritaProject = kra("scene.kra");
     const psdProject = psd("scene.psd");
 
@@ -923,6 +1048,9 @@ describe("convertSourceFiles", () => {
     );
     expect(importPixelorama).toHaveBeenCalledWith(pixeloramaProject.file);
 
+    await convertSourceFiles("pixil", [pixilProject], gridOptions, importers);
+    expect(importPixil).toHaveBeenCalledWith(pixilProject.file);
+
     await convertSourceFiles(
       "krita",
       [kritaProject],
@@ -942,6 +1070,7 @@ describe("convertSourceFiles", () => {
       importKrita: vi.fn(async () => project),
       importOpenRaster: vi.fn(async () => project),
       importPixelorama: vi.fn(async () => project),
+      importPixil: vi.fn(async () => project),
       importPngSequence: vi.fn(async () => project),
       importPiskel: vi.fn(async () => project),
       importPsd: vi.fn(async () => project),
@@ -966,6 +1095,7 @@ describe("convertSourceFiles", () => {
     expect(importers.importKrita).not.toHaveBeenCalled();
     expect(importers.importOpenRaster).not.toHaveBeenCalled();
     expect(importers.importPixelorama).not.toHaveBeenCalled();
+    expect(importers.importPixil).not.toHaveBeenCalled();
     expect(importers.importPsd).not.toHaveBeenCalled();
 
     await expect(
@@ -980,16 +1110,18 @@ describe("convertSourceFiles", () => {
     expect(importers.importKrita).not.toHaveBeenCalled();
     expect(importers.importOpenRaster).not.toHaveBeenCalled();
     expect(importers.importPixelorama).not.toHaveBeenCalled();
+    expect(importers.importPixil).not.toHaveBeenCalled();
     expect(importers.importPsd).not.toHaveBeenCalled();
   });
 
-  it("does not route Pixil files to conversion before the importer exists", async () => {
+  it("does not call the Pixil importer for an invalid Pixil selection", async () => {
     const importers = {
       importApng: vi.fn(async () => project),
       importGif: vi.fn(async () => project),
       importKrita: vi.fn(async () => project),
       importOpenRaster: vi.fn(async () => project),
       importPixelorama: vi.fn(async () => project),
+      importPixil: vi.fn(async () => project),
       importPngSequence: vi.fn(async () => project),
       importPiskel: vi.fn(async () => project),
       importPsd: vi.fn(async () => project),
@@ -1000,12 +1132,12 @@ describe("convertSourceFiles", () => {
     await expect(
       convertSourceFiles(
         "pixil",
-        [pixil("scene.pixil")],
+        [pixil("one.pixil"), pixil("two.pixil")],
         gridOptions,
         importers,
       ),
     ).rejects.toThrow(
-      "Pixil/Pixilart conversion is unavailable until the Pixil importer is added.",
+      "Pixil/Pixilart mode requires exactly one .pixil file.",
     );
     for (const importer of Object.values(importers)) {
       expect(importer).not.toHaveBeenCalled();
@@ -1013,21 +1145,61 @@ describe("convertSourceFiles", () => {
   });
 });
 
-describe("Pixil project pending import messages", () => {
-  it("does not claim conversion or full compatibility before parsing exists", () => {
-    expect(getConversionSuccessStatus("pixil", project)).toBe(
-      "Pixil/Pixilart project files are recognized, but conversion is unavailable until the Pixil importer is added.",
+describe("Pixil project conversion messages", () => {
+  const layeredProject: SpriteProject = {
+    ...project,
+    frames: [
+      { index: 0, durationMs: 100 },
+      { index: 1, durationMs: 120 },
+    ],
+    layers: [
+      project.layers[0],
+      {
+        id: "shade",
+        name: "Shade",
+        visible: true,
+        opacity: 128,
+        cels: [],
+      },
+    ],
+  };
+
+  it("reports supported frames and layers without claiming lossless conversion", () => {
+    const message = getConversionSuccessStatus("pixil", layeredProject);
+
+    expect(message).toBe(
+      "Converted supported Pixil frames and layers into an editable Aseprite timeline with 2 frames and 2 preserved layers. Ready to download.",
     );
+    expect(message).not.toContain("lossless");
+    expect(message).not.toContain("full");
+  });
+
+  it("shows importer-authored diagnostics without exposing stack traces", () => {
+    const error = new PixilImportError(
+      "unsupported-feature",
+      "Pixil layer 1 uses unsupported blend mode \"multiply\".",
+    );
+    error.stack = "private-pixil-stack";
+
+    expect(getConversionErrorMessage("pixil", error)).toBe(
+      "Pixil/Pixilart import failed: Pixil layer 1 uses unsupported blend mode \"multiply\".",
+    );
+    expect(getConversionErrorMessage("pixil", error)).not.toContain(
+      "private-pixil-stack",
+    );
+  });
+
+  it("does not expose arbitrary Pixil source details", () => {
+    const privateMessage = "private pixil source details";
     const errorMessage = getConversionErrorMessage(
       "pixil",
-      new Error("private pixil source details"),
+      new Error(privateMessage),
     );
 
     expect(errorMessage).toBe(
-      "Pixil/Pixilart import is unavailable until the Pixil importer is added. " +
-        "The selected .pixil file was recognized but was not parsed.",
+      "Pixil/Pixilart import failed: Check that the .pixil file contains supported project-file frame and layer data from the documented subset.",
     );
-    expect(errorMessage).not.toContain("private pixil source details");
+    expect(errorMessage).not.toContain(privateMessage);
     expect(errorMessage).not.toContain("lossless");
   });
 });

@@ -15,6 +15,10 @@ import {
   getPixeloramaImportDiagnostic,
   importPixelorama,
 } from "../core/importers/pixelorama";
+import {
+  getPixilImportDiagnostic,
+  importPixil,
+} from "../core/importers/pixil";
 import { importPngSequence } from "../core/importers/pngSequence";
 import {
   getPsdParserDiagnostic,
@@ -66,6 +70,7 @@ type ConverterImporters = {
   importKrita: typeof importKrita;
   importOpenRaster: typeof importOpenRaster;
   importPixelorama: typeof importPixelorama;
+  importPixil: typeof importPixil;
   importPngSequence: typeof importPngSequence;
   importPsd: typeof importPsd;
   importPiskel: typeof importPiskel;
@@ -104,15 +109,13 @@ const DEFAULT_IMPORTERS: ConverterImporters = {
   importKrita,
   importOpenRaster,
   importPixelorama,
+  importPixil,
   importPngSequence,
   importPsd,
   importPiskel,
   importSpritesheetGrid,
   importSpritesheetJson,
 };
-
-const PIXIL_PENDING_STATUS =
-  "Pixil/Pixilart project files are recognized, but conversion is unavailable until the Pixil importer is added.";
 
 export const MODE_LABELS: Record<FileImportFormat, string> = {
   "png-sequence": "PNG sequence",
@@ -133,7 +136,7 @@ export function getImportDropInstructions(mode: FileImportFormat): string {
     return "Drop exactly one .piskel file here, or choose one below.";
   }
   if (mode === "pixil") {
-    return "Drop exactly one .pixil Pixil/Pixilart project file here. Import is limited to the documented project-file subset and conversion is unavailable until the parser is added.";
+    return "Drop exactly one .pixil Pixil/Pixilart project file here, or choose one below. Import is limited to the documented project-file subset.";
   }
   if (mode === "gif") {
     return "Drop exactly one .gif file here, or choose one below.";
@@ -437,13 +440,6 @@ export function getSourceSelectionState(
     };
   }
   const error = getSourceSelectionError(mode, files);
-  if (mode === "pixil" && error === null) {
-    return {
-      canConvert: false,
-      error: null,
-      status: PIXIL_PENDING_STATUS,
-    };
-  }
   return {
     canConvert: error === null,
     error,
@@ -551,12 +547,6 @@ export async function convertSourceFiles(
   if (selectionError !== null) {
     throw new Error(selectionError);
   }
-  if (mode === "pixil") {
-    throw new Error(
-      "Pixil/Pixilart conversion is unavailable until the Pixil importer is added.",
-    );
-  }
-
   const pngFiles = files
     .filter((file) => file.kind === "png")
     .map((file) => file.file);
@@ -573,6 +563,13 @@ export async function convertSourceFiles(
       throw new Error("Piskel source file is missing.");
     }
     return importers.importPiskel(piskelFile.file);
+  }
+  if (mode === "pixil") {
+    const pixilFile = files.find((file) => file.kind === "pixil");
+    if (pixilFile === undefined) {
+      throw new Error("Pixil/Pixilart source file is missing.");
+    }
+    return importers.importPixil(pixilFile.file);
   }
   if (mode === "gif") {
     const gifFile = files.find((file) => file.kind === "gif");
@@ -684,7 +681,13 @@ export function getConversionSuccessStatus(
     );
   }
   if (mode === "pixil") {
-    return PIXIL_PENDING_STATUS;
+    const layerCount = project.layers.length;
+    const layerNoun = layerCount === 1 ? "layer" : "layers";
+    return (
+      "Converted supported Pixil frames and layers " +
+      `into an editable Aseprite timeline with ${frameCount} ${frameNoun} ` +
+      `and ${layerCount} preserved ${layerNoun}. Ready to download.`
+    );
   }
   return (
     `Converted ${frameCount} ${frameNoun} ` +
@@ -737,10 +740,10 @@ export function getConversionErrorMessage(
       : `PSD import failed: ${diagnostic}`;
   }
   if (mode === "pixil") {
-    return (
-      "Pixil/Pixilart import is unavailable until the Pixil importer is added. " +
-      "The selected .pixil file was recognized but was not parsed."
-    );
+    const diagnostic = getPixilImportDiagnostic(error);
+    return diagnostic === null
+      ? "Pixil/Pixilart import failed: Check that the .pixil file contains supported project-file frame and layer data from the documented subset."
+      : `Pixil/Pixilart import failed: ${diagnostic}`;
   }
   if (mode !== "piskel") {
     return error instanceof Error && error.message.trim().length > 0
@@ -1394,14 +1397,6 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
     if (isConverting || selectedFiles.length === 0) {
       return;
     }
-    if (mode === "pixil") {
-      renderConversionState(conversionElements, {
-        isWorking: false,
-        canConvert: false,
-        status: PIXIL_PENDING_STATUS,
-      });
-      return;
-    }
     const request = ++conversionRequest;
     isConverting = true;
     syncProject(null);
@@ -1411,6 +1406,8 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
       status:
         mode === "piskel"
           ? "Converting the Piskel project browser-locally. This may take a while."
+          : mode === "pixil"
+            ? "Converting the Pixil project browser-locally. This may take a while."
           : mode === "gif"
             ? "Converting the GIF animation browser-locally. This may take a while."
             : mode === "apng"
@@ -1456,6 +1453,8 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
         status:
           mode === "piskel"
             ? "Piskel conversion did not complete."
+            : mode === "pixil"
+              ? "Pixil conversion did not complete."
             : mode === "gif"
               ? "GIF conversion did not complete."
               : mode === "apng"

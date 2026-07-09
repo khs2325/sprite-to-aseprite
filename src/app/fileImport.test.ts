@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { KritaImportError } from "../core/importers/krita";
 import { OpenRasterImportError } from "../core/importers/openraster";
 import { PixeloramaImportError } from "../core/importers/pixelorama";
+import { PixilImportError } from "../core/importers/pixil";
 import { PiskelImportError } from "../core/importers/piskel";
 import { PsdParserAdapterError } from "../core/importers/psd";
 import { SpritesheetJsonImportError } from "../core/importers/spritesheetJson";
@@ -348,7 +349,7 @@ describe("bindFileImportControl", () => {
     ["pixelorama", "sprite.pxo", "application/x-pixelorama", "Selected 1 Pixelorama project"],
     ["krita", "sprite.kra", "application/x-krita", "Selected 1 Krita project"],
     ["psd", "sprite.psd", "image/vnd.adobe.photoshop", "Selected 1 PSD project. The supported RGB 8-bit raster-layer subset will be checked browser-locally."],
-    ["pixil", "sprite.pixil", "application/octet-stream", "Selected 1 Pixil project. Conversion is unavailable until the Pixil importer is added."],
+    ["pixil", "sprite.pixil", "application/octet-stream", "Selected 1 Pixil project. Ready to convert browser-locally."],
   ] as const)("reads one %s source locally", async (format, name, type, status) => {
     const statusOutput = createOutput();
     const onFilesImported = vi.fn<(files: readonly BrowserSourceFile[]) => void>();
@@ -583,6 +584,65 @@ describe("bindFileImportControl", () => {
         "Unsupported Piskel modelVersion; expected integer 2. " +
         "Check that the file is a supported model-version-2 .piskel file.",
     );
+  });
+
+  it("includes safe Pixil importer detail in selection errors", async () => {
+    const errorOutput = createOutput();
+    const control = bindFileImportControl(
+      createInput(),
+      errorOutput,
+      createOutput(),
+      {
+        format: "pixil",
+        onFilesImported: () => {
+          throw new PixilImportError(
+            "unsupported-version",
+            "Unsupported Pixil schemaVersion; expected integer 1.",
+          );
+        },
+      },
+    );
+
+    expect(
+      await control.selectFiles([
+        new File(["{}"], "sprite.pixil", { type: "" }),
+      ]),
+    ).toBe(false);
+
+    expect(errorOutput.textContent).toBe(
+      "Pixil/Pixilart project import failed. " +
+        "Unsupported Pixil schemaVersion; expected integer 1. " +
+        "Check that the .pixil file contains supported Pixil/Pixilart project data from the documented subset.",
+    );
+    expect(errorOutput.textContent).not.toContain("PixilImportError");
+  });
+
+  it("does not expose arbitrary Pixil source details from selection errors", async () => {
+    const errorOutput = createOutput();
+    const privateContents = '{"private pixels":"do not display"}';
+    const control = bindFileImportControl(
+      createInput(),
+      errorOutput,
+      createOutput(),
+      {
+        format: "pixil",
+        onFilesImported: () => {
+          throw new Error(privateContents);
+        },
+      },
+    );
+
+    expect(
+      await control.selectFiles([
+        new File([privateContents], "sprite.pixil", { type: "" }),
+      ]),
+    ).toBe(false);
+
+    expect(errorOutput.textContent).toBe(
+      "Pixil/Pixilart project import failed. " +
+        "Check that the .pixil file contains supported Pixil/Pixilart project data from the documented subset.",
+    );
+    expect(errorOutput.textContent).not.toContain(privateContents);
   });
 
   it("includes safe OpenRaster importer detail in selection errors", async () => {
