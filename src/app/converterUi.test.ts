@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { SpriteProject } from "../core/SpriteProject";
 import { ApngImportError } from "../core/importers/apng";
@@ -26,6 +26,7 @@ import {
   getSourceSelectionError,
   getSourceSelectionState,
   findNearestDivisor,
+  mountConverterUi,
   MODE_LABELS,
   renderConversionState,
 } from "./converterUi";
@@ -76,6 +77,14 @@ function piskel(name: string): BrowserSourceFile {
     file: new File(["{}"], name, { type: "application/octet-stream" }),
     kind: "piskel",
     text: "{}",
+  };
+}
+
+function pixil(name: string): BrowserSourceFile {
+  return {
+    file: new File(["pixil"], name, { type: "application/octet-stream" }),
+    kind: "pixil",
+    bytes: new ArrayBuffer(0),
   };
 }
 
@@ -141,6 +150,142 @@ function elementStub(): HTMLElement {
     },
   } as unknown as HTMLElement;
 }
+
+type Listener = EventListenerOrEventListenerObject;
+
+class UiElementStub {
+  readonly attributes = new Map<string, string>();
+  readonly children: UiElementStub[] = [];
+  readonly listeners = new Map<string, Listener>();
+  accept = "";
+  alt = "";
+  className = "";
+  disabled = false;
+  files: File[] = [];
+  hidden = false;
+  href = "";
+  id = "";
+  inert = false;
+  max = "";
+  min = "";
+  multiple = false;
+  rel = "";
+  required = false;
+  src = "";
+  step = "";
+  style = { backgroundSize: "" };
+  target = "";
+  textContent = "";
+  type = "";
+  value = "";
+  parent: UiElementStub | null = null;
+
+  constructor(
+    readonly tagName: string,
+    readonly ownerDocument: UiDocumentStub,
+  ) {}
+
+  addEventListener(type: string, listener: Listener): void {
+    this.listeners.set(type, listener);
+  }
+
+  append(...children: (UiElementStub | string)[]): void {
+    for (const child of children) {
+      if (typeof child === "string") {
+        this.textContent += child;
+      } else {
+        child.parent = this;
+        this.children.push(child);
+        if (
+          this.tagName === "select" &&
+          child.tagName === "option" &&
+          this.value.length === 0
+        ) {
+          this.value = child.value;
+        }
+      }
+    }
+  }
+
+  click(): void {
+    trigger(this, "click");
+  }
+
+  getAttribute(name: string): string | null {
+    return this.attributes.get(name) ?? null;
+  }
+
+  removeAttribute(name: string): void {
+    this.attributes.delete(name);
+  }
+
+  removeEventListener(type: string, listener: Listener): void {
+    if (this.listeners.get(type) === listener) {
+      this.listeners.delete(type);
+    }
+  }
+
+  replaceChildren(...children: UiElementStub[]): void {
+    for (const child of this.children) {
+      child.parent = null;
+    }
+    for (const child of children) {
+      child.parent = this;
+    }
+    this.children.splice(0, this.children.length, ...children);
+  }
+
+  setAttribute(name: string, value: string): void {
+    this.attributes.set(name, value);
+  }
+}
+
+class UiDocumentStub {
+  createElement(tagName: string): UiElementStub {
+    return new UiElementStub(tagName, this);
+  }
+}
+
+function trigger(element: UiElementStub, type: string): void {
+  const listener = element.listeners.get(type);
+  if (typeof listener === "function") {
+    listener({ preventDefault: vi.fn() } as unknown as Event);
+  } else if (listener !== undefined) {
+    listener.handleEvent({ preventDefault: vi.fn() } as unknown as Event);
+  }
+}
+
+function findAll(
+  element: UiElementStub,
+  predicate: (element: UiElementStub) => boolean,
+): UiElementStub[] {
+  return [
+    ...(predicate(element) ? [element] : []),
+    ...element.children.flatMap((child) => findAll(child, predicate)),
+  ];
+}
+
+function findOne(
+  element: UiElementStub,
+  predicate: (element: UiElementStub) => boolean,
+): UiElementStub {
+  const match = findAll(element, predicate)[0];
+  if (match === undefined) {
+    throw new Error("Expected a matching UI element.");
+  }
+  return match;
+}
+
+function getText(element: UiElementStub): string {
+  return [
+    element.textContent,
+    ...element.children.map((child) => getText(child)),
+  ].join("");
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("renderConversionState", () => {
   it("exposes an accessible working state and locks conversion controls", () => {
@@ -214,6 +359,8 @@ describe("getSourceSelectionError", () => {
     ).toBeNull();
     expect(getSourceSelectionError("piskel", [piskel("sprite.piskel")]))
       .toBeNull();
+    expect(getSourceSelectionError("pixil", [pixil("sprite.pixil")]))
+      .toBeNull();
     expect(getSourceSelectionError("gif", [gif("sprite.gif")])).toBeNull();
     expect(getSourceSelectionError("apng", [apng("sprite.apng")])).toBeNull();
     expect(getSourceSelectionError("apng", [png("sprite.png")])).toBeNull();
@@ -244,6 +391,14 @@ describe("getSourceSelectionError", () => {
         piskel("two.piskel"),
       ]),
     ).toContain("exactly one .piskel file");
+    expect(getSourceSelectionError("pixil", [png("sprite.png")]))
+      .toContain("exactly one .pixil file");
+    expect(
+      getSourceSelectionError("pixil", [
+        pixil("one.pixil"),
+        pixil("two.pixil"),
+      ]),
+    ).toContain("exactly one .pixil file");
     expect(getSourceSelectionError("gif", [png("sprite.png")]))
       .toContain("exactly one .gif file");
     expect(getSourceSelectionError("gif", [gif("one.gif"), gif("two.gif")]))
@@ -287,6 +442,18 @@ describe("getSourceSelectionError", () => {
     });
   });
 
+  it("recognizes Pixil selections while keeping conversion unavailable", () => {
+    const selectedPixil = [pixil("sprite.pixil")];
+
+    expect(getSourceSelectionError("pixil", selectedPixil)).toBeNull();
+    expect(getSourceSelectionState("pixil", selectedPixil)).toEqual({
+      canConvert: false,
+      error: null,
+      status:
+        "Pixil/Pixilart project files are recognized, but conversion is unavailable until the Pixil importer is added.",
+    });
+  });
+
   it("revalidates remaining and cleared files without a second selection state", () => {
     const files = [png("sheet.png"), json("sheet.json")];
     expect(getSourceSelectionState("spritesheet-json", files).canConvert)
@@ -323,6 +490,9 @@ describe("getSourceSelectionError", () => {
     expect(getSourceSelectionState("psd", [psd("scene.psd")]).canConvert)
       .toBe(true);
     expect(getSourceSelectionState("psd", []).canConvert).toBe(false);
+    expect(getSourceSelectionState("pixil", [pixil("scene.pixil")]).canConvert)
+      .toBe(false);
+    expect(getSourceSelectionState("pixil", []).canConvert).toBe(false);
   });
 
   it("revalidates the same selected files when import mode changes", () => {
@@ -333,6 +503,7 @@ describe("getSourceSelectionError", () => {
     expect(getSourceSelectionState("pixelorama", files).canConvert).toBe(false);
     expect(getSourceSelectionState("krita", files).canConvert).toBe(false);
     expect(getSourceSelectionState("psd", files).canConvert).toBe(false);
+    expect(getSourceSelectionState("pixil", files).canConvert).toBe(false);
   });
 
   it("exposes project mode labels without implying full compatibility", () => {
@@ -347,6 +518,99 @@ describe("getSourceSelectionError", () => {
     );
     expect(psdInstructions).not.toContain("lossless");
     expect(psdInstructions).not.toContain("text layers");
+    expect(MODE_LABELS.pixil).toBe("Pixil/Pixilart project");
+    const pixilInstructions = getImportDropInstructions("pixil");
+    expect(pixilInstructions).toBe(
+      "Drop exactly one .pixil Pixil/Pixilart project file here. Import is limited to the documented project-file subset and conversion is unavailable until the parser is added.",
+    );
+    expect(pixilInstructions).not.toContain("lossless");
+    expect(pixilInstructions).not.toContain("full");
+  });
+});
+
+describe("mountConverterUi Pixil selection", () => {
+  it("shows Pixil cards and keeps remove, clear, and conversion state disabled", async () => {
+    vi.stubGlobal("HTMLImageElement", class HTMLImageElementStub {});
+    const document = new UiDocumentStub();
+    const root = document.createElement("main");
+    mountConverterUi(root as unknown as HTMLElement);
+
+    const modeSelect = findOne(root, (element) => element.tagName === "select");
+    const fileInput = findOne(
+      root,
+      (element) => element.tagName === "input" && element.type === "file",
+    );
+    const convertButton = findOne(
+      root,
+      (element) =>
+        element.tagName === "button" &&
+        element.textContent === "Convert to .aseprite",
+    );
+
+    modeSelect.value = "pixil";
+    trigger(modeSelect, "change");
+    expect(getText(root)).toContain(
+      "Import is limited to the documented project-file subset",
+    );
+
+    const pixilFile = new File(["private pixil content"], "sprite.pixil", {
+      type: "application/octet-stream",
+    });
+    fileInput.files = [pixilFile];
+    trigger(fileInput, "change");
+
+    await vi.waitFor(() => {
+      expect(
+        findAll(root, (element) =>
+          element.className.split(/\s+/).includes("selected-file-card"),
+        ),
+      ).toHaveLength(1);
+    });
+    expect(getText(root)).toContain("sprite.pixil");
+    expect(getText(root)).toContain("Pixil project");
+    expect(getText(root)).toContain("PIXIL");
+    expect(getText(root)).toContain(
+      "Pixil/Pixilart project files are recognized, but conversion is unavailable until the Pixil importer is added.",
+    );
+    expect(getText(root)).not.toContain("private pixil content");
+    expect(convertButton.disabled).toBe(true);
+
+    findOne(
+      root,
+      (element) =>
+        element.tagName === "button" &&
+        element.textContent === "Remove sprite.pixil",
+    ).click();
+    expect(
+      findAll(root, (element) =>
+        element.className.split(/\s+/).includes("selected-file-card"),
+      ),
+    ).toHaveLength(0);
+    expect(convertButton.disabled).toBe(true);
+    expect(getText(root)).toContain("Choose source files to begin.");
+
+    fileInput.files = [pixilFile];
+    trigger(fileInput, "change");
+    await vi.waitFor(() => {
+      expect(
+        findAll(root, (element) =>
+          element.className.split(/\s+/).includes("selected-file-card"),
+        ),
+      ).toHaveLength(1);
+    });
+
+    findOne(
+      root,
+      (element) =>
+        element.tagName === "button" &&
+        element.textContent === "Clear selected files",
+    ).click();
+    expect(
+      findAll(root, (element) =>
+        element.className.split(/\s+/).includes("selected-file-card"),
+      ),
+    ).toHaveLength(0);
+    expect(convertButton.disabled).toBe(true);
   });
 });
 
@@ -717,6 +981,54 @@ describe("convertSourceFiles", () => {
     expect(importers.importOpenRaster).not.toHaveBeenCalled();
     expect(importers.importPixelorama).not.toHaveBeenCalled();
     expect(importers.importPsd).not.toHaveBeenCalled();
+  });
+
+  it("does not route Pixil files to conversion before the importer exists", async () => {
+    const importers = {
+      importApng: vi.fn(async () => project),
+      importGif: vi.fn(async () => project),
+      importKrita: vi.fn(async () => project),
+      importOpenRaster: vi.fn(async () => project),
+      importPixelorama: vi.fn(async () => project),
+      importPngSequence: vi.fn(async () => project),
+      importPiskel: vi.fn(async () => project),
+      importPsd: vi.fn(async () => project),
+      importSpritesheetGrid: vi.fn(async () => project),
+      importSpritesheetJson: vi.fn(async () => project),
+    };
+
+    await expect(
+      convertSourceFiles(
+        "pixil",
+        [pixil("scene.pixil")],
+        gridOptions,
+        importers,
+      ),
+    ).rejects.toThrow(
+      "Pixil/Pixilart conversion is unavailable until the Pixil importer is added.",
+    );
+    for (const importer of Object.values(importers)) {
+      expect(importer).not.toHaveBeenCalled();
+    }
+  });
+});
+
+describe("Pixil project pending import messages", () => {
+  it("does not claim conversion or full compatibility before parsing exists", () => {
+    expect(getConversionSuccessStatus("pixil", project)).toBe(
+      "Pixil/Pixilart project files are recognized, but conversion is unavailable until the Pixil importer is added.",
+    );
+    const errorMessage = getConversionErrorMessage(
+      "pixil",
+      new Error("private pixil source details"),
+    );
+
+    expect(errorMessage).toBe(
+      "Pixil/Pixilart import is unavailable until the Pixil importer is added. " +
+        "The selected .pixil file was recognized but was not parsed.",
+    );
+    expect(errorMessage).not.toContain("private pixil source details");
+    expect(errorMessage).not.toContain("lossless");
   });
 });
 
