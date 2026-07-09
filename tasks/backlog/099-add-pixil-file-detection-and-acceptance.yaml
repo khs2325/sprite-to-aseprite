@@ -1,0 +1,55 @@
+id: "099"
+title: Add Pixil file detection and acceptance
+status: backlog
+priority: medium
+goal: Recognize Pixil/Pixilart `.pixil` project files in the browser UI without parsing their contents yet.
+context: >
+  Task 098 documented the fixture-gated Pixil import contract in
+  `docs/pixil-format.md`. This task prepares file selection and user-facing
+  acceptance only; actual Pixil parsing stays in a later core importer task.
+scope:
+  summary: Add `.pixil` source detection, accept-list support, labels, help text, and focused detection tests.
+  allowed_paths:
+    - src/app/fileImport.ts
+    - src/app/fileImport.test.ts
+    - src/app/converterUi.ts
+    - src/app/converterUi.test.ts
+    - src/styles.css
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - node_modules/**
+    - package.json
+    - package-lock.json
+    - tasks/**
+    - src/core/importers/**
+    - src/core/exporters/**
+non_goals:
+  - Do not parse `.pixil` file contents.
+  - Do not route Pixil files through conversion before the importer exists.
+  - Do not update documentation tables or claim Pixil support is implemented.
+  - Do not add dependencies, uploads, tracking, backend behavior, or server conversion.
+requirements:
+  - Add `.pixil` to supported source accept lists and file-kind detection.
+  - Add a clear selected-file label such as `Pixil project`.
+  - Add user-facing help text that Pixil/Pixilart support is a limited project-file import based on the documented subset.
+  - Keep Pixil conversion disabled or unavailable until the parser task exists.
+  - Add focused tests for extension detection, accept strings, labels, selected-file cards, remove/clear behavior, and pending or unsupported conversion state.
+  - Preserve the browser-local processing promise and do not upload selected files.
+acceptance_criteria:
+  - Pixil `.pixil` files are recognized and displayed with a clear Pixil/Pixilart label.
+  - The UI does not attempt to parse or convert Pixil content in this task.
+  - User-facing copy avoids full-compatibility and lossless-conversion claims.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *forbidden
+
