@@ -111,11 +111,15 @@ const DEFAULT_IMPORTERS: ConverterImporters = {
   importSpritesheetJson,
 };
 
+const PIXIL_PENDING_STATUS =
+  "Pixil/Pixilart project files are recognized, but conversion is unavailable until the Pixil importer is added.";
+
 export const MODE_LABELS: Record<FileImportFormat, string> = {
   "png-sequence": "PNG sequence",
   "spritesheet-grid": "Spritesheet grid",
   "spritesheet-json": "Spritesheet PNG + JSON",
   piskel: "Piskel project",
+  pixil: "Pixil/Pixilart project",
   gif: "GIF animation",
   apng: "APNG animation",
   openraster: "OpenRaster project",
@@ -127,6 +131,9 @@ export const MODE_LABELS: Record<FileImportFormat, string> = {
 export function getImportDropInstructions(mode: FileImportFormat): string {
   if (mode === "piskel") {
     return "Drop exactly one .piskel file here, or choose one below.";
+  }
+  if (mode === "pixil") {
+    return "Drop exactly one .pixil Pixil/Pixilart project file here. Import is limited to the documented project-file subset and conversion is unavailable until the parser is added.";
   }
   if (mode === "gif") {
     return "Drop exactly one .gif file here, or choose one below.";
@@ -146,7 +153,7 @@ export function getImportDropInstructions(mode: FileImportFormat): string {
   if (mode === "psd") {
     return "Drop exactly one .psd file from the RGB 8-bit raster-layer subset here, or choose one below.";
   }
-  return "Drag and drop PNG, JSON, Piskel, GIF, APNG, OpenRaster, Pixelorama, Krita, or PSD files here, or choose files below.";
+  return "Drag and drop PNG, JSON, Piskel, Pixil/Pixilart, GIF, APNG, OpenRaster, Pixelorama, Krita, or PSD files here, or choose files below.";
 }
 
 export type GridAutoCalculation = {
@@ -430,6 +437,13 @@ export function getSourceSelectionState(
     };
   }
   const error = getSourceSelectionError(mode, files);
+  if (mode === "pixil" && error === null) {
+    return {
+      canConvert: false,
+      error: null,
+      status: PIXIL_PENDING_STATUS,
+    };
+  }
   return {
     canConvert: error === null,
     error,
@@ -464,6 +478,7 @@ export function getSourceSelectionError(
   const pngCount = files.filter((file) => file.kind === "png").length;
   const jsonCount = files.filter((file) => file.kind === "json").length;
   const piskelCount = files.filter((file) => file.kind === "piskel").length;
+  const pixilCount = files.filter((file) => file.kind === "pixil").length;
   const gifCount = files.filter((file) => file.kind === "gif").length;
   const apngCount = files.filter((file) => file.kind === "apng").length;
   const openRasterCount = files.filter((file) => file.kind === "ora").length;
@@ -490,6 +505,11 @@ export function getSourceSelectionError(
     return piskelCount === 1 && files.length === 1
       ? null
       : "Piskel mode requires exactly one .piskel file.";
+  }
+  if (mode === "pixil") {
+    return pixilCount === 1 && files.length === 1
+      ? null
+      : "Pixil/Pixilart mode requires exactly one .pixil file.";
   }
   if (mode === "gif") {
     return gifCount === 1 && files.length === 1
@@ -530,6 +550,11 @@ export async function convertSourceFiles(
   const selectionError = getSourceSelectionError(mode, files);
   if (selectionError !== null) {
     throw new Error(selectionError);
+  }
+  if (mode === "pixil") {
+    throw new Error(
+      "Pixil/Pixilart conversion is unavailable until the Pixil importer is added.",
+    );
   }
 
   const pngFiles = files
@@ -658,6 +683,9 @@ export function getConversionSuccessStatus(
       `and ${layerCount} preserved ${layerNoun}. Ready to download.`
     );
   }
+  if (mode === "pixil") {
+    return PIXIL_PENDING_STATUS;
+  }
   return (
     `Converted ${frameCount} ${frameNoun} ` +
     "into an editable Aseprite timeline. Ready to download."
@@ -707,6 +735,12 @@ export function getConversionErrorMessage(
     return diagnostic === null
       ? "PSD import failed: Check that the .psd file contains supported RGB 8-bit raster layers from the documented subset."
       : `PSD import failed: ${diagnostic}`;
+  }
+  if (mode === "pixil") {
+    return (
+      "Pixil/Pixilart import is unavailable until the Pixil importer is added. " +
+      "The selected .pixil file was recognized but was not parsed."
+    );
   }
   if (mode !== "piskel") {
     return error instanceof Error && error.message.trim().length > 0
@@ -885,7 +919,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   fileInput.accept = SUPPORTED_SOURCE_ACCEPT;
   fileInput.setAttribute(
     "aria-label",
-    "Choose PNG, JSON, Piskel, GIF, APNG, OpenRaster, Pixelorama, Krita, or PSD sprite source files",
+    "Choose PNG, JSON, Piskel, Pixil/Pixilart, GIF, APNG, OpenRaster, Pixelorama, Krita, or PSD sprite source files",
   );
   sourceError.setAttribute("role", "alert");
   sourceError.setAttribute("aria-live", "assertive");
@@ -1358,6 +1392,14 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
 
   const handleConvert = async (): Promise<void> => {
     if (isConverting || selectedFiles.length === 0) {
+      return;
+    }
+    if (mode === "pixil") {
+      renderConversionState(conversionElements, {
+        isWorking: false,
+        canConvert: false,
+        status: PIXIL_PENDING_STATUS,
+      });
       return;
     }
     const request = ++conversionRequest;

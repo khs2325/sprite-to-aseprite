@@ -103,6 +103,11 @@ describe("bindFileImportControl", () => {
       text: "private project",
     })).toMatchObject({ typeLabel: "Piskel project" });
     expect(getSourceFilePresentation({
+      file: new File(["private project"], "sprite.pixil"),
+      kind: "pixil",
+      bytes: new ArrayBuffer(0),
+    })).toMatchObject({ typeLabel: "Pixil project" });
+    expect(getSourceFilePresentation({
       file: new File(["gif"], "sprite.gif"),
       kind: "gif",
       bytes: new ArrayBuffer(0),
@@ -173,6 +178,17 @@ describe("bindFileImportControl", () => {
         type: "application/octet-stream",
       }),
     ).toBe("piskel");
+  });
+
+  it("advertises and classifies .pixil files by extension for generic MIME types", () => {
+    expect(SUPPORTED_SOURCE_ACCEPT.split(",")).toContain(".pixil");
+    expect(getSourceKind({ name: "character.PIXIL", type: "" })).toBe("pixil");
+    expect(
+      getSourceKind({
+        name: "character.pixil",
+        type: "application/octet-stream",
+      }),
+    ).toBe("pixil");
   });
 
   it("advertises and classifies GIF and APNG sources", () => {
@@ -332,6 +348,7 @@ describe("bindFileImportControl", () => {
     ["pixelorama", "sprite.pxo", "application/x-pixelorama", "Selected 1 Pixelorama project"],
     ["krita", "sprite.kra", "application/x-krita", "Selected 1 Krita project"],
     ["psd", "sprite.psd", "image/vnd.adobe.photoshop", "Selected 1 PSD project. The supported RGB 8-bit raster-layer subset will be checked browser-locally."],
+    ["pixil", "sprite.pixil", "application/octet-stream", "Selected 1 Pixil project. Conversion is unavailable until the Pixil importer is added."],
   ] as const)("reads one %s source locally", async (format, name, type, status) => {
     const statusOutput = createOutput();
     const onFilesImported = vi.fn<(files: readonly BrowserSourceFile[]) => void>();
@@ -378,7 +395,7 @@ describe("bindFileImportControl", () => {
     expect(errorOutput).toMatchObject({
       hidden: false,
       textContent:
-        'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, APNG, OpenRaster, Pixelorama, Krita, or PSD files only.',
+        'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, Pixil/Pixilart, GIF, APNG, OpenRaster, Pixelorama, Krita, or PSD files only.',
     });
     expect(statusOutput.hidden).toBe(true);
   });
@@ -835,7 +852,7 @@ describe("bindFileImportControl", () => {
 
     await vi.waitFor(() => expect(errorOutput.hidden).toBe(false));
     expect(errorOutput.textContent).toBe(
-      'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, APNG, OpenRaster, Pixelorama, Krita, or PSD files only.',
+      'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, Pixil/Pixilart, GIF, APNG, OpenRaster, Pixelorama, Krita, or PSD files only.',
     );
     expect(onFilesImported).not.toHaveBeenCalled();
   });
@@ -858,7 +875,7 @@ describe("bindFileImportControl", () => {
 
     await vi.waitFor(() => expect(errorOutput.hidden).toBe(false));
     expect(errorOutput.textContent).toBe(
-      'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, GIF, APNG, OpenRaster, Pixelorama, Krita, or PSD files only.',
+      'Unsupported file "notes.txt". Choose PNG, JSON, Piskel, Pixil/Pixilart, GIF, APNG, OpenRaster, Pixelorama, Krita, or PSD files only.',
     );
     expect(readPng).not.toHaveBeenCalled();
     expect(onFilesImported).not.toHaveBeenCalled();
