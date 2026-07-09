@@ -79,6 +79,7 @@
   9. [ ] Krita `.kra` browser UI wiring (task 056)
   10. [x] GIMP `.xcf` feasibility research only (task 057)
   11. [x] LibreSprite/Aseprite `.ase`/`.aseprite` input feasibility research only (task 058)
+  12. [x] Pixil/Pixilart `.pixil` import contract research only (task 098)
 - PSD compatibility:
   1. [x] PSD feasibility research only (task 059)
 
