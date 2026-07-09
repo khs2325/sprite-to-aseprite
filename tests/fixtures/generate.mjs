@@ -607,6 +607,10 @@ function rawRgba(pixels) {
   return Buffer.from(pixels.flat());
 }
 
+function rawRgbaBase64(pixels) {
+  return rawRgba(pixels).toString("base64");
+}
+
 function pixeloramaCel() {
   return {
     opacity: 1,
@@ -745,6 +749,54 @@ function pixeloramaFixture({
   }
 
   return encodeZip(entries);
+}
+
+function pixilCel(frameIndex, pixels, { width = 2, height = 2 } = {}) {
+  return {
+    frameIndex,
+    x: 0,
+    y: 0,
+    width,
+    height,
+    rgbaBase64: rawRgbaBase64(pixels),
+  };
+}
+
+function pixilLayer({
+  blendMode = "normal",
+  cels,
+  name,
+  opacity = 1,
+  visible = true,
+}) {
+  return {
+    blendMode,
+    cels: cels.map((pixels, frameIndex) => pixilCel(frameIndex, pixels)),
+    name,
+    opacity,
+    visible,
+  };
+}
+
+function pixilFile({ frames, layers }) {
+  return `${JSON.stringify({
+    pixil: {
+      format: "pixilart.com/pixil-project",
+      schemaVersion: 1,
+      width: 2,
+      height: 2,
+      frameCount: frames.length,
+      layerCount: layers.length,
+      frames: frames.map((durationMs, index) => ({ index, durationMs })),
+      layers: layers.map((layer, index) => ({ index, ...layer })),
+    },
+  }, null, 2)}\n`;
+}
+
+function mutatePixil(source, mutate) {
+  const document = JSON.parse(source);
+  mutate(document);
+  return `${JSON.stringify(document, null, 2)}\n`;
 }
 
 function psdPascalString(value) {
@@ -1031,6 +1083,67 @@ outputs.set(
     imageData: [["image_data/frames/1/layer_1", pixeloramaPositiveImageData[0][1]]],
     layers: [pixeloramaLayer({ name: "Metadata unsupported" })],
     metadata: { fixture_note: "reject ambiguous project metadata" },
+  }),
+);
+
+const pixilPositive = pixilFile({
+  frames: [120, 75],
+  layers: [
+    pixilLayer({
+      name: "Base visible half",
+      opacity: 0.5,
+      cels: [
+        [
+          cyan, transparent,
+          transparent, yellow,
+        ],
+        [
+          transparent, transparent,
+          cyan, yellow,
+        ],
+      ],
+    }),
+    pixilLayer({
+      name: "Hidden ink",
+      visible: false,
+      cels: [
+        [
+          transparent, coral,
+          transparent, transparent,
+        ],
+        [
+          coral, transparent,
+          yellow, transparent,
+        ],
+      ],
+    }),
+  ],
+});
+
+outputs.set("pixil/two-layers-two-frames.pixil", pixilPositive);
+outputs.set(
+  "pixil/unsupported-blend-mode.pixil",
+  mutatePixil(pixilPositive, (document) => {
+    document.pixil.layers[0].blendMode = "multiply";
+  }),
+);
+outputs.set(
+  "pixil/external-image-url.pixil",
+  mutatePixil(pixilPositive, (document) => {
+    document.pixil.layers[0].cels[0].rgbaBase64 =
+      "https://example.invalid/sprite.png";
+  }),
+);
+outputs.set(
+  "pixil/missing-cel.pixil",
+  mutatePixil(pixilPositive, (document) => {
+    document.pixil.layers[0].cels.pop();
+  }),
+);
+outputs.set(
+  "pixil/ambiguous-layer-index.pixil",
+  mutatePixil(pixilPositive, (document) => {
+    document.pixil.layers[1].index = 0;
   }),
 );
 
