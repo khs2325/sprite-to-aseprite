@@ -10,6 +10,7 @@ import { importGifBytes } from "./importers/gif";
 import { importKritaBytes } from "./importers/krita";
 import { importOpenRasterBytes } from "./importers/openraster";
 import { importPiskel } from "./importers/piskel";
+import { importPixil } from "./importers/pixil";
 import { importPixeloramaBytes } from "./importers/pixelorama";
 import { importPngSequence } from "./importers/pngSequence";
 import { importPsdBytes } from "./importers/psd";
@@ -1342,6 +1343,63 @@ describe("importer to Aseprite export integration", () => {
         x: 0,
         y: 0,
       },
+    ]);
+  });
+
+  it("preserves supported Pixil layers and timing in Aseprite chunks", async () => {
+    const contents = readFileSync(
+      new URL(
+        "../../tests/fixtures/pixil/two-layers-two-frames.pixil",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    const project = await importPixil(
+      createFile("two-layers-two-frames.pixil", contents, "application/json"),
+    );
+
+    expect(project).toMatchObject({
+      colorMode: "rgba",
+      frames: [
+        { index: 0, durationMs: 120 },
+        { index: 1, durationMs: 75 },
+      ],
+      height: 2,
+      layers: [
+        {
+          cels: [
+            { frameIndex: 0, x: 0, y: 0 },
+            { frameIndex: 1, x: 0, y: 0 },
+          ],
+          name: "Base visible half",
+          opacity: 128,
+          visible: true,
+        },
+        {
+          cels: [
+            { frameIndex: 0, x: 0, y: 0 },
+            { frameIndex: 1, x: 0, y: 0 },
+          ],
+          name: "Hidden ink",
+          opacity: 255,
+          visible: false,
+        },
+      ],
+      width: 2,
+    });
+    expect(pixel(project.layers[0].cels[0].imageData, 0, 0)).toEqual([
+      17, 138, 178, 255,
+    ]);
+    expect(pixel(project.layers[1].cels[1].imageData, 0, 1)).toEqual([
+      255, 209, 102, 255,
+    ]);
+
+    const bytes = exportAseprite(project);
+    const frames = parseFrames(bytes);
+    expect(frames.map(({ durationMs }) => durationMs)).toEqual([120, 75]);
+    expect(frames.map(({ chunks }) => chunks.map(({ type }) => type))).toEqual([
+      [0x2004, 0x2004, 0x2005, 0x2005],
+      [0x2005, 0x2005],
     ]);
   });
 

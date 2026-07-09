@@ -1,0 +1,64 @@
+{
+  "pixil": {
+    "format": "pixilart.com/pixil-project",
+    "schemaVersion": 1,
+    "width": 2,
+    "height": 2,
+    "frameCount": 2,
+    "layerCount": 2,
+    "frames": [
+      {
+        "index": 0,
+        "durationMs": 120
+      },
+      {
+        "index": 1,
+        "durationMs": 75
+      }
+    ],
+    "layers": [
+      {
+        "index": 0,
+        "blendMode": "normal",
+        "cels": [
+          {
+            "frameIndex": 0,
+            "x": 0,
+            "y": 0,
+            "width": 2,
+            "height": 2,
+            "rgbaBase64": "EYqy/wAAAAAAAAAA/9Fm/w=="
+          }
+        ],
+        "name": "Base visible half",
+        "opacity": 0.5,
+        "visible": true
+      },
+      {
+        "index": 1,
+        "blendMode": "normal",
+        "cels": [
+          {
+            "frameIndex": 0,
+            "x": 0,
+            "y": 0,
+            "width": 2,
+            "height": 2,
+            "rgbaBase64": "AAAAAO9Hb/8AAAAAAAAAAA=="
+          },
+          {
+            "frameIndex": 1,
+            "x": 0,
+            "y": 0,
+            "width": 2,
+            "height": 2,
+            "rgbaBase64": "70dv/wAAAAD/0Wb/AAAAAA=="
+          }
+        ],
+        "name": "Hidden ink",
+        "opacity": 1,
+        "visible": false
+      }
+    ]
+  }
+}

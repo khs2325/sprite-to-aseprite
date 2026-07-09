@@ -205,6 +205,40 @@ type PixeloramaFixture = {
   vanishing_points: unknown[];
 };
 
+type PixilCelFixture = {
+  frameIndex: number;
+  height: number;
+  rgbaBase64: string;
+  width: number;
+  x: number;
+  y: number;
+};
+
+type PixilFrameFixture = {
+  durationMs: number;
+  index: number;
+};
+
+type PixilLayerFixture = {
+  blendMode: string;
+  cels: PixilCelFixture[];
+  index: number;
+  name: string;
+  opacity: number;
+  visible: boolean;
+};
+
+type PixilFixture = {
+  format: string;
+  frameCount: number;
+  frames: PixilFrameFixture[];
+  height: number;
+  layerCount: number;
+  layers: PixilLayerFixture[];
+  schemaVersion: number;
+  width: number;
+};
+
 type PsdChannelFixtureMetadata = {
   compression: number;
   id: number;
@@ -504,6 +538,12 @@ function parsePixeloramaFixture(relativePath: string): {
   };
 }
 
+function parsePixilFixture(relativePath: string): PixilFixture {
+  const source = readFileSync(join(fixtureDirectory, relativePath), "utf8");
+  const document = JSON.parse(source) as { pixil: PixilFixture };
+  return document.pixil;
+}
+
 function pixeloramaRawPixel(
   bytes: Buffer,
   width: number,
@@ -511,6 +551,16 @@ function pixeloramaRawPixel(
   y: number,
 ): number[] {
   const offset = (y * width + x) * 4;
+  return [...bytes.subarray(offset, offset + 4)];
+}
+
+function pixilRawPixel(
+  cel: PixilCelFixture,
+  x: number,
+  y: number,
+): number[] {
+  const bytes = Buffer.from(cel.rgbaBase64, "base64");
+  const offset = (y * cel.width + x) * 4;
   return [...bytes.subarray(offset, offset + 4)];
 }
 
@@ -1315,6 +1365,84 @@ describe("synthetic sprite fixtures", () => {
     expect(ambiguousMetadata.data.metadata).toEqual({
       fixture_note: "reject ambiguous project metadata",
     });
+  });
+
+  it("provides a Pixil JSON fixture with raw pixel layers and frame timing", () => {
+    const data = parsePixilFixture("pixil/two-layers-two-frames.pixil");
+
+    expect(data).toMatchObject({
+      format: "pixilart.com/pixil-project",
+      schemaVersion: 1,
+      width: 2,
+      height: 2,
+      frameCount: 2,
+      layerCount: 2,
+      frames: [
+        { index: 0, durationMs: 120 },
+        { index: 1, durationMs: 75 },
+      ],
+    });
+    expect(data.layers.map((layer) => ({
+      index: layer.index,
+      name: layer.name,
+      visible: layer.visible,
+      opacity: layer.opacity,
+      blendMode: layer.blendMode,
+      frameIndexes: layer.cels.map(({ frameIndex }) => frameIndex),
+    }))).toEqual([
+      {
+        index: 0,
+        name: "Base visible half",
+        visible: true,
+        opacity: 0.5,
+        blendMode: "normal",
+        frameIndexes: [0, 1],
+      },
+      {
+        index: 1,
+        name: "Hidden ink",
+        visible: false,
+        opacity: 1,
+        blendMode: "normal",
+        frameIndexes: [0, 1],
+      },
+    ]);
+    expect(data.layers.flatMap(({ cels }) => cels).every((cel) =>
+      cel.x === 0 &&
+      cel.y === 0 &&
+      cel.width === data.width &&
+      cel.height === data.height &&
+      Buffer.from(cel.rgbaBase64, "base64").length === data.width * data.height * 4))
+      .toBe(true);
+    expect(pixilRawPixel(data.layers[0].cels[0], 0, 0))
+      .toEqual([17, 138, 178, 255]);
+    expect(pixilRawPixel(data.layers[0].cels[0], 1, 1))
+      .toEqual([255, 209, 102, 255]);
+    expect(pixilRawPixel(data.layers[1].cels[0], 1, 0))
+      .toEqual([239, 71, 111, 255]);
+    expect(pixilRawPixel(data.layers[1].cels[1], 0, 1))
+      .toEqual([255, 209, 102, 255]);
+  });
+
+  it("provides Pixil rejection fixtures for unsupported semantics", () => {
+    const unsupportedBlend = parsePixilFixture(
+      "pixil/unsupported-blend-mode.pixil",
+    );
+    expect(unsupportedBlend.layers[0]).toMatchObject({
+      name: "Base visible half",
+      blendMode: "multiply",
+    });
+
+    const externalImage = parsePixilFixture("pixil/external-image-url.pixil");
+    expect(externalImage.layers[0].cels[0].rgbaBase64)
+      .toBe("https://example.invalid/sprite.png");
+
+    const missingCel = parsePixilFixture("pixil/missing-cel.pixil");
+    expect(missingCel.layers[0].cels).toHaveLength(1);
+    expect(missingCel.frameCount).toBe(2);
+
+    const ambiguousLayer = parsePixilFixture("pixil/ambiguous-layer-index.pixil");
+    expect(ambiguousLayer.layers.map(({ index }) => index)).toEqual([0, 0]);
   });
 
   it("provides tiny PSD fixtures with deterministic raster layer metadata", () => {

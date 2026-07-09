@@ -89,6 +89,28 @@ pixels. They are intended to preserve layers when a supported `.pxo` source
 contains pixel layer data; they do not cover tilemaps, effects, groups, 3D
 layers, audio layers, indexed color, or ambiguous metadata.
 
+The Pixil fixtures add deterministic JSON `.pixil` containers for the
+fixture-gated importer subset. They use root `pixil.format`
+`pixilart.com/pixil-project`, `schemaVersion` 1, explicit frame and layer
+indexes, per-frame millisecond durations, normal blend mode, layer visibility,
+opacity in the `0..1` range, and full-canvas raw RGBA cels encoded as strict
+base64. They are generated locally from synthetic pixels and do not use
+Pixilart gallery, account, downloaded, private, or user-provided artwork.
+
+| Fixture | Canvas | Frames | Layers | SHA-256 |
+| --- | --- | ---: | ---: | --- |
+| `pixil/two-layers-two-frames.pixil` | 2 by 2 | 2 | 2 | `529eee6fdde65c9390c966b204bc463ce81ae49f02e9e4d6263e9350e3641c33` |
+| `pixil/unsupported-blend-mode.pixil` | 2 by 2 | 2 | 2 | `19b8511a877fbddf7c15c6d8e7eb73707d1fbeab5fd7aaf5e5a8cc9ac3414e03` |
+| `pixil/external-image-url.pixil` | 2 by 2 | 2 | 2 | `e62f8456efb54aa87992acfe6cdfca44b563d45428dc0927d0b2a0f547193600` |
+| `pixil/missing-cel.pixil` | 2 by 2 | 2 | 2 | `66405e7ff2932599a1ffb92af84d81b60229c8af3b1285d3516931532cb0491c` |
+| `pixil/ambiguous-layer-index.pixil` | 2 by 2 | 2 | 2 | `14d5c2b99cc001e28b03ad478a3b985774abd1d285b7148ba6e9edbda44547fb` |
+
+Pixil fixtures preserve layers only when the `.pixil` source contains this
+supported layer data. They do not cover alternate Pixilart containers,
+compressed or encrypted variants, external image URLs, previews, flattened
+exports, non-normal blend modes, clipping, alpha lock, partial-canvas cels,
+groups, palettes, social metadata, or ambiguous ordering.
+
 The Krita fixtures add deterministic ZIP-backed `.kra` containers for the
 future minimal native-raster importer. Tests inspect the stored `mimetype`,
 `maindoc.xml`, preview PNGs, native paint-device tile headers, default pixels,
