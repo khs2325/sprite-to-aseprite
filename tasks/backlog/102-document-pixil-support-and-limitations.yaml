@@ -1,0 +1,55 @@
+id: "102"
+title: Document Pixil support and limitations
+status: backlog
+priority: low
+goal: Update user-facing documentation for Pixil/Pixilart support after importer and UI wiring are implemented.
+context: >
+  Documentation must reflect implemented behavior only. Pixil/Pixilart support
+  should be described as a limited project-file import, not full or lossless
+  compatibility.
+scope:
+  summary: Update README and supported-format docs for the implemented Pixil subset and limitations.
+  allowed_paths:
+    - README.md
+    - docs/manual-usage-guide.md
+    - docs/product-spec.md
+    - docs/supported-formats.md
+    - docs/conversion-limitations.md
+    - docs/privacy-browser-local.md
+    - docs/pixil-format.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - node_modules/**
+    - package.json
+    - package-lock.json
+    - tasks/**
+    - src/**
+    - tests/**
+non_goals:
+  - Do not implement or change Pixil importer behavior.
+  - Do not update docs ahead of actual tested support.
+  - Do not claim full Pixil/Pixilart compatibility or lossless conversion.
+  - Do not add ads, analytics, tracking, uploads, backend behavior, or payment processing.
+requirements:
+  - Update README and supported-format tables to list Pixil/Pixilart support only according to completed implementation reality.
+  - Explain the supported `.pixil` project-file subset and link to `docs/pixil-format.md`.
+  - Explain preserved data such as canvas size, layers, frames, visibility, opacity, durations, and RGBA pixels only when the source and importer support them.
+  - Explain unsupported Pixil/Pixilart features and that conversion is not guaranteed lossless.
+  - Preserve accurate browser-local and no-upload privacy claims.
+acceptance_criteria:
+  - README and docs describe Pixil support accurately based on completed importer and UI behavior.
+  - Documentation avoids overclaims about compatibility, losslessness, recovered layers, or server processing.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: true
+  max_changed_files: 8
+  forbidden_paths: *forbidden
+

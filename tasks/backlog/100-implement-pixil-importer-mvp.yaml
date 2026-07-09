@@ -1,0 +1,57 @@
+id: "100"
+title: Implement Pixil importer MVP
+status: backlog
+priority: medium
+goal: Convert the documented Pixil/Pixilart `.pixil` subset into the canonical `SpriteProject` model.
+context: >
+  This task must follow the researched contract in `docs/pixil-format.md`.
+  Pixil/Pixilart project internals are fixture-gated, so unsupported or
+  unverified variants must fail clearly instead of being guessed.
+scope:
+  summary: Add browser-local Pixil parsing, validation, SpriteProject mapping, diagnostics, synthetic fixtures, and focused importer tests.
+  allowed_paths:
+    - src/core/importers/pixil/**
+    - src/core/conversion.integration.test.ts
+    - tests/fixtures/pixil/**
+    - tests/fixtures/README.md
+    - tests/fixtures/fixtures.test.ts
+    - tests/fixtures/generate.mjs
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - node_modules/**
+    - package.json
+    - package-lock.json
+    - tasks/**
+    - src/app/**
+    - src/core/exporters/**
+non_goals:
+  - Do not wire Pixil into the browser UI conversion flow.
+  - Do not implement Pixil export or bidirectional conversion.
+  - Do not rewrite the Aseprite exporter.
+  - Do not add dependencies unless a separate approved task explicitly widens package-file scope and explains why no native parser is practical.
+  - Do not add uploads, tracking, backend behavior, external network calls, or user-artwork fixtures.
+requirements:
+  - Parse only the minimal `.pixil` subset verified by `docs/pixil-format.md` and committed synthetic fixtures.
+  - Validate container/schema markers when present, dimensions, frame counts, layer counts, frame durations, visibility, opacity, indexes, image payloads, and allocation limits.
+  - Convert supported canvas size, frames, frame durations, layers, layer names, layer order, visibility, opacity, cel placement, and RGBA pixel data into `SpriteProject`.
+  - Reject unsupported Pixil variants, malformed data, ambiguous ordering, missing required fields, external image URLs, and unverified features with clear content-safe diagnostics.
+  - Add deterministic synthetic fixtures only; do not use copyrighted, private, downloaded gallery, or user-provided artwork.
+  - Keep all parsing browser-local and independent from UI code.
+acceptance_criteria:
+  - Supported Pixil fixtures import with expected canvas size, frame count, frame durations, layers, visibility, opacity, cels, and representative pixels.
+  - Unsupported or malformed fixtures fail with precise diagnostics and no stack traces.
+  - The importer outputs canonical `SpriteProject` and does not change UI or exporter behavior.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: false
+  max_changed_files: 15
+  forbidden_paths: *forbidden
+
