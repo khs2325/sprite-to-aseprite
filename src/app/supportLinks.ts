@@ -60,8 +60,9 @@ export function createSupportEntryPoint(
 ): HTMLAnchorElement {
   const link = document.createElement("a");
   link.className = "support-entry-link";
-  link.href = "#support";
+  link.href = GITHUB_SPONSORS_PLACEHOLDER_URL;
   link.textContent = label;
+  applySafeExternalLinkAttributes(link);
   return link;
 }
 
