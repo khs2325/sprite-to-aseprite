@@ -55,6 +55,7 @@ import {
 import { mountPreviewTimelineUi } from "./previewTimeline";
 import {
   createInformationalPages,
+  createModeDecisionHelper,
   createSiteNavigationLinks,
 } from "./siteContent";
 import {
@@ -157,6 +158,96 @@ export function getImportDropInstructions(mode: FileImportFormat): string {
     return "Drop exactly one .psd file from the RGB 8-bit raster-layer subset here, or choose one below.";
   }
   return "Drag and drop PNG, JSON, Piskel, Pixil/Pixilart, GIF, APNG, OpenRaster, Pixelorama, Krita, or PSD files here, or choose files below.";
+}
+
+type ModeHelp = {
+  expectedFiles: string;
+  limitations: string;
+  preserves: string;
+};
+
+const MODE_HELP: Record<FileImportFormat, ModeHelp> = {
+  "png-sequence": {
+    expectedFiles: "One or more PNG files with the same canvas size.",
+    preserves:
+      "Frame order becomes an Aseprite timeline. Flat PNG files do not contain original source layers.",
+    limitations:
+      "Every PNG must be valid and the same dimensions; timing starts from the converter defaults unless edited later.",
+  },
+  "spritesheet-grid": {
+    expectedFiles: "Exactly one PNG spritesheet plus rows, columns, frame size, and frame order.",
+    preserves:
+      "Each exact-fit grid cell becomes a frame in a flat Aseprite timeline.",
+    limitations:
+      "The grid must cover the image exactly. Source layers cannot be recovered from a flat spritesheet.",
+  },
+  "spritesheet-json": {
+    expectedFiles: "Exactly one PNG spritesheet and one matching supported JSON atlas file.",
+    preserves:
+      "Supported frame rectangles, frame order, trim placement, and duration metadata when the JSON provides them.",
+    limitations:
+      "Nested or unsupported atlas variants are rejected; JSON metadata does not contain original editor layers.",
+  },
+  piskel: {
+    expectedFiles: "Exactly one supported model-version-2 `.piskel` file.",
+    preserves:
+      "Supported visible frames, layers, layer names, visibility, opacity, cels, and timing.",
+    limitations:
+      "Malformed layer JSON, unsupported model versions, bad embedded PNGs, and invalid hidden-frame data are rejected.",
+  },
+  pixil: {
+    expectedFiles: "Exactly one `.pixil` Pixil/Pixilart project file from the documented subset.",
+    preserves:
+      "Supported project frames, layer names, visibility, opacity, durations, and RGBA pixels when present.",
+    limitations:
+      "Only fixture-backed Pixil project structures are accepted; unverified editor features are rejected clearly.",
+  },
+  gif: {
+    expectedFiles: "Exactly one supported `.gif` animation file.",
+    preserves:
+      "Decoded animation frames and supported frame delays become an Aseprite timeline.",
+    limitations:
+      "GIF is a flat animated format, so original source layers cannot be recovered.",
+  },
+  apng: {
+    expectedFiles: "Exactly one `.apng` or APNG-compatible animated `.png` file.",
+    preserves:
+      "Supported APNG frames, timing, blend, and disposal behavior become a flat timeline.",
+    limitations:
+      "Static PNG files and malformed or unsupported APNG chunks are rejected.",
+  },
+  openraster: {
+    expectedFiles: "Exactly one `.ora` file with supported normal PNG-backed raster layers.",
+    preserves:
+      "Supported raster layer data, names, order, visibility, and opacity.",
+    limitations:
+      "Nested stacks, unsupported blend modes, and missing layer data are rejected.",
+  },
+  pixelorama: {
+    expectedFiles: "Exactly one `.pxo` file from the documented Pixelorama subset.",
+    preserves:
+      "Supported frames, raster layers, layer names, visibility, opacity, cels, pixels, and timing.",
+    limitations:
+      "Tilemaps, effects, unsupported blend modes, unsupported layer types, and ambiguous metadata are rejected.",
+  },
+  krita: {
+    expectedFiles: "Exactly one `.kra` file from the documented 8-bit RGBA paint-layer subset.",
+    preserves:
+      "Supported paint layers, names, order, visibility, opacity, and documented frame data.",
+    limitations:
+      "Vector layers, unsupported color depth, flattened-preview-only files, and missing layer data are rejected.",
+  },
+  psd: {
+    expectedFiles: "Exactly one `.psd` file from the RGB 8-bit raster-layer subset.",
+    preserves:
+      "Supported visible raster layer names, order, opacity, and pixels where possible.",
+    limitations:
+      "Text layers, smart objects, adjustment layers, effects, unsupported blend modes, unsupported color modes, and PSB are outside the supported subset.",
+  },
+};
+
+export function getModeHelp(mode: FileImportFormat): ModeHelp {
+  return MODE_HELP[mode];
 }
 
 export type GridAutoCalculation = {
@@ -796,26 +887,69 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
 
   const header = document.createElement("header");
   const siteNav = document.createElement("nav");
+  const hero = document.createElement("section");
+  const eyebrow = document.createElement("p");
   const title = document.createElement("h1");
   const introduction = document.createElement("p");
   const privacy = document.createElement("p");
+  const heroActions = document.createElement("nav");
+  const startLink = document.createElement("a");
+  const formatsLink = document.createElement("a");
+  const guidesLink = document.createElement("a");
+  header.className = "site-header";
   siteNav.setAttribute("aria-label", "Site links");
+  siteNav.className = "site-nav";
   siteNav.append(
     ...createSiteNavigationLinks(document),
     createSupportEntryPoint(document),
   );
+  hero.className = "hero";
+  hero.setAttribute("aria-labelledby", "hero-heading");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = "Browser-based sprite conversion for Aseprite workflows";
+  title.id = "hero-heading";
   title.textContent = "Sprite to Aseprite Converter";
   introduction.textContent =
-    "Convert frames into an editable Aseprite timeline from PNG sequences, spritesheets, Piskel projects, OpenRaster projects, Pixelorama projects, Krita projects, PSD raster-layer projects, and GIF/APNG animations.";
+    "Convert supported sprite sources into editable Aseprite timelines: PNG sequences, spritesheets, project files, PSD raster-layer files, GIF animations, and APNG animations.";
   privacy.textContent =
-    "Files are processed browser-locally. Your artwork is never uploaded.";
+    "Useful for pixel artists, game developers, and tool builders who need to rebuild timelines without sending artwork to a conversion server. Output compatibility depends on the source format and the documented importer subset.";
   privacy.className = "privacy-notice";
-  header.append(siteNav, title, introduction, privacy);
+  heroActions.className = "hero-actions";
+  heroActions.setAttribute("aria-label", "Primary actions");
+  startLink.href = "#converter";
+  startLink.textContent = "Start converting";
+  startLink.className = "button-link button-link-primary";
+  formatsLink.href = "#supported-formats";
+  formatsLink.textContent = "View supported formats";
+  formatsLink.className = "button-link";
+  guidesLink.href = "#format-guides";
+  guidesLink.textContent = "Read conversion guides";
+  guidesLink.className = "button-link";
+  heroActions.append(startLink, formatsLink, guidesLink);
+  hero.append(eyebrow, title, introduction, privacy, heroActions);
+  header.append(siteNav, hero);
+
+  const modeDecisionHelper = createModeDecisionHelper(document);
+  const converterSection = document.createElement("section");
+  const converterHeading = document.createElement("h2");
+  const converterIntro = document.createElement("p");
+  converterSection.id = "converter";
+  converterSection.className = "converter-workspace-section";
+  converterSection.setAttribute("aria-labelledby", "converter-heading");
+  converterHeading.id = "converter-heading";
+  converterHeading.textContent = "Converter workspace";
+  converterIntro.textContent =
+    "Pick the import mode, add the required files, review validation messages and previews, then download the generated `.aseprite` file.";
 
   const controls = document.createElement("section");
-  const controlsHeading = document.createElement("h2");
+  const controlsHeading = document.createElement("h3");
   const modeLabel = document.createElement("label");
   const modeSelect = document.createElement("select");
+  const modeHelpPanel = document.createElement("aside");
+  const modeHelpHeading = document.createElement("h4");
+  const modeHelpExpected = document.createElement("p");
+  const modeHelpPreserves = document.createElement("p");
+  const modeHelpLimitations = document.createElement("p");
   controls.className = "panel";
   controlsHeading.textContent = "1. Choose an import mode";
   modeLabel.textContent = "Import mode";
@@ -826,6 +960,15 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
     modeSelect.append(option);
   }
   modeLabel.append(modeSelect);
+  modeHelpPanel.className = "mode-help";
+  modeHelpPanel.setAttribute("aria-live", "polite");
+  modeHelpHeading.textContent = "Mode guidance";
+  modeHelpPanel.append(
+    modeHelpHeading,
+    modeHelpExpected,
+    modeHelpPreserves,
+    modeHelpLimitations,
+  );
 
   const gridFields = document.createElement("fieldset");
   const gridLegend = document.createElement("legend");
@@ -898,10 +1041,16 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
     gridExactFitStatus,
     gridPreviewWarning,
   );
-  controls.append(controlsHeading, modeLabel, gridFields, gridPreview);
+  controls.append(
+    controlsHeading,
+    modeLabel,
+    modeHelpPanel,
+    gridFields,
+    gridPreview,
+  );
 
   const importPanel = document.createElement("section");
-  const importHeading = document.createElement("h2");
+  const importHeading = document.createElement("h3");
   const dropZone = document.createElement("div");
   const dropInstructions = document.createElement("p");
   const fileInput = document.createElement("input");
@@ -954,7 +1103,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   );
 
   const convertPanel = document.createElement("section");
-  const convertHeading = document.createElement("h2");
+  const convertHeading = document.createElement("h3");
   const convertButton = document.createElement("button");
   const conversionProgress = document.createElement("progress");
   const conversionStatus = document.createElement("p");
@@ -996,14 +1145,20 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   exportContainer.className = "download-area";
   workspace.append(previewContainer, layerContainer);
   convertPanel.append(exportContainer);
-  root.append(
-    header,
+  converterSection.append(
+    converterHeading,
+    converterIntro,
     controls,
     importPanel,
     convertPanel,
     workspace,
-    supportSection,
+  );
+  root.append(
+    header,
+    modeDecisionHelper,
+    converterSection,
     informationalPages,
+    supportSection,
     footer,
   );
 
@@ -1360,6 +1515,10 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
     invalidateConversion();
     mode = modeSelect.value as FileImportFormat;
     fileImportDependencies.format = mode;
+    const help = getModeHelp(mode);
+    modeHelpExpected.textContent = `Expected files: ${help.expectedFiles}`;
+    modeHelpPreserves.textContent = `Preserves: ${help.preserves}`;
+    modeHelpLimitations.textContent = `Limitations: ${help.limitations}`;
     gridFields.hidden = mode !== "spritesheet-grid";
     fileInput.multiple =
       mode === "png-sequence" || mode === "spritesheet-json";

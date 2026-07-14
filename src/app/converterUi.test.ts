@@ -24,6 +24,7 @@ import {
   getConversionSuccessStatus,
   getGridPreviewState,
   getImportDropInstructions,
+  getModeHelp,
   getSourceSelectionError,
   getSourceSelectionState,
   findNearestDivisor,
@@ -562,6 +563,49 @@ describe("getSourceSelectionError", () => {
 });
 
 describe("mountConverterUi Pixil selection", () => {
+  it("renders a separated converter workspace with mode-specific guidance", () => {
+    vi.stubGlobal("HTMLImageElement", class HTMLImageElementStub {});
+    const document = new UiDocumentStub();
+    const root = document.createElement("main");
+    mountConverterUi(root as unknown as HTMLElement);
+
+    expect(findOne(root, (element) => element.id === "converter")).toBeTruthy();
+    expect(getText(root)).toContain("Converter workspace");
+    expect(getText(root)).toContain("Choose the right conversion mode");
+    expect(getText(root)).toContain(
+      "Expected files: One or more PNG files with the same canvas size.",
+    );
+    expect(getText(root)).toContain(
+      "Flat PNG files do not contain original source layers.",
+    );
+
+    const modeSelect = findOne(root, (element) => element.tagName === "select");
+    modeSelect.value = "psd";
+    trigger(modeSelect, "change");
+
+    expect(getText(root)).toContain(
+      "Expected files: Exactly one `.psd` file from the RGB 8-bit raster-layer subset.",
+    );
+    expect(getText(root)).toContain("smart objects");
+    expect(getText(root)).toContain("outside the supported subset");
+  });
+
+  it("keeps mode guidance accurate without claiming lossless conversion", () => {
+    expect(getModeHelp("spritesheet-json")).toMatchObject({
+      expectedFiles:
+        "Exactly one PNG spritesheet and one matching supported JSON atlas file.",
+    });
+    expect(getModeHelp("gif").limitations).toContain(
+      "original source layers cannot be recovered",
+    );
+    expect(getModeHelp("pixil").limitations).toContain(
+      "unverified editor features are rejected clearly",
+    );
+    expect(Object.values(getModeHelp("psd")).join(" ")).not.toContain(
+      "lossless",
+    );
+  });
+
   it("shows Pixil cards and keeps remove and clear behavior in sync", async () => {
     vi.stubGlobal("HTMLImageElement", class HTMLImageElementStub {});
     const document = new UiDocumentStub();

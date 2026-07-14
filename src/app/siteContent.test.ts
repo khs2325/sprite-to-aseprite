@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import { mountConverterUi } from "./converterUi";
 import {
   createInformationalPages,
+  createModeDecisionHelper,
   createSiteNavigationLinks,
   INFORMATION_PAGE_LINKS,
+  SUPPORTED_FORMATS,
 } from "./siteContent";
 
 type Listener = EventListenerOrEventListenerObject;
@@ -232,48 +234,55 @@ function getUnsafeAdPlacements(root: ElementStub): ElementStub[] {
 describe("AdSense readiness site content", () => {
   it("defines navigation for every required static informational section", () => {
     expect(INFORMATION_PAGE_LINKS.map((page) => page.id)).toEqual([
+      "converter",
+      "how-it-works",
+      "supported-formats",
+      "format-guides",
+      "privacy-policy",
+      "conversion-limitations-guide",
+      "troubleshooting",
+      "faq",
       "about",
       "contact",
-      "privacy-policy",
-      "terms",
-      "guides",
-      "browser-local-conversion-guide",
-      "supported-formats-guide",
-      "conversion-limitations-guide",
     ]);
 
     const links = createSiteNavigationLinks(createDocument());
     expect(links.map((link) => link.href)).toEqual([
+      "#converter",
+      "#how-it-works",
+      "#supported-formats",
+      "#format-guides",
+      "#privacy-policy",
+      "#conversion-limitations-guide",
+      "#troubleshooting",
+      "#faq",
       "#about",
       "#contact",
-      "#privacy-policy",
-      "#terms",
-      "#guides",
-      "#browser-local-conversion-guide",
-      "#supported-formats-guide",
-      "#conversion-limitations-guide",
     ]);
   });
 
   it("renders a section target for every static informational link", () => {
-    const document = createDocument();
-    const links = createSiteNavigationLinks(document);
-    const pages = createInformationalPages(document) as unknown as ElementStub;
+    const document = new DocumentStub();
+    const root = document.createElement("main");
+    const links = createSiteNavigationLinks(document as unknown as Document);
+    mountConverterUi(root as unknown as HTMLElement);
     const renderedSectionIds = new Set(
-      findAll(pages, (element) => element.tagName === "section").map(
+      findAll(root, (element) => element.tagName === "section").map(
         (element) => element.id,
       ),
     );
 
     expect(links.map((link) => link.href)).toEqual([
+      "#converter",
+      "#how-it-works",
+      "#supported-formats",
+      "#format-guides",
+      "#privacy-policy",
+      "#conversion-limitations-guide",
+      "#troubleshooting",
+      "#faq",
       "#about",
       "#contact",
-      "#privacy-policy",
-      "#terms",
-      "#guides",
-      "#browser-local-conversion-guide",
-      "#supported-formats-guide",
-      "#conversion-limitations-guide",
     ]);
     expect(
       links.map((link) => link.href.slice(1)).every((id) =>
@@ -321,6 +330,78 @@ describe("AdSense readiness site content", () => {
     expect(findAll(pages, (element) => element.tagName === "script")).toHaveLength(0);
   });
 
+  it("renders substantial public product content sections", () => {
+    const pages = createInformationalPages(createDocument()) as unknown as ElementStub;
+    const text = getText(pages);
+
+    for (const heading of [
+      "How conversion works",
+      "Supported formats",
+      "Format guides",
+      "Privacy Policy",
+      "Conversion limitations",
+      "Troubleshooting",
+      "FAQ",
+      "About",
+      "Contact",
+    ]) {
+      expect(findSectionByHeading(pages, heading)).toBeTruthy();
+    }
+    expect(text).toContain("SpriteProject");
+    expect(text).toContain("PNG sequence");
+    expect(text).toContain("Spritesheet grid");
+    expect(text).toContain("Spritesheet PNG + JSON");
+    expect(text).toContain("Piskel project");
+    expect(text).toContain("Pixil/Pixilart project");
+    expect(text).toContain("OpenRaster project");
+    expect(text).toContain("Pixelorama project");
+    expect(text).toContain("Krita project");
+    expect(text).toContain("PSD project");
+    expect(text).toContain("GIF animation");
+    expect(text).toContain("APNG animation");
+    expect(text).toContain("Flat images do not contain original layers");
+    expect(text.length).toBeGreaterThan(12000);
+  });
+
+  it("renders a mode decision helper derived from implemented formats", () => {
+    const helper = createModeDecisionHelper(createDocument()) as unknown as ElementStub;
+    const text = getText(helper);
+
+    expect(text).toContain("I have multiple PNG frames");
+    expect(text).toContain("I have one grid spritesheet");
+    expect(text).toContain("I have a spritesheet with JSON");
+    expect(text).toContain("I have a project file");
+    expect(text).toContain("I have GIF or APNG animation");
+    expect(text).toContain("Pixil/Pixilart");
+    expect(text).not.toContain("Coming soon");
+  });
+
+  it("keeps supported-format labels aligned with implemented importers", () => {
+    expect(SUPPORTED_FORMATS.map((format) => format.input)).toEqual([
+      "PNG sequence",
+      "Spritesheet grid",
+      "Spritesheet PNG + JSON",
+      "Piskel project",
+      "Pixil/Pixilart project",
+      "OpenRaster project",
+      "Pixelorama project",
+      "Krita project",
+      "PSD project",
+      "GIF animation",
+      "APNG animation",
+    ]);
+    expect(SUPPORTED_FORMATS.map((format) => format.supportLevel))
+      .not.toContain("Planned");
+    expect(
+      SUPPORTED_FORMATS.find((format) => format.input === "Pixil/Pixilart project")
+        ?.supportLevel,
+    ).toBe("Experimental");
+    expect(
+      SUPPORTED_FORMATS.find((format) => format.input === "PSD project")
+        ?.limitations,
+    ).toContain("smart objects");
+  });
+
   it("does not render a future ad placeholder or fake ads", () => {
     const document = new DocumentStub();
     const root = document.createElement("main");
@@ -332,6 +413,11 @@ describe("AdSense readiness site content", () => {
     )).toHaveLength(0);
     expect(text).not.toContain("future advertising space");
     expect(text).not.toContain("fake ad");
+    expect(text).not.toContain("adsbygoogle");
+    expect(text).not.toContain("pagead2.googlesyndication.com");
+    expect(text).not.toContain("click the ad");
+    expect(text).not.toContain("support us by clicking");
+    expect(text).not.toContain("ad placeholder");
     expect(findAll(root, (element) => element.tagName === "script")).toHaveLength(0);
   });
 
