@@ -4,6 +4,7 @@ import { getGifImportDiagnostic } from "../core/importers/gif";
 import { getKritaImportDiagnostic } from "../core/importers/krita";
 import { getOpenRasterImportDiagnostic } from "../core/importers/openraster";
 import { getPixeloramaImportDiagnostic } from "../core/importers/pixelorama";
+import { getPixilImportDiagnostic } from "../core/importers/pixil";
 import { getPiskelImportDiagnostic } from "../core/importers/piskel";
 import { getPsdParserDiagnostic } from "../core/importers/psd";
 import { getSpritesheetJsonImportDiagnostic } from "../core/importers/spritesheetJson";
@@ -281,7 +282,7 @@ const FORMAT_HELP: Record<FileImportFormat, FormatHelp> = {
   pixil: {
     label: "Pixil/Pixilart project",
     suggestion:
-      "Pixil/Pixilart import is a limited project-file import based on the documented subset and is not available until the parser is added.",
+      "Check that the .pixil file contains supported Pixil/Pixilart project data from the documented subset.",
   },
   gif: {
     label: "GIF animation",
@@ -370,7 +371,12 @@ function getImporterMessage(
       : getPiskelImportDiagnostic(error);
   }
   if (format === "pixil") {
-    return null;
+    const message = error instanceof Error
+      ? error.message.replace(/\s+/g, " ").trim()
+      : "";
+    return message === "Pixil/Pixilart mode requires exactly one .pixil file."
+      ? message
+      : getPixilImportDiagnostic(error);
   }
   if (format === "gif") {
     return getGifImportDiagnostic(error);
@@ -431,7 +437,7 @@ function getSelectionStatus(
     return "Selected 1 Piskel file. Ready to convert browser-locally.";
   }
   if (format === "pixil") {
-    return "Selected 1 Pixil project. Conversion is unavailable until the Pixil importer is added.";
+    return "Selected 1 Pixil project. Ready to convert browser-locally.";
   }
   if (format === "gif") {
     return "Selected 1 GIF animation. Ready to convert browser-locally.";
@@ -605,7 +611,7 @@ export function mountFileImportUi(
   dropInstructions.textContent =
     "Drag and drop files here, or choose files with the control below.";
   supportedTypes.textContent =
-    "Supported files: PNG images (.png), JSON metadata (.json), Piskel projects (.piskel), Pixil/Pixilart projects (.pixil, pending limited project-file import based on the documented subset), GIF animations (.gif), APNG animations (.apng or .png), OpenRaster projects (.ora), Pixelorama projects (.pxo), Krita projects (.kra, documented minimal raster subset), and PSD projects (.psd, RGB 8-bit raster-layer subset).";
+    "Supported files: PNG images (.png), JSON metadata (.json), Piskel projects (.piskel), Pixil/Pixilart projects (.pixil, documented project-file subset), GIF animations (.gif), APNG animations (.apng or .png), OpenRaster projects (.ora), Pixelorama projects (.pxo), Krita projects (.kra, documented minimal raster subset), and PSD projects (.psd, RGB 8-bit raster-layer subset).";
   privacyNotice.textContent =
     "Your files stay in this browser and are never uploaded.";
   input.type = "file";
