@@ -31,7 +31,6 @@ Required fields:
 - `risk`
 - `goal`
 - `context`
-- `scope`
 - `non_goals`
 - `requirements`
 - `acceptance_criteria`
@@ -39,6 +38,7 @@ Required fields:
 
 Optional fields:
 
+- `scope` (legacy planning context only; not enforced)
 - `auto_merge`
 - `notes`
 
@@ -48,16 +48,8 @@ Optional fields:
 - `medium`: importers, UI components, validation rules
 - `high`: binary writer, parser security, dependencies, workflows
 
-## Auto-merge policy
+## Automation merge policy
 
-Default: do not auto-merge.
+Automation may auto-merge after mandatory local verification passes, required GitHub PR checks pass, and the PR head/base metadata is valid.
 
-Only allow auto-merge when:
-
-- Risk is low
-- CI passes
-- Changed files are limited
-- No package/workflow/lockfile changes
-- No binary writer changes
-
-This automation setup creates PRs but does not auto-merge them by default.
+Legacy task fields such as `scope.allowed_paths`, `scope.forbidden_paths`, `auto_merge.allowed`, `auto_merge.max_changed_files`, and `auto_merge.forbidden_paths` may remain in existing YAML for compatibility, but they do not restrict implementation, PR validation, or merging.

@@ -11,7 +11,7 @@ Goal:
 Context:
 {{context}}
 
-Scope:
+Task focus:
 {{scope}}
 
 Non-goals:

@@ -1,0 +1,4 @@
+# Generated text fixtures are compared byte-for-byte by tests.
+tests/fixtures/**/*.json text eol=lf
+tests/fixtures/**/*.piskel text eol=lf
+tests/fixtures/**/*.pixil text eol=lf

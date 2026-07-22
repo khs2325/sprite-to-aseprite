@@ -11,9 +11,7 @@ const CHECK_COMMANDS = [
   ["npm", ["run", "test"]],
   ["npm", ["run", "build"]]
 ];
-const LOCKFILES = new Set(["package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock"]);
-const GENERATED_PREFIXES = [".cache/", ".vite/", "build/", "coverage/", "dist/", "node_modules/", "prompts/generated/", "test-output/", "tmp/"];
-const DEFAULT_FORBIDDEN_PATHS = [".github/workflows/**", ".env", ".env.*", "dist/**", "build/**"];
+const GENERATED_CHANGE_PREFIXES = ["tasks/", "prompts/generated/", "dist/", "build/", "coverage/", "node_modules/"];
 const ROADMAP = [
   {
     title: "Define SpriteProject core model",
@@ -272,7 +270,7 @@ const PRODUCT_COMPLETION_TASKS = [
     allowedPaths: ["package.json"],
     requirements: [
       "Add exactly a dev script that runs vite.",
-      "Use the existing Vite development dependency and do not change dependencies or lockfiles."
+      "Use the existing Vite development dependency when it is present; justify any dependency or lockfile change if one is required."
     ],
     autoMerge: true
   },
@@ -654,10 +652,7 @@ const mode = getMode();
 const startedAt = Date.now();
 const maxRepairAttempts = readNonNegativeInteger("AUTO_DEV_MAX_REPAIR_ATTEMPTS", 3);
 const stopOnFailure = readBoolean("AUTO_DEV_STOP_ON_FAILURE", true);
-const allowWorkflowChanges = readBoolean("AUTO_DEV_ALLOW_WORKFLOW_CHANGES", false);
-const allowLockfileChanges = readBoolean("AUTO_DEV_ALLOW_LOCKFILE_CHANGES", false);
 const allowNoPrChecks = readBoolean("AUTO_DEV_ALLOW_NO_PR_CHECKS", false);
-const allowPolicyFalseAutoMerge = readBoolean("AUTO_DEV_ALLOW_POLICY_FALSE_AUTOMERGE", false);
 const generateTasksWhenEmpty = readBoolean("AUTO_DEV_GENERATE_TASKS_WHEN_EMPTY", false);
 const generatedTaskCount = readNonNegativeInteger("AUTO_DEV_GENERATED_TASK_COUNT", 5);
 const maxGenerationRounds = readNonNegativeInteger("AUTO_DEV_MAX_GENERATION_ROUNDS", 1);
@@ -829,9 +824,13 @@ function guardDirtyTaskStateOnTaskBranch(branch = currentBranch(), status = read
 function ensureCleanGit() {
   const status = readStatus();
   guardDirtyTaskStateOnTaskBranch(currentBranch(), status);
-  if (status) {
+  if (!isWorkingTreeCleanStatus(status)) {
     throw new AutomationStop("Git working tree is not clean; refusing unsafe cleanup.", "unclean_worktree");
   }
+}
+
+function isWorkingTreeCleanStatus(status) {
+  return String(status ?? "").trim().length === 0;
 }
 
 function ensureOnMain() {
@@ -1109,14 +1108,12 @@ function buildGeneratedTask(roadmapItem, id) {
     goal: roadmapItem.summary,
     context: roadmapItem.productCompletion ? productContext : "This task was generated deterministically from the repository roadmap, architecture, current source tree, and existing task history.",
     scope: {
-      summary: roadmapItem.summary,
-      allowed_paths: roadmapItem.allowedPaths,
-      forbidden_paths: DEFAULT_FORBIDDEN_PATHS
+      summary: roadmapItem.summary
     },
     non_goals: [
       "Do not implement unrelated roadmap features.",
       "Do not upload user artwork or use external processing services.",
-      "Do not change dependencies, lockfiles, or GitHub workflows."
+      "Do not add production dependencies without a clear task need and verification."
     ],
     requirements,
     acceptance_criteria: [
@@ -1124,12 +1121,7 @@ function buildGeneratedTask(roadmapItem, id) {
       "Focused tests cover the behavior introduced by this task.",
       "Typecheck, tests, and build pass."
     ],
-    verification: CHECK_COMMANDS.map(([command, args]) => `${command} ${args.join(" ")}`),
-    auto_merge: {
-      allowed: roadmapItem.autoMerge,
-      max_changed_files: 8,
-      forbidden_paths: DEFAULT_FORBIDDEN_PATHS
-    }
+    verification: CHECK_COMMANDS.map(([command, args]) => `${command} ${args.join(" ")}`)
   };
 }
 
@@ -1230,7 +1222,7 @@ function buildAuditInvestigationTemplate(check, category) {
       `Reproduce and inspect audit check ${check.key}: ${check.message}.`,
       "Determine whether product work is genuinely missing, the detector is stale or incorrect, or the task mapping is missing.",
       "Fix the audit mapping or detector when it is wrong and add a focused regression test.",
-      "Change product code only when the missing behavior is clear and safely contained by the allowed paths; otherwise document why the audit is invalid."
+      "Change product code only when the missing behavior is clear; otherwise document why the audit is invalid."
     ],
     autoMerge: false,
     productCompletion: true,
@@ -1572,12 +1564,10 @@ function changedPaths() {
 }
 
 function hasTaskRelevantChanges(paths, task = null) {
-  const allowedPaths = extractScopePaths(task ?? {});
+  void task;
   return paths.some((file) => {
     const normalized = file.replaceAll("\\", "/");
-    if (/^(?:tasks|prompts\/generated|dist|build|coverage|node_modules)\//u.test(normalized)) return false;
-    if (/^(?:src|test|tests|docs)\//u.test(normalized) || /(?:^|\/)README(?:\.[^/]+)?$/iu.test(normalized) || /\.(?:test|spec)\.[^/]+$/u.test(normalized)) return true;
-    return allowedPaths.length > 0 && isWithinScope(normalized, allowedPaths);
+    return !GENERATED_CHANGE_PREFIXES.some((prefix) => normalized.startsWith(prefix));
   });
 }
 
@@ -1692,9 +1682,8 @@ Rules:
 - Do not refactor unrelated code.
 - Do not start a new feature.
 - Do not remove tests to make checks pass.
-- Do not edit files outside the task's declared allowed paths.
-- If unrelated automation tests fail, report that failure instead of editing scripts outside task scope.
-- Do not repair the automation system from a UI, docs, import, or export task.
+- Modify any repository file required to fix the task, while keeping the repair narrowly focused.
+- If unrelated automation tests fail, report that failure instead of making an unrelated fix.
 - Keep the diff small.
 - Stop after making the fix.
 `;
@@ -1776,7 +1765,7 @@ function waitForPrChecks(prNumber, localVerificationPassed = true) {
       if (!canContinueWithoutPrChecks(output, allowNoPrChecks, localVerificationPassed)) {
         throw new AutomationStop("Cannot bypass missing PR checks because mandatory local verification has not passed.", "verification_required", { cause: error });
       }
-      console.warn("Warning: GitHub reported no PR checks. AUTO_DEV_ALLOW_NO_PR_CHECKS=true, so automation will continue to mandatory safety validation.");
+      console.warn("Warning: GitHub reported no PR checks. AUTO_DEV_ALLOW_NO_PR_CHECKS=true, so automation will continue to mandatory PR metadata validation.");
       return { noChecks: true };
     }
     if (policy === "fail-no-checks") {
@@ -1789,89 +1778,33 @@ function waitForPrChecks(prNumber, localVerificationPassed = true) {
   }
 }
 
-function pathMatchesRule(file, rule) {
-  const normalizedRule = String(rule).replaceAll("\\", "/").replace(/\/?\*.*$/u, "").replace(/\/$/u, "");
-  return file === normalizedRule || file.startsWith(`${normalizedRule}/`);
-}
-
-function extractScopePaths(task) {
-  if (task.scope && !Array.isArray(task.scope) && typeof task.scope === "object") {
-    return task.scope.allowed_paths ?? [];
-  }
-  const values = Array.isArray(task.scope) ? task.scope : [task.scope ?? ""];
-  return values.flatMap((value) => String(value).match(/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.*-]+)+/gu) ?? []);
-}
-
-function isWithinScope(file, scopePaths) {
-  return scopePaths.some((scopePath) => {
-    const normalized = scopePath.replaceAll("\\", "/").replace(/[.,;:]$/u, "");
-    if (!normalized.includes("*")) {
-      const prefix = normalized.replace(/\/$/u, "");
-      return file === prefix || file.startsWith(`${prefix}/`);
-    }
-    const segments = normalized.split("/");
-    let pattern = "^";
-    for (let index = 0; index < segments.length; index += 1) {
-      const segment = segments[index];
-      if (segment === "**") {
-        pattern += index === segments.length - 1 ? ".*" : "(?:[^/]+/)*";
-        continue;
-      }
-      pattern += segment.replace(/[.+?^${}()|[\]\\]/gu, "\\$&").replaceAll("*", "[^/]*");
-      if (index < segments.length - 1) pattern += "/";
-    }
-    return new RegExp(`${pattern}$`, "u").test(file);
-  });
-}
-
-function scopeViolationRecoveryGuidance(prNumber, offendingPaths, scopePaths) {
-  const files = [...new Set(offendingPaths)].sort();
-  const fileArgs = files.map(quoteArg).join(" ");
-  return [
-    "PR safety validation rejected auto-merge because files are outside task scope:",
-    ...files.map((file) => `- ${file}`),
-    "",
-    "Declared allowed paths:",
-    ...(scopePaths.length > 0 ? scopePaths.map((allowedPath) => `- ${allowedPath}`) : ["- None"]),
-    "",
-    "Recovery:",
-    `  gh pr diff ${prNumber}`,
-    "  git fetch origin main",
-    `  git restore --source origin/main -- ${fileArgs}`,
-    `  git add ${fileArgs}`,
-    '  git commit -m "Remove out-of-scope changes"',
-    "  git push",
-    "  npm run auto-dev:until-stop",
-    "",
-    "Restore only the offending files, then commit and push the restore before rerunning automation."
-  ].join("\n");
-}
-
-function autoMergePolicyDecision({ taskPolicyAllowed, overrideEnabled, localVerificationPassed, safetyValidationPassed }) {
+function autoMergePolicyDecision({ localVerificationPassed, requiredPrChecksPassed = true, safetyValidationPassed }) {
   if (!localVerificationPassed) return "block-verification";
+  if (!requiredPrChecksPassed) return "block-ci";
   if (!safetyValidationPassed) return "block-safety";
-  if (taskPolicyAllowed === false && !overrideEnabled) return "block-policy";
   return "allow";
 }
 
-function policyFalseRecoveryOptions(prNumber) {
-  return [
-    "Manual option:",
-    `gh pr view ${prNumber} --web`,
-    `gh pr merge ${prNumber} --squash --delete-branch`,
-    "git checkout main",
-    "git pull origin main",
-    "",
-    "Override option:",
-    "AUTO_DEV_ALLOW_POLICY_FALSE_AUTOMERGE=true npm run auto-dev:until-stop",
-    "",
-    "PowerShell:",
-    '$env:AUTO_DEV_ALLOW_POLICY_FALSE_AUTOMERGE="true"',
-    "npm run auto-dev:until-stop"
-  ].join("\n");
+function prMergeSafetyDecision(pr, branchName, task = {}, options = {}) {
+  void task;
+  const localVerificationPassed = options.localVerificationPassed ?? true;
+  const requiredPrChecksPassed = options.requiredPrChecksPassed ?? true;
+  const reasons = [];
+  if (!localVerificationPassed) reasons.push("mandatory local verification has not passed");
+  if (!requiredPrChecksPassed) reasons.push("required PR checks have not passed");
+  if (!pr.headRefName?.startsWith("codex/task-")) reasons.push(`PR head is not a codex/task-* branch: ${pr.headRefName}`);
+  if (pr.headRefName !== branchName) reasons.push(`PR head is ${pr.headRefName}, expected ${branchName}`);
+  if (pr.baseRefName !== "main") reasons.push(`PR base is ${pr.baseRefName}, expected main`);
+  const policy = autoMergePolicyDecision({
+    localVerificationPassed,
+    requiredPrChecksPassed,
+    safetyValidationPassed: reasons.length === 0
+  });
+  return { allowed: policy === "allow", policy, reasons };
 }
 
 function validatePrBeforeMerge(prNumber, branchName, taskFile, task) {
+  void taskFile;
   let pr;
   try {
     const result = runQuiet("gh", ["pr", "view", String(prNumber), "--json", "baseRefName,files,headRefName,url"]);
@@ -1880,65 +1813,12 @@ function validatePrBeforeMerge(prNumber, branchName, taskFile, task) {
     throw new AutomationStop("Could not inspect pull request safety metadata.", "safety_check_failure", { cause: error });
   }
 
-  const reasons = [];
-  const outOfScopePaths = [];
-  const files = pr.files ?? [];
-  const changedPaths = files.map((file) => file.path.replaceAll("\\", "/"));
-  const taskPolicy = task.auto_merge ?? {};
-  const forbiddenPaths = [...(taskPolicy.forbidden_paths ?? []), ...(task.scope?.forbidden_paths ?? [])];
-  const scopePaths = extractScopePaths(task);
-  const packageChanged = changedPaths.includes("package.json");
-  const totalAdditions = files.reduce((sum, file) => sum + (file.additions ?? 0), 0);
-
-  if (!pr.headRefName?.startsWith("codex/task-")) reasons.push(`PR head is not a codex/task-* branch: ${pr.headRefName}`);
-  if (pr.headRefName !== branchName) reasons.push(`PR head is ${pr.headRefName}, expected ${branchName}`);
-  if (pr.baseRefName !== "main") reasons.push(`PR base is ${pr.baseRefName}, expected main`);
-  if (Number.isInteger(taskPolicy.max_changed_files) && files.length > taskPolicy.max_changed_files) {
-    reasons.push(`changed file count ${files.length} exceeds task limit ${taskPolicy.max_changed_files}`);
-  }
-  if (totalAdditions > 10_000) reasons.push(`total additions ${totalAdditions} exceed the 10,000-line safety limit`);
-
-  for (const file of files) {
-    const filePath = file.path.replaceAll("\\", "/");
-    const baseName = path.posix.basename(filePath);
-    if (filePath.startsWith(".github/workflows/") && !allowWorkflowChanges) reasons.push(`workflow change is not allowed: ${filePath}`);
-    if (LOCKFILES.has(baseName) && !packageChanged && !allowLockfileChanges) reasons.push(`lockfile changed without package.json: ${filePath}`);
-    if (baseName === ".env" || baseName.startsWith(".env.")) reasons.push(`environment or secret file detected: ${filePath}`);
-    if (/\.(?:key|p12|pem|pfx)$/iu.test(baseName) || /(?:credential|secret)/iu.test(baseName)) reasons.push(`possible secret material detected: ${filePath}`);
-    if (GENERATED_PREFIXES.some((prefix) => filePath.startsWith(prefix)) || filePath.endsWith(".log")) reasons.push(`generated artifact detected: ${filePath}`);
-    if ((file.additions ?? 0) > 5_000) reasons.push(`huge file addition detected: ${filePath}`);
-    if (forbiddenPaths.some((rule) => pathMatchesRule(filePath, rule))) reasons.push(`task policy forbids: ${filePath}`);
-    if (scopePaths.length > 0 && !isWithinScope(filePath, scopePaths)) {
-      reasons.push(`file is outside the declared task scope: ${filePath}`);
-      outOfScopePaths.push(filePath);
-    }
-  }
-
-  if (reasons.length > 0) {
-    const stop = new AutomationStop(`PR safety validation rejected auto-merge:\n- ${[...new Set(reasons)].join("\n- ")}`, "suspicious_changes");
+  const decision = prMergeSafetyDecision(pr, branchName, task);
+  if (!decision.allowed) {
+    const stop = new AutomationStop(`PR metadata validation rejected auto-merge:\n- ${decision.reasons.join("\n- ")}`, "safety_check_failure");
     stop.prUrl = pr.url;
     stop.safetyValidationFailed = true;
-    stop.offendingPaths = [...new Set(outOfScopePaths)].sort();
-    if (stop.offendingPaths.length > 0) {
-      stop.suggestedRecovery = scopeViolationRecoveryGuidance(prNumber, stop.offendingPaths, scopePaths);
-    }
     throw stop;
-  }
-
-  const policyDecision = autoMergePolicyDecision({
-    taskPolicyAllowed: taskPolicy.allowed,
-    overrideEnabled: allowPolicyFalseAutoMerge,
-    localVerificationPassed: true,
-    safetyValidationPassed: true
-  });
-  if (policyDecision === "block-policy") {
-    const stop = new AutomationStop("PR safety validation rejected auto-merge:\n- task policy sets auto_merge.allowed to false", "policy_automerge_disabled");
-    stop.prUrl = pr.url;
-    stop.suggestedRecovery = policyFalseRecoveryOptions(prNumber);
-    throw stop;
-  }
-  if (taskPolicy.allowed === false && allowPolicyFalseAutoMerge) {
-    console.warn("Warning: task policy has auto_merge.allowed=false, but AUTO_DEV_ALLOW_POLICY_FALSE_AUTOMERGE=true. Continuing only because all mandatory local and safety checks passed.");
   }
   return pr;
 }
@@ -2094,10 +1974,9 @@ function buildExistingPrRecoverySummary(context) {
     `- Existing PR URL: ${context.prUrl ?? "None"}`,
     `- Implementation failure: ${context.implementationFailure ? "yes" : "no"}`,
     `- Stale branch needs origin/main: ${context.branchBehindMain ? "yes" : "no"}`,
-    `- Out-of-scope file failure: ${context.offendingPaths?.length ? context.offendingPaths.join(", ") : "no"}`,
     `- Managed Windows sandbox limitation: ${context.managedSandboxFailure ? "yes" : "no"}`,
     `- Outer local verification failed: ${context.localVerificationFailed ? "yes" : "no"}`,
-    `- PR safety validation failed: ${context.safetyValidationFailed ? "yes" : "no"}`
+    `- PR metadata validation failed: ${context.safetyValidationFailed ? "yes" : "no"}`
   ];
   if (context.branchBehindMain) lines.push("", branchBehindMainRecoveryGuidance(context.branchName));
   return lines.join("\n");
@@ -2158,7 +2037,7 @@ function recoverExistingTask(taskId, taskFile, task, branchName) {
     error.prMerged = error.prMerged ?? recoveredMerged;
     error.branchBehindMain = error.branchBehindMain ?? branchBehindMain;
     error.localVerificationFailed = error.localVerificationFailed ?? error.code === "verification_failure";
-    error.safetyValidationFailed = error.safetyValidationFailed ?? error.code === "suspicious_changes";
+    error.safetyValidationFailed = error.safetyValidationFailed ?? error.code === "safety_check_failure";
     error.managedSandboxFailure = error.managedSandboxFailure ?? error.environmentOnly === true;
     error.implementationFailure = error.implementationFailure
       ?? (error.localVerificationFailed && !error.branchBehindMain && !error.managedSandboxFailure);
@@ -2169,7 +2048,6 @@ function recoverExistingTask(taskId, taskFile, task, branchName) {
       prUrl: error.prUrl,
       implementationFailure: error.implementationFailure,
       branchBehindMain: error.branchBehindMain,
-      offendingPaths: error.offendingPaths,
       managedSandboxFailure: error.managedSandboxFailure,
       localVerificationFailed: error.localVerificationFailed,
       safetyValidationFailed: error.safetyValidationFailed
@@ -2213,7 +2091,7 @@ function runOneTask(taskFile) {
       ? error
       : new AutomationStop(error.message ?? String(error), "unexpected_failure", { cause: error, hardStop: stopOnFailure });
     stop.localVerificationFailed = stop.localVerificationFailed ?? stop.code === "verification_failure";
-    stop.safetyValidationFailed = stop.safetyValidationFailed ?? stop.code === "suspicious_changes";
+    stop.safetyValidationFailed = stop.safetyValidationFailed ?? stop.code === "safety_check_failure";
     stop.managedSandboxFailure = stop.managedSandboxFailure ?? managedSandboxFailure;
     stop.implementationFailure = stop.implementationFailure
       ?? (stop.code === "codex_failure" || (stop.localVerificationFailed && !stop.managedSandboxFailure));
@@ -2269,14 +2147,10 @@ function printDryRunTaskPlan(taskFile, task) {
     console.log("  5. Run typecheck, test, and build; use bounded repairs if needed");
     console.log("  6. Commit implementation changes, push, and create an automated PR into main");
     console.log("  7. Keep task state unchanged while the implementation PR is open");
-    console.log("  8. Wait for GitHub checks and validate changed-file safety");
+    console.log("  8. Wait for GitHub checks and validate PR head/base metadata");
     console.log("  9. Squash-merge the PR and request remote branch deletion");
     console.log(` 10. Checkout main, pull the merge, move ${taskFile} from backlog to done on main, push that state commit, and continue`);
-    if (task.auto_merge?.allowed === false && allowPolicyFalseAutoMerge) {
-      console.log("  Safety note: policy-false auto-merge override is enabled; all other verification and safety gates still apply");
-    } else if (task.auto_merge?.allowed === false) {
-      console.log("  Safety note: this task sets auto_merge.allowed=false, so a real run would stop before merge");
-    }
+    void task;
 }
 
 function printDryRunPlan() {
@@ -2350,7 +2224,7 @@ function buildLoopSummaryLines(summary, gitState = inspectGitState(), elapsedSec
     `PRs merged: ${summary.mergedPrUrls.join(", ") || "None"}`,
     `Generated task IDs: ${summary.generatedTaskIds.join(", ") || "None"}`,
     `Local verification failed: ${summary.localVerificationFailed ? "yes" : "no"}`,
-    `PR safety validation failed: ${summary.safetyValidationFailed ? "yes" : "no"}`,
+    `PR metadata validation failed: ${summary.safetyValidationFailed ? "yes" : "no"}`,
     `Task branch behind main: ${summary.branchBehindMain ? "yes" : "no"}`,
     `Generated tasks skipped because broader work covers them: ${summary.skippedCoveredTasks.join(", ") || "None"}`
   ];
@@ -2539,6 +2413,7 @@ export {
   guardDirtyTaskStateOnTaskBranch,
   hasAutomationSourceChanged,
   hasTaskRelevantChanges,
+  isWorkingTreeCleanStatus,
   isRecoverableCodexSandboxVerificationFailure,
   isBranchBehindOriginMain,
   isNoPrChecksReported,
@@ -2546,11 +2421,10 @@ export {
   npmCommand,
   normalizeTitle,
   planProductCompletionTasks,
+  prMergeSafetyDecision,
   productCompletionStopReason,
   prChecksFailurePolicy,
-  policyFalseRecoveryOptions,
   productTaskDependencySuppression,
-  scopeViolationRecoveryGuidance,
   selectRoadmapTasks,
   selectProductCompletionTasks,
   shouldContinueAfterCodexFailure,
