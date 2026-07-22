@@ -1,0 +1,98 @@
+id: "103"
+title: Support genuine Pixilart 2.7 project files
+status: backlog
+priority: high
+goal: Replace or extend the fixture-only Pixil parser so genuine Pixilart 2.7 `.pixil` project files using the observed `application/type/version/frames/layers/src` structure can be imported into `SpriteProject` and converted to `.aseprite`.
+context: >
+  Tasks 099-102 exposed Pixil/Pixilart import in the converter, but the first
+  importer was built around a repository-defined synthetic JSON contract. A
+  genuine Pixilart 2.7.0 `.pixil` file failed immediately with
+  `Pixil/Pixilart import failed: Pixil document contains unsupported field
+  "application".` Inspection showed that real Pixilart 2.7 project files use a
+  different structure with top-level `application`, `type`, `version`,
+  `website`, numeric-string `width` and `height`, `frames`, and per-frame
+  `layers` containing PNG payloads in `layer.src`. This task is a
+  compatibility correction for the verified Pixilart 2.7 saved-file subset,
+  not a broad claim of universal Pixil/Pixilart compatibility.
+scope:
+  summary: Correct the Pixil importer contract for the observed genuine Pixilart 2.7 structure, add privacy-safe fixtures/tests, and update format documentation.
+  allowed_paths:
+    - src/core/importers/pixil/**
+    - src/core/conversion.integration.test.ts
+    - tests/fixtures/pixil/**
+    - tests/fixtures/README.md
+    - tests/fixtures/fixtures.test.ts
+    - tests/fixtures/generate.mjs
+    - docs/pixil-format.md
+    - docs/supported-formats.md
+    - docs/manual-usage-guide.md
+    - docs/product-spec.md
+    - docs/conversion-limitations.md
+  forbidden_paths: &forbidden
+    - .github/workflows/**
+    - .env
+    - .env.*
+    - dist/**
+    - build/**
+    - node_modules/**
+    - package.json
+    - package-lock.json
+    - tasks/**
+    - scripts/**
+    - src/app/**
+    - src/core/exporters/**
+    - src/core/importers/apng/**
+    - src/core/importers/gif/**
+    - src/core/importers/krita/**
+    - src/core/importers/openraster/**
+    - src/core/importers/piskel/**
+    - src/core/importers/pixelorama/**
+    - src/core/importers/pngSequence/**
+    - src/core/importers/psd/**
+    - src/core/importers/spritesheetGrid/**
+    - src/core/importers/spritesheetJson/**
+non_goals:
+  - Do not add or commit the user's genuine Pixilart `.pixil` file or any derived artwork/base64 payload from it.
+  - Do not implement Pixil export, Pixil round-trip conversion, or compatibility with every historical or future Pixilart version.
+  - Do not treat this as a small allowlist patch for the `application` field; the parser contract must be corrected deliberately.
+  - Do not silently map uncertain Pixil metadata such as `active` to Aseprite visibility unless the semantics are established.
+  - Do not add dependencies, upload behavior, tracking, backend conversion, UI redesign, unrelated importer changes, or Aseprite exporter changes.
+requirements:
+  - 'Support the observed genuine Pixilart 2.7 top-level structure with `application: "pixil"`, `type: ".pixil"`, `version: "2.7.0"`, `website: "pixilart.com"`, numeric-string `width` and `height`, and a `frames` array.'
+  - Parse canvas width and height from safe numeric strings or safe integers, reject invalid, fractional, negative, zero, unsafe, or oversized values, and enforce documented allocation limits.
+  - Parse each frame's width, height, `speed`, and `layers` array, validating frame dimensions, frame count, frame indexes/order, and resource limits.
+  - Parse per-frame layers with stable cross-frame identity, preferring validated `unqid` when available and using documented fallback behavior only when necessary.
+  - Reconstruct logical `SpriteProject` layers across frames while preserving supported layer names, order, opacity, and cel image data.
+  - Parse layer opacity from safe numeric strings or numbers only when the range and semantics are clear; reject invalid opacity instead of guessing.
+  - Extract base64 PNG bytes from `layer.src` by locating a `base64,` payload marker rather than requiring an exact `data:image/png;base64,` prefix.
+  - Validate decoded layer payloads with the PNG signature before decoding image data, reject malformed base64 and non-PNG payloads safely, and use existing browser-local PNG decoding infrastructure where practical.
+  - 'Map `options.blend: "source-over"` to normal blending, and reject unsupported blend values with a clear unsupported-feature diagnostic rather than silently degrading.'
+  - Preserve frame duration from frame `speed` only if existing docs, tests, or additional inspection establish that it represents milliseconds; otherwise document and implement conservative behavior.
+  - Treat the layer `active` boolean conservatively until its semantics are established; do not claim it is Aseprite visibility without evidence.
+  - Keep all parsing browser-local and independent from UI code.
+  - Add a tiny synthetic fixture matching the verified genuine Pixilart 2.7 container/field structure with newly generated 1x1 or 2x2 PNG pixel data.
+  - Clearly document that the synthetic fixture structure is based on a genuine Pixilart 2.7.0 save observed during compatibility testing, while all committed pixels are freshly generated test data.
+  - Add regression coverage for the old synthetic fixture behavior, either intentionally retaining it or intentionally migrating it with clear diagnostics and docs.
+  - Update `docs/pixil-format.md` and relevant supported-format/limitations docs so they no longer imply the old repository-defined schema is the real Pixilart schema.
+  - Add manual verification instructions for testing a genuine local Pixilart file without committing that file or its artwork.
+acceptance_criteria:
+  - A synthetic fixture matching the verified genuine Pixilart 2.7 structure imports successfully.
+  - At least two frames and at least two logical layers are reconstructed correctly across frames.
+  - Layer PNG pixels decode correctly into `SpriteProject` cels.
+  - Numeric string dimensions and opacity values are safely validated.
+  - "`source-over` maps to normal blending."
+  - Unsupported blend modes fail clearly rather than silently degrading.
+  - Malformed base64 and non-PNG payloads fail safely with content-safe diagnostics.
+  - Frame, layer, canvas, payload, and allocation limits are enforced.
+  - The existing Pixil converter UI can consume the corrected importer without special manual hacks or UI changes.
+  - Documentation clearly distinguishes the observed genuine Pixilart 2.7 structure, the supported subset, unsupported or uncertain semantics, and the lack of universal or lossless Pixil compatibility.
+  - The user's real Pixil artwork, original `.pixil` file, and derived embedded PNG/base64 data are not committed.
+  - Typecheck, tests, and build pass.
+verification:
+  - npm run typecheck
+  - npm run test
+  - npm run build
+auto_merge:
+  allowed: false
+  max_changed_files: 15
+  forbidden_paths: *forbidden
