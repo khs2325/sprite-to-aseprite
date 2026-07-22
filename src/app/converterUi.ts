@@ -893,6 +893,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   const introduction = document.createElement("p");
   const privacy = document.createElement("p");
   const heroActions = document.createElement("nav");
+  const heroHighlights = document.createElement("ul");
   const startLink = document.createElement("a");
   const formatsLink = document.createElement("a");
   const guidesLink = document.createElement("a");
@@ -900,7 +901,11 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   siteNav.setAttribute("aria-label", "Site links");
   siteNav.className = "site-nav";
   siteNav.append(
-    ...createSiteNavigationLinks(document),
+    ...createSiteNavigationLinks(document).filter((link) =>
+      ["Converter", "Supported formats", "Format guides", "FAQ"].includes(
+        link.textContent ?? "",
+      ),
+    ),
     createSupportEntryPoint(document),
   );
   hero.className = "hero";
@@ -914,6 +919,16 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   privacy.textContent =
     "Useful for pixel artists, game developers, and tool builders who need to rebuild timelines without sending artwork to a conversion server. Output compatibility depends on the source format and the documented importer subset.";
   privacy.className = "privacy-notice";
+  heroHighlights.className = "hero-highlights";
+  for (const highlight of [
+    "Runs in your browser",
+    "No artwork uploads",
+    "Editable .aseprite output",
+  ]) {
+    const item = document.createElement("li");
+    item.textContent = highlight;
+    heroHighlights.append(item);
+  }
   heroActions.className = "hero-actions";
   heroActions.setAttribute("aria-label", "Primary actions");
   startLink.href = "#converter";
@@ -926,20 +941,32 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   guidesLink.textContent = "Read conversion guides";
   guidesLink.className = "button-link";
   heroActions.append(startLink, formatsLink, guidesLink);
-  hero.append(eyebrow, title, introduction, privacy, heroActions);
+  hero.append(
+    eyebrow,
+    title,
+    introduction,
+    heroHighlights,
+    privacy,
+    heroActions,
+  );
   header.append(siteNav, hero);
 
   const modeDecisionHelper = createModeDecisionHelper(document);
   const converterSection = document.createElement("section");
+  const converterHeader = document.createElement("div");
   const converterHeading = document.createElement("h2");
   const converterIntro = document.createElement("p");
+  const workflowGrid = document.createElement("div");
   converterSection.id = "converter";
   converterSection.className = "converter-workspace-section";
   converterSection.setAttribute("aria-labelledby", "converter-heading");
   converterHeading.id = "converter-heading";
   converterHeading.textContent = "Converter workspace";
+  converterHeader.className = "converter-section-header";
   converterIntro.textContent =
     "Pick the import mode, add the required files, review validation messages and previews, then download the generated `.aseprite` file.";
+  converterHeader.append(converterHeading, converterIntro);
+  workflowGrid.className = "workflow-grid";
 
   const controls = document.createElement("section");
   const controlsHeading = document.createElement("h3");
@@ -950,7 +977,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   const modeHelpExpected = document.createElement("p");
   const modeHelpPreserves = document.createElement("p");
   const modeHelpLimitations = document.createElement("p");
-  controls.className = "panel";
+  controls.className = "panel workflow-panel workflow-panel-mode";
   controlsHeading.textContent = "1. Choose an import mode";
   modeLabel.textContent = "Import mode";
   for (const [value, label] of Object.entries(MODE_LABELS)) {
@@ -1061,7 +1088,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   const selectedFilesHeading = document.createElement("h3");
   const selectedFileList = document.createElement("ul");
   const clearFilesButton = document.createElement("button");
-  importPanel.className = "panel";
+  importPanel.className = "panel workflow-panel workflow-panel-files";
   importHeading.textContent = "2. Add source files";
   dropZone.className = "drop-zone";
   dropInstructions.textContent =
@@ -1108,7 +1135,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   const conversionProgress = document.createElement("progress");
   const conversionStatus = document.createElement("p");
   const conversionError = document.createElement("p");
-  convertPanel.className = "panel";
+  convertPanel.className = "panel workflow-panel workflow-panel-convert";
   convertHeading.textContent = "3. Convert and download";
   convertButton.type = "button";
   convertButton.textContent = "Convert to .aseprite";
@@ -1139,24 +1166,24 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
   const supportSection = createSupportSection(document, DEFAULT_SUPPORT_LINKS);
   const informationalPages = createInformationalPages(document);
   const footer = createSupportFooter(document);
-  workspace.className = "workspace";
+  workspace.className = "workspace result-workspace";
+  workspace.hidden = true;
   previewContainer.className = "panel";
   layerContainer.className = "panel";
   exportContainer.className = "download-area";
   workspace.append(previewContainer, layerContainer);
   convertPanel.append(exportContainer);
-  converterSection.append(
-    converterHeading,
-    converterIntro,
-    controls,
-    importPanel,
-    convertPanel,
-    workspace,
-  );
+  workflowGrid.append(controls, importPanel);
+  converterSection.append(converterHeader, workflowGrid, convertPanel, workspace);
+  const footerNavigation = document.createElement("nav");
+  footerNavigation.className = "footer-nav";
+  footerNavigation.setAttribute("aria-label", "Footer links");
+  footerNavigation.append(...createSiteNavigationLinks(document));
+  footer.append(footerNavigation);
   root.append(
     header,
-    modeDecisionHelper,
     converterSection,
+    modeDecisionHelper,
     informationalPages,
     supportSection,
     footer,
@@ -1201,6 +1228,7 @@ export function mountConverterUi(root: HTMLElement): ConverterUi {
     previewUi.setProject(project);
     layerUi.setProject(project);
     exportUi.setProject(project);
+    workspace.hidden = project === null;
     exportUi.element.hidden = project === null;
   };
 
