@@ -4,53 +4,26 @@ import {
   type SpriteProject,
 } from "../../SpriteProject";
 
-const PIXIL_FORMAT = "pixilart.com/pixil-project";
-const SUPPORTED_SCHEMA_VERSION = 1;
 const MAX_FILE_BYTES = 96 * 1024 * 1024;
 const MAX_DIMENSION = 1024;
 const MAX_FRAMES = 512;
 const MAX_LAYERS = 64;
 const MAX_CELS = 4096;
 const MAX_TOTAL_CEL_BYTES = 64 * 1024 * 1024;
+const MAX_TOTAL_PNG_BYTES = 64 * 1024 * 1024;
 const MAX_STRING_LENGTH = 1024;
-
-const ROOT_FIELDS = new Set(["pixil"]);
-const PROJECT_FIELDS = new Set([
-  "format",
-  "schemaVersion",
-  "width",
-  "height",
-  "frameCount",
-  "layerCount",
-  "frames",
-  "layers",
-]);
-const FRAME_FIELDS = new Set(["index", "durationMs"]);
-const LAYER_FIELDS = new Set([
-  "index",
-  "name",
-  "visible",
-  "opacity",
-  "blendMode",
-  "cels",
-]);
-const CEL_FIELDS = new Set([
-  "frameIndex",
-  "x",
-  "y",
-  "width",
-  "height",
-  "rgbaBase64",
-]);
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
 export type PixilImportErrorCode =
   | "allocation-limit"
+  | "browser-image-decode"
   | "file-read"
   | "file-too-large"
   | "invalid-container"
   | "invalid-json"
   | "invalid-pixels"
   | "invalid-project"
+  | "png-dimension-mismatch"
   | "unsupported-feature"
   | "unsupported-version";
 
@@ -65,29 +38,24 @@ export class PixilImportError extends Error {
   }
 }
 
+export type PixilImportDependencies = {
+  decodePng?: (pngBytes: Uint8Array) => Promise<ImageData>;
+};
+
 /** Returns importer-authored detail only; arbitrary thrown values stay private. */
 export function getPixilImportDiagnostic(error: unknown): string | null {
   return error instanceof PixilImportError ? error.message : null;
 }
 
-type ParsedFrame = {
-  durationMs: number;
-};
-
-type ParsedCel = {
-  frameIndex: number;
-  pixels: Uint8Array;
-};
-
+type ParsedCel = { frameIndex: number; pngBytes: Uint8Array };
 type ParsedLayer = {
+  cels: ParsedCel[];
+  id: string;
   name: string;
   opacity: number;
-  visible: boolean;
-  cels: ParsedCel[];
 };
-
 type ParsedPixil = {
-  frames: ParsedFrame[];
+  frames: { durationMs: number }[];
   height: number;
   layers: ParsedLayer[];
   width: number;
@@ -101,97 +69,87 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function hasOwn(value: Record<string, unknown>, field: string): boolean {
-  return Object.prototype.hasOwnProperty.call(value, field);
-}
-
-function assertAllowedFields(
-  value: Record<string, unknown>,
-  allowedFields: ReadonlySet<string>,
-  path: string,
-): void {
-  const unsupported = Object.keys(value).find((field) => !allowedFields.has(field));
-  if (unsupported !== undefined) {
-    fail(
-      "unsupported-feature",
-      `${path} contains unsupported field ${JSON.stringify(unsupported)}.`,
-    );
-  }
-}
-
-function assertRequiredField(
-  value: Record<string, unknown>,
-  field: string,
-  path: string,
-): void {
-  if (!hasOwn(value, field)) {
+function required(record: Record<string, unknown>, field: string, path: string): unknown {
+  if (!Object.prototype.hasOwnProperty.call(record, field)) {
     fail("invalid-project", `${path}.${field} is required.`);
   }
+  return record[field];
 }
 
-function parseDimension(value: unknown, path: string): number {
+function safeInteger(value: unknown, path: string): number {
+  let parsed: number;
+  if (typeof value === "number") {
+    parsed = value;
+  } else if (typeof value === "string" && /^(?:0|[1-9]\d*)$/u.test(value)) {
+    parsed = Number(value);
+  } else {
+    fail("invalid-project", `${path} must be a safe integer or canonical integer string.`);
+  }
+  if (!Number.isSafeInteger(parsed)) {
+    fail("invalid-project", `${path} must be a safe integer or canonical integer string.`);
+  }
+  return parsed;
+}
+
+function dimension(value: unknown, path: string): number {
+  const parsed = safeInteger(value, path);
+  if (parsed < 1 || parsed > MAX_DIMENSION) {
+    fail("allocation-limit", `${path} must be from 1 through ${MAX_DIMENSION}.`);
+  }
+  return parsed;
+}
+
+function nonEmptyString(value: unknown, path: string): string {
   if (
-    !Number.isSafeInteger(value) ||
-    (value as number) < 1 ||
-    (value as number) > MAX_DIMENSION
+    typeof value !== "string" ||
+    value.trim().length === 0 ||
+    value.length > MAX_STRING_LENGTH
   ) {
-    fail(
-      "allocation-limit",
-      `${path} must be an integer from 1 through ${MAX_DIMENSION}.`,
-    );
-  }
-  return value as number;
-}
-
-function parseStrictCount(
-  value: unknown,
-  expected: number,
-  path: string,
-): void {
-  if (!Number.isSafeInteger(value) || value !== expected) {
-    fail("invalid-project", `${path} must equal ${expected}.`);
-  }
-}
-
-function expectSafeString(value: unknown, path: string): string {
-  if (typeof value !== "string" || value.length > MAX_STRING_LENGTH) {
-    fail(
-      "invalid-project",
-      `${path} must be a string no longer than ${MAX_STRING_LENGTH} characters.`,
-    );
+    fail("invalid-project", `${path} must be a non-empty string no longer than ${MAX_STRING_LENGTH} characters.`);
   }
   return value;
 }
 
-function parseFrame(value: unknown, frameIndex: number): ParsedFrame {
-  const path = `Pixil frame ${frameIndex + 1}`;
-  if (!isRecord(value)) {
-    fail("invalid-project", `${path} must be an object.`);
-  }
-  assertAllowedFields(value, FRAME_FIELDS, path);
-  assertRequiredField(value, "index", path);
-  assertRequiredField(value, "durationMs", path);
-
-  if (value.index !== frameIndex) {
-    fail(
-      "invalid-project",
-      `${path}.index must be ${frameIndex} to keep frame order explicit.`,
-    );
-  }
-  if (
-    typeof value.durationMs !== "number" ||
-    !Number.isFinite(value.durationMs) ||
-    value.durationMs <= 0
+function opacity(value: unknown, path: string): number {
+  let parsed: number;
+  if (typeof value === "number") {
+    parsed = value;
+  } else if (
+    typeof value === "string" &&
+    /^(?:0(?:\.\d+)?|1(?:\.0+)?)$/u.test(value)
   ) {
-    fail(
-      "invalid-project",
-      `${path}.durationMs must be a finite number greater than zero.`,
-    );
+    parsed = Number(value);
+  } else {
+    fail("invalid-project", `${path} must be a number from 0 to 1 or a canonical numeric string.`);
   }
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+    fail("invalid-project", `${path} must be from 0 to 1.`);
+  }
+  return Math.round(parsed * 255);
+}
 
-  return {
-    durationMs: normalizeFrameDurationMs(value.durationMs),
-  };
+function strictBase64(payload: string, path: string): Uint8Array {
+  if (payload.length === 0 || payload.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/u.test(payload)) {
+    fail("invalid-pixels", `${path} contains malformed base64 PNG data.`);
+  }
+  const padding = payload.endsWith("==") ? 2 : payload.endsWith("=") ? 1 : 0;
+  if ((padding === 2 && payload.length >= 3 && (base64Value(payload.at(-3)!) & 15) !== 0) ||
+      (padding === 1 && payload.length >= 2 && (base64Value(payload.at(-2)!) & 3) !== 0)) {
+    fail("invalid-pixels", `${path} contains malformed base64 PNG data.`);
+  }
+  const length = payload.length / 4 * 3 - padding;
+  const bytes = new Uint8Array(length);
+  let output = 0;
+  for (let index = 0; index < payload.length; index += 4) {
+    const a = base64Value(payload[index]);
+    const b = base64Value(payload[index + 1]);
+    const c = payload[index + 2] === "=" ? 0 : base64Value(payload[index + 2]);
+    const d = payload[index + 3] === "=" ? 0 : base64Value(payload[index + 3]);
+    bytes[output++] = (a << 2) | (b >> 4);
+    if (output < length) bytes[output++] = ((b & 15) << 4) | (c >> 2);
+    if (output < length) bytes[output++] = ((c & 3) << 6) | d;
+  }
+  return bytes;
 }
 
 function base64Value(character: string): number {
@@ -199,350 +157,142 @@ function base64Value(character: string): number {
   if (code >= 65 && code <= 90) return code - 65;
   if (code >= 97 && code <= 122) return code - 71;
   if (code >= 48 && code <= 57) return code + 4;
-  if (character === "+") return 62;
-  if (character === "/") return 63;
-  return -1;
+  return character === "+" ? 62 : character === "/" ? 63 : -1;
 }
 
-function decodeStrictBase64(payload: string, path: string): Uint8Array {
-  if (/^https?:\/\//iu.test(payload)) {
-    fail("unsupported-feature", `${path} must not reference an external image URL.`);
+function pngPayload(src: unknown, path: string): Uint8Array {
+  if (typeof src !== "string") fail("invalid-pixels", `${path} must contain embedded base64 PNG data.`);
+  const marker = "base64,";
+  const markerIndex = src.indexOf(marker);
+  if (markerIndex < 0) fail("invalid-pixels", `${path} must contain a base64, payload marker.`);
+  const bytes = strictBase64(src.slice(markerIndex + marker.length), path);
+  if (bytes.length < PNG_SIGNATURE.length || PNG_SIGNATURE.some((byte, index) => bytes[index] !== byte)) {
+    fail("invalid-pixels", `${path} payload is not a PNG image.`);
   }
-  if (payload.length === 0 || payload.length % 4 !== 0) {
-    fail("invalid-pixels", `${path} must contain strict base64 RGBA data.`);
-  }
-
-  const padding = payload.endsWith("==") ? 2 : payload.endsWith("=") ? 1 : 0;
-  const dataLength = payload.length - padding;
-
-  for (let index = 0; index < dataLength; index += 1) {
-    if (base64Value(payload[index]) === -1) {
-      fail("invalid-pixels", `${path} must contain strict base64 RGBA data.`);
-    }
-  }
-  for (let index = dataLength; index < payload.length; index += 1) {
-    if (payload[index] !== "=") {
-      fail("invalid-pixels", `${path} must contain strict base64 RGBA data.`);
-    }
-  }
-
-  if (
-    (padding === 2 && (base64Value(payload[payload.length - 3]) & 0x0f) !== 0) ||
-    (padding === 1 && (base64Value(payload[payload.length - 2]) & 0x03) !== 0)
-  ) {
-    fail("invalid-pixels", `${path} must contain strict base64 RGBA data.`);
-  }
-
-  const byteLength = (payload.length / 4) * 3 - padding;
-  const bytes = new Uint8Array(byteLength);
-  let outputIndex = 0;
-
-  for (let index = 0; index < payload.length; index += 4) {
-    const first = base64Value(payload[index]);
-    const second = base64Value(payload[index + 1]);
-    const third = payload[index + 2] === "=" ? 0 : base64Value(payload[index + 2]);
-    const fourth = payload[index + 3] === "=" ? 0 : base64Value(payload[index + 3]);
-
-    bytes[outputIndex] = (first << 2) | (second >> 4);
-    outputIndex += 1;
-    if (outputIndex < byteLength) {
-      bytes[outputIndex] = ((second & 0x0f) << 4) | (third >> 2);
-      outputIndex += 1;
-    }
-    if (outputIndex < byteLength) {
-      bytes[outputIndex] = ((third & 0x03) << 6) | fourth;
-      outputIndex += 1;
-    }
-  }
-
   return bytes;
 }
 
-function parseCel(
-  value: unknown,
-  layerIndex: number,
-  celIndex: number,
-  width: number,
-  height: number,
-  coveredFrames: Set<number>,
-): ParsedCel {
-  const path = `Pixil layer ${layerIndex + 1} cel ${celIndex + 1}`;
-  if (!isRecord(value)) {
-    fail("invalid-project", `${path} must be an object.`);
+function layerIdentity(layer: Record<string, unknown>, path: string): string {
+  if (Object.prototype.hasOwnProperty.call(layer, "unqid")) {
+    return `unqid:${nonEmptyString(layer.unqid, `${path}.unqid`)}`;
   }
-  assertAllowedFields(value, CEL_FIELDS, path);
-  for (const field of CEL_FIELDS) {
-    assertRequiredField(value, field, path);
-  }
-
-  if (!Number.isSafeInteger(value.frameIndex) || (value.frameIndex as number) < 0) {
-    fail("invalid-project", `${path}.frameIndex must be a non-negative safe integer.`);
-  }
-  const frameIndex = value.frameIndex as number;
-  if (coveredFrames.has(frameIndex)) {
-    fail("invalid-project", `${path}.frameIndex duplicates another cel in the same layer.`);
-  }
-  coveredFrames.add(frameIndex);
-
-  if (value.x !== 0 || value.y !== 0) {
-    fail(
-      "unsupported-feature",
-      `${path} uses unsupported partial-canvas cel placement; x and y must be 0.`,
-    );
-  }
-  if (value.width !== width || value.height !== height) {
-    fail(
-      "unsupported-feature",
-      `${path} must be a full-canvas cel with dimensions ${width}x${height}.`,
-    );
-  }
-
-  const expectedByteLength = width * height * 4;
-  const rawPayloadPath = `${path}.rgbaBase64`;
-  if (typeof value.rgbaBase64 !== "string") {
-    fail("invalid-pixels", `${rawPayloadPath} must contain strict base64 RGBA data.`);
-  }
-  if (/^https?:\/\//iu.test(value.rgbaBase64)) {
-    fail(
-      "unsupported-feature",
-      `${rawPayloadPath} must not reference an external image URL.`,
-    );
-  }
-  if (value.rgbaBase64.length !== Math.ceil(expectedByteLength / 3) * 4) {
-    fail(
-      "invalid-pixels",
-      `${rawPayloadPath} must decode to exactly ${expectedByteLength} RGBA bytes.`,
-    );
-  }
-
-  const pixels = decodeStrictBase64(value.rgbaBase64, rawPayloadPath);
-  if (pixels.length !== expectedByteLength) {
-    fail(
-      "invalid-pixels",
-      `${rawPayloadPath} must decode to exactly ${expectedByteLength} RGBA bytes.`,
-    );
-  }
-
-  return { frameIndex, pixels };
-}
-
-function parseLayer(
-  value: unknown,
-  layerIndex: number,
-  frameCount: number,
-  width: number,
-  height: number,
-): ParsedLayer {
-  const path = `Pixil layer ${layerIndex + 1}`;
-  if (!isRecord(value)) {
-    fail("invalid-project", `${path} must be an object.`);
-  }
-  assertAllowedFields(value, LAYER_FIELDS, path);
-  for (const field of LAYER_FIELDS) {
-    assertRequiredField(value, field, path);
-  }
-
-  if (value.index !== layerIndex) {
-    fail(
-      "invalid-project",
-      `${path}.index must be ${layerIndex} to keep layer order explicit.`,
-    );
-  }
-  const name = expectSafeString(value.name, `${path}.name`);
-  if (name.trim().length === 0) {
-    fail("invalid-project", `${path}.name must be a non-empty string.`);
-  }
-  if (typeof value.visible !== "boolean") {
-    fail("invalid-project", `${path}.visible must be a boolean.`);
-  }
-  if (
-    typeof value.opacity !== "number" ||
-    !Number.isFinite(value.opacity) ||
-    value.opacity < 0 ||
-    value.opacity > 1
-  ) {
-    fail("invalid-project", `${path}.opacity must be a finite number from 0 to 1.`);
-  }
-  if (value.blendMode !== "normal") {
-    fail(
-      "unsupported-feature",
-      `${path} uses unsupported blend mode ${JSON.stringify(value.blendMode)}.`,
-    );
-  }
-  if (!Array.isArray(value.cels) || value.cels.length !== frameCount) {
-    fail(
-      "invalid-project",
-      `${path}.cels must contain exactly one full-canvas cel per frame.`,
-    );
-  }
-
-  const coveredFrames = new Set<number>();
-  const parsedCels = value.cels.map((cel, celIndex) =>
-    parseCel(cel, layerIndex, celIndex, width, height, coveredFrames),
-  );
-  for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
-    if (!coveredFrames.has(frameIndex)) {
-      fail("invalid-project", `${path}.cels is missing frame ${frameIndex}.`);
-    }
-  }
-
-  return {
-    name,
-    opacity: Math.round(value.opacity * 255),
-    visible: value.visible,
-    cels: parsedCels.sort((left, right) => left.frameIndex - right.frameIndex),
-  };
-}
-
-function assertAllocationLimits(
-  width: number,
-  height: number,
-  frameCount: number,
-  layerCount: number,
-): void {
-  if (frameCount < 1 || frameCount > MAX_FRAMES) {
-    fail("allocation-limit", `Pixil frame count must be from 1 through ${MAX_FRAMES}.`);
-  }
-  if (layerCount < 1 || layerCount > MAX_LAYERS) {
-    fail("allocation-limit", `Pixil layer count must be from 1 through ${MAX_LAYERS}.`);
-  }
-  const celCount = frameCount * layerCount;
-  if (!Number.isSafeInteger(celCount) || celCount > MAX_CELS) {
-    fail("allocation-limit", `Pixil cel count must not exceed ${MAX_CELS}.`);
-  }
-
-  const rawCelBytes = width * height * 4;
-  const totalCelBytes = rawCelBytes * celCount;
-  if (
-    !Number.isSafeInteger(rawCelBytes) ||
-    !Number.isSafeInteger(totalCelBytes) ||
-    totalCelBytes > MAX_TOTAL_CEL_BYTES
-  ) {
-    fail(
-      "allocation-limit",
-      `Pixil raw cel data exceeds the ${MAX_TOTAL_CEL_BYTES}-byte import limit.`,
-    );
-  }
+  const id = safeInteger(required(layer, "id", path), `${path}.id`);
+  if (id < 0) fail("invalid-project", `${path}.id must be non-negative.`);
+  return `id:${id}`;
 }
 
 function parsePixilDocument(json: string): ParsedPixil {
-  if (json.length > MAX_FILE_BYTES) {
-    fail("file-too-large", `Pixil file exceeds the ${MAX_FILE_BYTES}-byte import limit.`);
+  if (json.length > MAX_FILE_BYTES) fail("file-too-large", `Pixil file exceeds the ${MAX_FILE_BYTES}-byte import limit.`);
+  let document: unknown;
+  try { document = JSON.parse(json) as unknown; } catch { fail("invalid-json", "Pixil file is not valid JSON."); }
+  if (!isRecord(document)) fail("invalid-container", "Pixil document must be an object.");
+  if (Object.prototype.hasOwnProperty.call(document, "pixil")) {
+    fail("unsupported-version", "The repository-defined Pixil schemaVersion 1 fixture format is no longer supported; use a genuine Pixilart 2.7.0 project structure.");
   }
+  if (document.application !== "pixil" || document.type !== ".pixil" || document.website !== "pixilart.com") {
+    fail("invalid-container", "Pixil document must identify application pixil, type .pixil, and website pixilart.com.");
+  }
+  if (document.version !== "2.7.0") fail("unsupported-version", "Only the observed Pixilart version 2.7.0 project structure is supported.");
+  const width = dimension(required(document, "width", "Pixil document"), "Pixil document.width");
+  const height = dimension(required(document, "height", "Pixil document"), "Pixil document.height");
+  const frameValues = required(document, "frames", "Pixil document");
+  if (!Array.isArray(frameValues)) fail("invalid-project", "Pixil document.frames must be an array.");
+  if (frameValues.length < 1 || frameValues.length > MAX_FRAMES) fail("allocation-limit", `Pixil frame count must be from 1 through ${MAX_FRAMES}.`);
 
-  let value: unknown;
+  const frames: ParsedPixil["frames"] = [];
+  const layersById = new Map<string, ParsedLayer>();
+  let firstFrameOrder: string[] | undefined;
+  let totalPngBytes = 0;
+  for (const [frameIndex, frameValue] of frameValues.entries()) {
+    const path = `Pixil frame ${frameIndex + 1}`;
+    if (!isRecord(frameValue)) fail("invalid-project", `${path} must be an object.`);
+    if (dimension(required(frameValue, "width", path), `${path}.width`) !== width ||
+        dimension(required(frameValue, "height", path), `${path}.height`) !== height) {
+      fail("invalid-project", `${path} dimensions must match the ${width}x${height} canvas.`);
+    }
+    const speed = safeInteger(required(frameValue, "speed", path), `${path}.speed`);
+    if (speed < 1) fail("invalid-project", `${path}.speed must be greater than zero milliseconds.`);
+    frames.push({ durationMs: normalizeFrameDurationMs(speed) });
+    const layerValues = required(frameValue, "layers", path);
+    if (!Array.isArray(layerValues)) fail("invalid-project", `${path}.layers must be an array.`);
+    if (layerValues.length < 1 || layerValues.length > MAX_LAYERS) fail("allocation-limit", `${path} layer count must be from 1 through ${MAX_LAYERS}.`);
+    const order: string[] = [];
+    for (const [layerIndex, layerValue] of layerValues.entries()) {
+      const layerPath = `${path} layer ${layerIndex + 1}`;
+      if (!isRecord(layerValue)) fail("invalid-project", `${layerPath} must be an object.`);
+      const id = layerIdentity(layerValue, layerPath);
+      if (order.includes(id)) fail("invalid-project", `${layerPath} duplicates another layer identity in the frame.`);
+      order.push(id);
+      const options = required(layerValue, "options", layerPath);
+      if (!isRecord(options)) fail("invalid-project", `${layerPath}.options must be an object.`);
+      if (options.blend !== "source-over") fail("unsupported-feature", `${layerPath} uses unsupported blend mode ${JSON.stringify(options.blend)}.`);
+      if (Object.prototype.hasOwnProperty.call(layerValue, "active") && typeof layerValue.active !== "boolean") fail("invalid-project", `${layerPath}.active must be a boolean when present.`);
+      const name = nonEmptyString(required(layerValue, "name", layerPath), `${layerPath}.name`);
+      const parsedOpacity = opacity(required(layerValue, "opacity", layerPath), `${layerPath}.opacity`);
+      const bytes = pngPayload(required(layerValue, "src", layerPath), `${layerPath}.src`);
+      totalPngBytes += bytes.length;
+      if (!Number.isSafeInteger(totalPngBytes) || totalPngBytes > MAX_TOTAL_PNG_BYTES) fail("allocation-limit", `Pixil embedded PNG data exceeds the ${MAX_TOTAL_PNG_BYTES}-byte import limit.`);
+      const existing = layersById.get(id);
+      if (existing === undefined) layersById.set(id, { id, name, opacity: parsedOpacity, cels: [{ frameIndex, pngBytes: bytes }] });
+      else {
+        if (existing.name !== name || existing.opacity !== parsedOpacity) fail("invalid-project", `${layerPath} metadata conflicts with the same logical layer in another frame.`);
+        existing.cels.push({ frameIndex, pngBytes: bytes });
+      }
+    }
+    if (firstFrameOrder === undefined) firstFrameOrder = order;
+    else if (order.length !== firstFrameOrder.length || order.some((id, index) => id !== firstFrameOrder![index])) {
+      fail("invalid-project", `${path} layer identities and order must match the first frame.`);
+    }
+  }
+  const layerCount = firstFrameOrder!.length;
+  const celCount = frames.length * layerCount;
+  if (celCount > MAX_CELS) fail("allocation-limit", `Pixil cel count must not exceed ${MAX_CELS}.`);
+  const rawBytes = width * height * 4 * celCount;
+  if (!Number.isSafeInteger(rawBytes) || rawBytes > MAX_TOTAL_CEL_BYTES) fail("allocation-limit", `Pixil decoded cel data exceeds the ${MAX_TOTAL_CEL_BYTES}-byte import limit.`);
+  return { width, height, frames, layers: firstFrameOrder!.map((id) => layersById.get(id)!), };
+}
+
+function validImageData(image: ImageData, width: number, height: number): boolean {
+  return image.width === width && image.height === height && image.data instanceof Uint8ClampedArray && image.data.length === width * height * 4;
+}
+
+async function decodePngInBrowser(pngBytes: Uint8Array): Promise<ImageData> {
+  const owned = new Uint8Array(pngBytes);
+  const bitmap = await createImageBitmap(new Blob([owned.buffer], { type: "image/png" }));
   try {
-    value = JSON.parse(json) as unknown;
-  } catch {
-    fail("invalid-json", "Pixil file is not valid JSON.");
-  }
-  if (!isRecord(value)) {
-    fail("invalid-container", "Pixil document must be an object.");
-  }
-  assertAllowedFields(value, ROOT_FIELDS, "Pixil document");
-  assertRequiredField(value, "pixil", "Pixil document");
-  if (!isRecord(value.pixil)) {
-    fail("invalid-container", "Pixil document.pixil must be an object.");
-  }
-
-  const pixil = value.pixil;
-  assertAllowedFields(pixil, PROJECT_FIELDS, "Pixil project");
-  for (const field of PROJECT_FIELDS) {
-    assertRequiredField(pixil, field, "Pixil project");
-  }
-  if (pixil.format !== PIXIL_FORMAT) {
-    fail(
-      "invalid-container",
-      `Pixil project.format must be ${JSON.stringify(PIXIL_FORMAT)}.`,
-    );
-  }
-  if (pixil.schemaVersion !== SUPPORTED_SCHEMA_VERSION) {
-    fail(
-      "unsupported-version",
-      `Unsupported Pixil schemaVersion; expected integer ${SUPPORTED_SCHEMA_VERSION}.`,
-    );
-  }
-
-  const width = parseDimension(pixil.width, "Pixil project.width");
-  const height = parseDimension(pixil.height, "Pixil project.height");
-  if (!Array.isArray(pixil.frames) || pixil.frames.length === 0) {
-    fail("invalid-project", "Pixil project.frames must be a non-empty array.");
-  }
-  if (!Array.isArray(pixil.layers) || pixil.layers.length === 0) {
-    fail("invalid-project", "Pixil project.layers must be a non-empty array.");
-  }
-  parseStrictCount(pixil.frameCount, pixil.frames.length, "Pixil project.frameCount");
-  parseStrictCount(pixil.layerCount, pixil.layers.length, "Pixil project.layerCount");
-  assertAllocationLimits(width, height, pixil.frames.length, pixil.layers.length);
-
-  const frames = pixil.frames.map((frame, frameIndex) =>
-    parseFrame(frame, frameIndex),
-  );
-  const layers = pixil.layers.map((layer, layerIndex) =>
-    parseLayer(layer, layerIndex, frames.length, width, height),
-  );
-
-  return { frames, height, layers, width };
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width; canvas.height = bitmap.height;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (context === null) throw new Error("Canvas context unavailable.");
+    context.drawImage(bitmap, 0, 0);
+    return context.getImageData(0, 0, bitmap.width, bitmap.height);
+  } finally { bitmap.close(); }
 }
 
-function rawCelToImageData(
-  bytes: Uint8Array,
-  width: number,
-  height: number,
-): ImageData {
-  return {
-    colorSpace: "srgb",
-    data: new Uint8ClampedArray(bytes),
-    height,
-    width,
-  };
-}
-
-function createProject(parsed: ParsedPixil): SpriteProject {
-  return {
-    colorMode: "rgba",
-    frames: parsed.frames.map((frame, index) => ({
-      index,
-      durationMs: frame.durationMs,
-    })),
-    height: parsed.height,
-    layers: parsed.layers.map((layer, layerIndex) => ({
-      id: `pixil-layer-${layerIndex}`,
-      name: layer.name,
-      opacity: layer.opacity,
-      visible: layer.visible,
-      cels: layer.cels.map<SpriteCel>((cel) => ({
-        frameIndex: cel.frameIndex,
-        imageData: rawCelToImageData(cel.pixels, parsed.width, parsed.height),
-        x: 0,
-        y: 0,
-      })),
-    })),
-    width: parsed.width,
-  };
-}
-
-/** Parses the fixture-gated Pixil/Pixilart JSON subset locally. */
-export function importPixilJson(json: string): SpriteProject {
-  return createProject(parsePixilDocument(json));
+/** Parses the observed genuine Pixilart 2.7.0 saved-project subset locally. */
+export async function importPixilJson(json: string, dependencies: PixilImportDependencies = {}): Promise<SpriteProject> {
+  const parsed = parsePixilDocument(json);
+  const decodePng = dependencies.decodePng ?? decodePngInBrowser;
+  const layers: SpriteProject["layers"] = [];
+  for (const [layerIndex, layer] of parsed.layers.entries()) {
+    const cels: SpriteCel[] = [];
+    for (const cel of layer.cels) {
+      let imageData: ImageData;
+      try { imageData = await decodePng(cel.pngBytes); }
+      catch (error) { throw new PixilImportError("browser-image-decode", `Could not decode PNG for Pixil layer ${layerIndex + 1}, frame ${cel.frameIndex + 1}.`, { cause: error }); }
+      if (!validImageData(imageData, parsed.width, parsed.height)) fail("png-dimension-mismatch", `Decoded PNG for Pixil layer ${layerIndex + 1}, frame ${cel.frameIndex + 1} must be ${parsed.width}x${parsed.height} RGBA pixels.`);
+      cels.push({ frameIndex: cel.frameIndex, imageData, x: 0, y: 0 });
+    }
+    layers.push({ id: `pixil-layer-${layerIndex}`, name: layer.name, opacity: layer.opacity, visible: true, cels });
+  }
+  return { colorMode: "rgba", width: parsed.width, height: parsed.height, frames: parsed.frames.map((frame, index) => ({ index, durationMs: frame.durationMs })), layers };
 }
 
 /** Reads a browser-selected .pixil file without uploading or remotely fetching it. */
-export async function importPixil(file: File): Promise<SpriteProject> {
-  if (file.size > MAX_FILE_BYTES) {
-    fail("file-too-large", `Pixil file exceeds the ${MAX_FILE_BYTES}-byte import limit.`);
-  }
-
+export async function importPixil(file: File, dependencies: PixilImportDependencies = {}): Promise<SpriteProject> {
+  if (file.size > MAX_FILE_BYTES) fail("file-too-large", `Pixil file exceeds the ${MAX_FILE_BYTES}-byte import limit.`);
   let json: string;
-  try {
-    json = await file.text();
-  } catch (error) {
-    throw new PixilImportError(
-      "file-read",
-      "Could not read the selected Pixil file.",
-      { cause: error },
-    );
-  }
-
-  return importPixilJson(json);
+  try { json = await file.text(); }
+  catch (error) { throw new PixilImportError("file-read", "Could not read the selected Pixil file.", { cause: error }); }
+  return importPixilJson(json, dependencies);
 }

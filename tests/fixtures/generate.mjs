@@ -751,45 +751,50 @@ function pixeloramaFixture({
   return encodeZip(entries);
 }
 
-function pixilCel(frameIndex, pixels, { width = 2, height = 2 } = {}) {
-  return {
-    frameIndex,
-    x: 0,
-    y: 0,
-    width,
-    height,
-    rgbaBase64: rawRgbaBase64(pixels),
-  };
-}
-
 function pixilLayer({
-  blendMode = "normal",
-  cels,
+  blend = "source-over",
+  frames,
+  id,
   name,
-  opacity = 1,
-  visible = true,
+  opacity = "1",
+  unqid,
 }) {
-  return {
-    blendMode,
-    cels: cels.map((pixels, frameIndex) => pixilCel(frameIndex, pixels)),
+  return frames.map((pixels) => ({
+    id,
+    src: pngDataUrl(2, 2, pixels),
+    edit: false,
     name,
     opacity,
-    visible,
-  };
+    active: true,
+    unqid,
+    options: { blend, locked: false },
+  }));
 }
 
 function pixilFile({ frames, layers }) {
   return `${JSON.stringify({
-    pixil: {
-      format: "pixilart.com/pixil-project",
-      schemaVersion: 1,
-      width: 2,
-      height: 2,
-      frameCount: frames.length,
-      layerCount: layers.length,
-      frames: frames.map((durationMs, index) => ({ index, durationMs })),
-      layers: layers.map((layer, index) => ({ index, ...layer })),
-    },
+    application: "pixil",
+    type: ".pixil",
+    version: "2.7.0",
+    website: "pixilart.com",
+    author: "https://www.pixilart.com",
+    contact: "support@pixilart.com",
+    width: "2",
+    height: "2",
+    colors: { default: ["000000", "ffffff"] },
+    frames: frames.map((speed, frameIndex) => ({
+      name: "",
+      speed,
+      layers: layers.map((layer) => layer[frameIndex]),
+      active: frameIndex === 0,
+      selectedLayer: "0",
+      unqid: `frame-${frameIndex}`,
+      width: "2",
+      height: "2",
+    })),
+    currentFrame: 0,
+    speed: 100,
+    name: "Synthetic compatibility fixture",
   }, null, 2)}\n`;
 }
 
@@ -1090,9 +1095,11 @@ const pixilPositive = pixilFile({
   frames: [120, 75],
   layers: [
     pixilLayer({
+      id: 0,
+      unqid: "base-layer",
       name: "Base visible half",
-      opacity: 0.5,
-      cels: [
+      opacity: "0.5",
+      frames: [
         [
           cyan, transparent,
           transparent, yellow,
@@ -1104,9 +1111,10 @@ const pixilPositive = pixilFile({
       ],
     }),
     pixilLayer({
+      id: 1,
+      unqid: "ink-layer",
       name: "Hidden ink",
-      visible: false,
-      cels: [
+      frames: [
         [
           transparent, coral,
           transparent, transparent,
@@ -1124,26 +1132,26 @@ outputs.set("pixil/two-layers-two-frames.pixil", pixilPositive);
 outputs.set(
   "pixil/unsupported-blend-mode.pixil",
   mutatePixil(pixilPositive, (document) => {
-    document.pixil.layers[0].blendMode = "multiply";
+    document.frames[0].layers[0].options.blend = "multiply";
   }),
 );
 outputs.set(
   "pixil/external-image-url.pixil",
   mutatePixil(pixilPositive, (document) => {
-    document.pixil.layers[0].cels[0].rgbaBase64 =
+    document.frames[0].layers[0].src =
       "https://example.invalid/sprite.png";
   }),
 );
 outputs.set(
   "pixil/missing-cel.pixil",
   mutatePixil(pixilPositive, (document) => {
-    document.pixil.layers[0].cels.pop();
+    document.frames[1].layers.pop();
   }),
 );
 outputs.set(
   "pixil/ambiguous-layer-index.pixil",
   mutatePixil(pixilPositive, (document) => {
-    document.pixil.layers[1].index = 0;
+    document.frames[1].layers[1].unqid = "base-layer";
   }),
 );
 
