@@ -1,79 +1,67 @@
-# Pixil/Pixilart `.pixil` Supported Subset
+# Pixilart `.pixil` 2.7 Supported Subset
 
-Status: supported, fixture-backed subset. This is limited project-file import,
-not full or lossless Pixil/Pixilart compatibility.
+Status: supported compatibility subset based on a genuine Pixilart 2.7.0 save
+observed during testing. This is not universal or lossless Pixil compatibility.
+All processing is browser-local; artwork is neither uploaded nor fetched.
 
-The browser UI accepts exactly one local `.pixil` file. The importer reads it
-in the browser and does not upload the project, fetch external image data, or
-send artwork to Pixilart or another processing service.
+## Accepted structure
 
-## Accepted Container
+The file must be JSON with `application: "pixil"`, `type: ".pixil"`,
+`version: "2.7.0"`, `website: "pixilart.com"`, canvas `width` and `height`, and a
+non-empty `frames` array. Dimensions may be safe integers or canonical
+non-negative integer strings. Each frame must repeat the canvas dimensions,
+provide a positive integer `speed` in milliseconds, and contain `layers`.
 
-The file must be strict JSON with exactly one root field, `pixil`. The project
-object must use:
+Each frame layer must provide:
 
-- `format: "pixilart.com/pixil-project"`;
-- `schemaVersion: 1`;
-- integer `width` and `height` from 1 through 1024;
-- `frameCount` and `layerCount` values matching non-empty `frames` and `layers`
-  arrays; and
-- no unknown fields at the root, project, frame, layer, or cel level.
+- a non-empty `name`;
+- opacity from 0 through 1 as a finite number or canonical numeric string;
+- `options.blend: "source-over"`, mapped to normal compositing;
+- embedded PNG data in `src`; the importer locates the `base64,` marker instead
+  of requiring one exact data-URL prefix; and
+- stable identity. A validated, non-empty `unqid` is preferred. If it is absent,
+  a non-negative safe-integer `id` is the only fallback.
 
-This contract is proven by synthetic repository fixtures. It is not a claim
-that every file named `.pixil`, or every Pixilart editor version, uses this
-schema. Alternate containers and schema versions are rejected.
+Logical layer identities, order, name, and opacity must agree across frames.
+Each decoded PNG must be full-canvas RGBA data. Layer names, order, opacity,
+pixels, frame order, and frame timing are converted. `active` is validated as a
+boolean when present but is not mapped to Aseprite visibility; its editor-state
+semantics are not established, so imported layers remain visible.
 
-## Preserved Data
+Pixilart documents frame time in milliseconds, so `speed` is preserved as the
+frame duration, subject to the canonical Aseprite duration normalization range.
 
-For an accepted project, the importer maps the following data into
-`SpriteProject`:
+## Validation and limits
 
-- canvas width and height;
-- explicit frame order and required positive `durationMs` values, normalized
-  to the Aseprite-supported range of 1 through 65535 milliseconds;
-- explicit layer order, non-empty layer names, visibility, and opacity from
-  the source `0..1` range to `0..255`;
-- normal blend mode; and
-- exact row-major RGBA bytes for one full-canvas cel at `(0, 0)` for every
-  layer/frame pair.
-
-Layers are preserved only when the `.pixil` source contains this required,
-supported layer data. A flattened preview or export is never used to recover
-missing layers.
-
-## Validation And Safety Limits
-
-The importer rejects malformed or ambiguous projects rather than inventing
-defaults. Current limits are:
-
-- file size: 96 MiB;
+- file/JSON text: 96 MiB;
+- dimensions: 1 through 1024 each;
 - frames: 1 through 512;
-- layers: 1 through 64;
-- total cels: at most 4096;
-- decoded raw cel data: at most 64 MiB; and
-- strings: at most 1024 characters.
+- layers per frame: 1 through 64;
+- cels: at most 4096;
+- embedded decoded PNG payload bytes: at most 64 MiB total; and
+- allocated decoded RGBA cel bytes: at most 64 MiB total.
 
-Frame and layer indexes must be unique, contiguous, zero-based, and match array
-order. Every layer must contain exactly one cel for every frame. Raw pixel data
-must be strict base64 that decodes to exactly `width * height * 4` bytes.
+Malformed base64, non-PNG signatures, decoder failures, decoded dimension
+mismatches, fractional/zero/negative/unsafe dimensions, inconsistent layer
+identity, and unsupported blends are rejected with content-safe diagnostics.
+Editor metadata such as palettes, previews, selection state, locks, default
+filters, frame names, and project contact fields is not exported.
 
-## Unsupported Features
+The former repository-defined `{ pixil: { schemaVersion: 1, ... } }` raw-RGBA
+fixture schema was not a genuine Pixilart schema and is intentionally rejected
+with a migration diagnostic.
 
-The supported subset rejects or does not represent:
+## Manual verification with a genuine local file
 
-- alternate `.pixil` containers, schema versions, and unknown fields;
-- missing, duplicate, sparse, or ambiguous frames, layers, or cels;
-- partial-canvas cels, nonzero cel offsets, linked or shared cels, and external
-  image URLs;
-- blend modes other than normal;
-- clipping masks, alpha lock, filters, effects, transforms, groups, tile
-  features, reference images, tracing backgrounds, selections, and history;
-- palettes or indexed pixels required to interpret artwork;
-- account saves, gallery pages, community/social data, collaboration data, and
-  remote media; and
-- editor state or other Pixil/Pixilart features not represented by the exact
-  fixture-backed fields above.
+1. Keep the genuine `.pixil` file outside the repository; do not copy, rename,
+   encode, or commit it as a fixture.
+2. Run the app locally and choose **Pixil/Pixilart project**.
+3. Select the local file and convert it to `.aseprite`.
+4. Open the result in Aseprite and compare canvas size, timeline timing, layer
+   order/names/opacity, and pixels against the source in Pixilart.
+5. Confirm no source file, artwork, embedded PNG, or base64 text appears in
+   `git status` or the staged diff.
 
-Unsupported features are rejected clearly when detected. Because Pixilart's
-broader saved-project schema and editor feature set are not covered by this
-contract, conversion is not guaranteed lossless.
+The committed 2×2 fixture mirrors the observed 2.7.0 container and field
+structure only. Every pixel and embedded PNG in it was freshly generated for
+this repository and is unrelated to the genuine compatibility-test artwork.

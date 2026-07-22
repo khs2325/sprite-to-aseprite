@@ -205,38 +205,24 @@ type PixeloramaFixture = {
   vanishing_points: unknown[];
 };
 
-type PixilCelFixture = {
-  frameIndex: number;
-  height: number;
-  rgbaBase64: string;
-  width: number;
-  x: number;
-  y: number;
-};
-
-type PixilFrameFixture = {
-  durationMs: number;
-  index: number;
-};
-
 type PixilLayerFixture = {
-  blendMode: string;
-  cels: PixilCelFixture[];
-  index: number;
+  active: boolean;
+  id: number;
   name: string;
-  opacity: number;
-  visible: boolean;
+  opacity: string;
+  options: { blend: string };
+  src: string;
+  unqid: string;
 };
 
 type PixilFixture = {
-  format: string;
-  frameCount: number;
-  frames: PixilFrameFixture[];
-  height: number;
-  layerCount: number;
-  layers: PixilLayerFixture[];
-  schemaVersion: number;
-  width: number;
+  application: string;
+  frames: { height: string; layers: PixilLayerFixture[]; speed: number; width: string }[];
+  height: string;
+  type: string;
+  version: string;
+  website: string;
+  width: string;
 };
 
 type PsdChannelFixtureMetadata = {
@@ -540,8 +526,7 @@ function parsePixeloramaFixture(relativePath: string): {
 
 function parsePixilFixture(relativePath: string): PixilFixture {
   const source = readFileSync(join(fixtureDirectory, relativePath), "utf8");
-  const document = JSON.parse(source) as { pixil: PixilFixture };
-  return document.pixil;
+  return JSON.parse(source) as PixilFixture;
 }
 
 function pixeloramaRawPixel(
@@ -554,14 +539,9 @@ function pixeloramaRawPixel(
   return [...bytes.subarray(offset, offset + 4)];
 }
 
-function pixilRawPixel(
-  cel: PixilCelFixture,
-  x: number,
-  y: number,
-): number[] {
-  const bytes = Buffer.from(cel.rgbaBase64, "base64");
-  const offset = (y * cel.width + x) * 4;
-  return [...bytes.subarray(offset, offset + 4)];
+function pixilLayerImage(layer: PixilLayerFixture): ImageData {
+  const marker = "base64,";
+  return decodePng(Buffer.from(layer.src.slice(layer.src.indexOf(marker) + marker.length), "base64"));
 }
 
 function inspectKritaNativeTile(bytes: Buffer): {
@@ -1367,60 +1347,50 @@ describe("synthetic sprite fixtures", () => {
     });
   });
 
-  it("provides a Pixil JSON fixture with raw pixel layers and frame timing", () => {
+  it("provides an observed Pixilart 2.7 structure with synthetic PNG layers", () => {
     const data = parsePixilFixture("pixil/two-layers-two-frames.pixil");
 
     expect(data).toMatchObject({
-      format: "pixilart.com/pixil-project",
-      schemaVersion: 1,
-      width: 2,
-      height: 2,
-      frameCount: 2,
-      layerCount: 2,
+      application: "pixil",
+      type: ".pixil",
+      version: "2.7.0",
+      website: "pixilart.com",
+      width: "2",
+      height: "2",
       frames: [
-        { index: 0, durationMs: 120 },
-        { index: 1, durationMs: 75 },
+        { width: "2", height: "2", speed: 120 },
+        { width: "2", height: "2", speed: 75 },
       ],
     });
-    expect(data.layers.map((layer) => ({
-      index: layer.index,
+    expect(data.frames[0].layers.map((layer) => ({
+      id: layer.id,
       name: layer.name,
-      visible: layer.visible,
       opacity: layer.opacity,
-      blendMode: layer.blendMode,
-      frameIndexes: layer.cels.map(({ frameIndex }) => frameIndex),
+      blend: layer.options.blend,
+      unqid: layer.unqid,
     }))).toEqual([
       {
-        index: 0,
+        id: 0,
         name: "Base visible half",
-        visible: true,
-        opacity: 0.5,
-        blendMode: "normal",
-        frameIndexes: [0, 1],
+        opacity: "0.5",
+        blend: "source-over",
+        unqid: "base-layer",
       },
       {
-        index: 1,
+        id: 1,
         name: "Hidden ink",
-        visible: false,
-        opacity: 1,
-        blendMode: "normal",
-        frameIndexes: [0, 1],
+        opacity: "1",
+        blend: "source-over",
+        unqid: "ink-layer",
       },
     ]);
-    expect(data.layers.flatMap(({ cels }) => cels).every((cel) =>
-      cel.x === 0 &&
-      cel.y === 0 &&
-      cel.width === data.width &&
-      cel.height === data.height &&
-      Buffer.from(cel.rgbaBase64, "base64").length === data.width * data.height * 4))
-      .toBe(true);
-    expect(pixilRawPixel(data.layers[0].cels[0], 0, 0))
+    expect(apngPixel(pixilLayerImage(data.frames[0].layers[0]).data, 2, 0, 0))
       .toEqual([17, 138, 178, 255]);
-    expect(pixilRawPixel(data.layers[0].cels[0], 1, 1))
+    expect(apngPixel(pixilLayerImage(data.frames[0].layers[0]).data, 2, 1, 1))
       .toEqual([255, 209, 102, 255]);
-    expect(pixilRawPixel(data.layers[1].cels[0], 1, 0))
+    expect(apngPixel(pixilLayerImage(data.frames[0].layers[1]).data, 2, 1, 0))
       .toEqual([239, 71, 111, 255]);
-    expect(pixilRawPixel(data.layers[1].cels[1], 0, 1))
+    expect(apngPixel(pixilLayerImage(data.frames[1].layers[1]).data, 2, 0, 1))
       .toEqual([255, 209, 102, 255]);
   });
 
@@ -1428,21 +1398,22 @@ describe("synthetic sprite fixtures", () => {
     const unsupportedBlend = parsePixilFixture(
       "pixil/unsupported-blend-mode.pixil",
     );
-    expect(unsupportedBlend.layers[0]).toMatchObject({
+    expect(unsupportedBlend.frames[0].layers[0]).toMatchObject({
       name: "Base visible half",
-      blendMode: "multiply",
+      options: { blend: "multiply" },
     });
 
     const externalImage = parsePixilFixture("pixil/external-image-url.pixil");
-    expect(externalImage.layers[0].cels[0].rgbaBase64)
+    expect(externalImage.frames[0].layers[0].src)
       .toBe("https://example.invalid/sprite.png");
 
     const missingCel = parsePixilFixture("pixil/missing-cel.pixil");
-    expect(missingCel.layers[0].cels).toHaveLength(1);
-    expect(missingCel.frameCount).toBe(2);
+    expect(missingCel.frames[1].layers).toHaveLength(1);
+    expect(missingCel.frames).toHaveLength(2);
 
     const ambiguousLayer = parsePixilFixture("pixil/ambiguous-layer-index.pixil");
-    expect(ambiguousLayer.layers.map(({ index }) => index)).toEqual([0, 0]);
+    expect(ambiguousLayer.frames[1].layers.map(({ unqid }) => unqid))
+      .toEqual(["base-layer", "base-layer"]);
   });
 
   it("provides tiny PSD fixtures with deterministic raster layer metadata", () => {

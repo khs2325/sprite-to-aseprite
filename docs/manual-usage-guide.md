@@ -365,20 +365,21 @@ traces.
 ## Pixil/Pixilart project
 
 Use this mode for exactly one `.pixil` JSON project that matches the
-[documented fixture-backed subset](pixil-format.md).
+[documented observed Pixilart 2.7.0 subset](pixil-format.md).
 
 1. Select **Pixil/Pixilart project**.
 2. Add exactly one `.pixil` file.
 3. Select **Convert to .aseprite**.
 
-The supported subset preserves the explicit canvas size, frame order,
-per-frame durations, layer names and order, visibility, opacity, and RGBA
-pixels. It requires schema version 1, normal layers, and one full-canvas cel
-for every layer/frame pair. The importer rejects alternate containers or
-versions, unknown fields, partial or linked cels, external image URLs,
-non-normal blend modes, and unverified Pixil/Pixilart features. Conversion is
-not guaranteed lossless, and layers are preserved only when the `.pixil`
-source contains the required supported layer data.
+The supported subset preserves canvas size, frame order, millisecond `speed`,
+layer names/order/opacity, and decoded PNG pixels. It requires the observed
+2.7.0 identifiers, stable cross-frame layer identity, `source-over` blending,
+and one full-canvas PNG per layer/frame pair. Layer `active` is not mapped to
+Aseprite visibility because its semantics are uncertain. Other versions,
+external or malformed payloads, unsupported blends, and unverified features
+are rejected. Conversion is not guaranteed lossless. For a genuine file, keep
+it outside the repository and follow the private local-file verification steps
+in [the format documentation](pixil-format.md).
 
 ## Krita project
 

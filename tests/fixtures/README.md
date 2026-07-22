@@ -89,27 +89,26 @@ pixels. They are intended to preserve layers when a supported `.pxo` source
 contains pixel layer data; they do not cover tilemaps, effects, groups, 3D
 layers, audio layers, indexed color, or ambiguous metadata.
 
-The Pixil fixtures add deterministic JSON `.pixil` containers for the
-fixture-gated importer subset. They use root `pixil.format`
-`pixilart.com/pixil-project`, `schemaVersion` 1, explicit frame and layer
-indexes, per-frame millisecond durations, normal blend mode, layer visibility,
-opacity in the `0..1` range, and full-canvas raw RGBA cels encoded as strict
-base64. They are generated locally from synthetic pixels and do not use
-Pixilart gallery, account, downloaded, private, or user-provided artwork.
+The Pixil fixtures use the `application/type/version/frames/layers/src`
+structure observed in a genuine Pixilart 2.7.0 save during compatibility
+testing. They contain numeric-string dimensions and opacity, per-frame
+millisecond speed, stable layer `unqid` values, `source-over` blending, and
+full-canvas embedded PNGs. All committed PNGs and pixels were freshly generated
+for these tests; no genuine file, derived artwork/base64, gallery, account,
+private, downloaded, or user-provided content is included.
 
 | Fixture | Canvas | Frames | Layers | SHA-256 |
 | --- | --- | ---: | ---: | --- |
-| `pixil/two-layers-two-frames.pixil` | 2 by 2 | 2 | 2 | `529eee6fdde65c9390c966b204bc463ce81ae49f02e9e4d6263e9350e3641c33` |
-| `pixil/unsupported-blend-mode.pixil` | 2 by 2 | 2 | 2 | `19b8511a877fbddf7c15c6d8e7eb73707d1fbeab5fd7aaf5e5a8cc9ac3414e03` |
-| `pixil/external-image-url.pixil` | 2 by 2 | 2 | 2 | `e62f8456efb54aa87992acfe6cdfca44b563d45428dc0927d0b2a0f547193600` |
-| `pixil/missing-cel.pixil` | 2 by 2 | 2 | 2 | `66405e7ff2932599a1ffb92af84d81b60229c8af3b1285d3516931532cb0491c` |
-| `pixil/ambiguous-layer-index.pixil` | 2 by 2 | 2 | 2 | `14d5c2b99cc001e28b03ad478a3b985774abd1d285b7148ba6e9edbda44547fb` |
+| `pixil/two-layers-two-frames.pixil` | 2 by 2 | 2 | 2 | `1073df7248ac69f588b83bdd3ea23bf89ec8101eb9fd9d68b0e00d042f5f3913` |
+| `pixil/unsupported-blend-mode.pixil` | 2 by 2 | 2 | 2 | `c30f2b74c0e18840c6476276a9a8df5bd65ece66bcb76f6611c35dc1d19d10b9` |
+| `pixil/external-image-url.pixil` | 2 by 2 | 2 | 2 | `b2583a5e3415e99c04dc76fbed7d3eb9a4f3f7243512b3f3dd6157fc64a12511` |
+| `pixil/missing-cel.pixil` | 2 by 2 | 2 | 2 | `56ea4a43a87586392a03dd1804cdfab31dd24f168e656b7f1be0ade3deb5e7c3` |
+| `pixil/ambiguous-layer-index.pixil` | 2 by 2 | 2 | 2 | `e8be26c0e1bd255a1ae7c949023018a9ec4499920fc7ac89e3303e08c3e847da` |
 
 Pixil fixtures preserve layers only when the `.pixil` source contains this
-supported layer data. They do not cover alternate Pixilart containers,
-compressed or encrypted variants, external image URLs, previews, flattened
-exports, non-normal blend modes, clipping, alpha lock, partial-canvas cels,
-groups, palettes, social metadata, or ambiguous ordering.
+supported layer data. They do not establish compatibility with other Pixilart
+versions, external images, non-normal blends, effects, groups, palettes, or
+ambiguous ordering. Layer `active` is not treated as Aseprite visibility.
 
 The Krita fixtures add deterministic ZIP-backed `.kra` containers for the
 future minimal native-raster importer. Tests inspect the stored `mimetype`,

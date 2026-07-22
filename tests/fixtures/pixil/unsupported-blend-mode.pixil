@@ -1,72 +1,95 @@
 {
-  "pixil": {
-    "format": "pixilart.com/pixil-project",
-    "schemaVersion": 1,
-    "width": 2,
-    "height": 2,
-    "frameCount": 2,
-    "layerCount": 2,
-    "frames": [
-      {
-        "index": 0,
-        "durationMs": 120
-      },
-      {
-        "index": 1,
-        "durationMs": 75
-      }
-    ],
-    "layers": [
-      {
-        "index": 0,
-        "blendMode": "multiply",
-        "cels": [
-          {
-            "frameIndex": 0,
-            "x": 0,
-            "y": 0,
-            "width": 2,
-            "height": 2,
-            "rgbaBase64": "EYqy/wAAAAAAAAAA/9Fm/w=="
-          },
-          {
-            "frameIndex": 1,
-            "x": 0,
-            "y": 0,
-            "width": 2,
-            "height": 2,
-            "rgbaBase64": "AAAAAAAAAAARirL//9Fm/w=="
-          }
-        ],
-        "name": "Base visible half",
-        "opacity": 0.5,
-        "visible": true
-      },
-      {
-        "index": 1,
-        "blendMode": "normal",
-        "cels": [
-          {
-            "frameIndex": 0,
-            "x": 0,
-            "y": 0,
-            "width": 2,
-            "height": 2,
-            "rgbaBase64": "AAAAAO9Hb/8AAAAAAAAAAA=="
-          },
-          {
-            "frameIndex": 1,
-            "x": 0,
-            "y": 0,
-            "width": 2,
-            "height": 2,
-            "rgbaBase64": "70dv/wAAAAD/0Wb/AAAAAA=="
-          }
-        ],
-        "name": "Hidden ink",
-        "opacity": 1,
-        "visible": false
-      }
+  "application": "pixil",
+  "type": ".pixil",
+  "version": "2.7.0",
+  "website": "pixilart.com",
+  "author": "https://www.pixilart.com",
+  "contact": "support@pixilart.com",
+  "width": "2",
+  "height": "2",
+  "colors": {
+    "default": [
+      "000000",
+      "ffffff"
     ]
-  }
+  },
+  "frames": [
+    {
+      "name": "",
+      "speed": 120,
+      "layers": [
+        {
+          "id": 0,
+          "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR42mMQ7Nr0nwEG/l9M+w8AKm0FgrxyOTgAAAAASUVORK5CYII=",
+          "edit": false,
+          "name": "Base visible half",
+          "opacity": "0.5",
+          "active": true,
+          "unqid": "base-layer",
+          "options": {
+            "blend": "multiply",
+            "locked": false
+          }
+        },
+        {
+          "id": 1,
+          "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAE0lEQVR42mNgYGBgeO+e/58BBgAeRAKl39FCwwAAAABJRU5ErkJggg==",
+          "edit": false,
+          "name": "Hidden ink",
+          "opacity": "1",
+          "active": true,
+          "unqid": "ink-layer",
+          "options": {
+            "blend": "source-over",
+            "locked": false
+          }
+        }
+      ],
+      "active": true,
+      "selectedLayer": "0",
+      "unqid": "frame-0",
+      "width": "2",
+      "height": "2"
+    },
+    {
+      "name": "",
+      "speed": 75,
+      "layers": [
+        {
+          "id": 0,
+          "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR42mNggAHBrk3//19M+w8AFcEFgv3agVUAAAAASUVORK5CYII=",
+          "edit": false,
+          "name": "Base visible half",
+          "opacity": "0.5",
+          "active": true,
+          "unqid": "base-layer",
+          "options": {
+            "blend": "source-over",
+            "locked": false
+          }
+        },
+        {
+          "id": 1,
+          "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR42mN4757/nwEE/l9MAzMAPeIF2jGiUF0AAAAASUVORK5CYII=",
+          "edit": false,
+          "name": "Hidden ink",
+          "opacity": "1",
+          "active": true,
+          "unqid": "ink-layer",
+          "options": {
+            "blend": "source-over",
+            "locked": false
+          }
+        }
+      ],
+      "active": false,
+      "selectedLayer": "0",
+      "unqid": "frame-1",
+      "width": "2",
+      "height": "2"
+    }
+  ],
+  "currentFrame": 0,
+  "speed": 100,
+  "name": "Synthetic compatibility fixture"
 }

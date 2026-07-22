@@ -92,34 +92,30 @@ function pixil(name: string): BrowserSourceFile {
 
 function validPixilProjectJson(): string {
   return JSON.stringify({
-    pixil: {
-      format: "pixilart.com/pixil-project",
-      schemaVersion: 1,
-      width: 1,
-      height: 1,
-      frameCount: 1,
-      layerCount: 1,
-      frames: [{ index: 0, durationMs: 100 }],
-      layers: [
-        {
-          index: 0,
-          name: "Ink",
-          visible: true,
-          opacity: 1,
-          blendMode: "normal",
-          cels: [
-            {
-              frameIndex: 0,
-              x: 0,
-              y: 0,
-              width: 1,
-              height: 1,
-              rgbaBase64: "AAAAAA==",
-            },
-          ],
-        },
-      ],
-    },
+    application: "pixil",
+    type: ".pixil",
+    version: "2.7.0",
+    website: "pixilart.com",
+    width: "1",
+    height: "1",
+    frames: [
+      {
+        speed: 100,
+        width: "1",
+        height: "1",
+        layers: [
+          {
+            id: 0,
+            src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+X5WzAAAAAElFTkSuQmCC",
+            name: "Ink",
+            opacity: "1",
+            active: true,
+            unqid: "ink-layer",
+            options: { blend: "source-over" },
+          },
+        ],
+      },
+    ],
   });
 }
 
@@ -248,6 +244,19 @@ class UiElementStub {
 
   getAttribute(name: string): string | null {
     return this.attributes.get(name) ?? null;
+  }
+
+  getContext(): CanvasRenderingContext2D | null {
+    if (this.tagName !== "canvas") return null;
+    return {
+      drawImage: vi.fn(),
+      getImageData: () => ({
+        width: 1,
+        height: 1,
+        data: new Uint8ClampedArray(4),
+        colorSpace: "srgb",
+      }),
+    } as unknown as CanvasRenderingContext2D;
   }
 
   removeAttribute(name: string): void {
@@ -692,7 +701,13 @@ describe("mountConverterUi Pixil selection", () => {
 
   it("converts a Pixil project into preview and download state", async () => {
     vi.stubGlobal("HTMLImageElement", class HTMLImageElementStub {});
+    vi.stubGlobal("createImageBitmap", async () => ({
+      width: 1,
+      height: 1,
+      close: vi.fn(),
+    }));
     const document = new UiDocumentStub();
+    vi.stubGlobal("document", document);
     const root = document.createElement("main");
     mountConverterUi(root as unknown as HTMLElement);
 

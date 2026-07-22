@@ -126,20 +126,18 @@ Artwork must remain local to the browser and must never be uploaded.
 
 ## Supported post-MVP Pixil/Pixilart import
 
-Pixil/Pixilart (`.pixil`) is supported as a browser-local import path through
-the canonical `SpriteProject` model and Aseprite exporter. The browser UI
-accepts exactly one file in the [fixture-backed Pixil subset](pixil-format.md):
-a strict JSON container identified as `pixilart.com/pixil-project`, schema
-version 1, with explicit frames, direct normal layers, and full-canvas raw RGBA
-cels.
+Pixilart (`.pixil`) is supported as a browser-local import path through the
+canonical `SpriteProject` model and Aseprite exporter. The browser UI accepts
+exactly one file in the [observed Pixilart 2.7.0 subset](pixil-format.md), using
+the genuine `application/type/version/frames/layers/src` structure with
+embedded full-canvas PNGs and `source-over` layers.
 
 The importer preserves canvas size, frame and layer order, layer names,
-visibility, opacity, per-frame durations, and RGBA pixels only when the source
-contains the required supported data. Alternate containers or versions,
-unknown fields, partial or linked cels, external image URLs, non-normal blend
-modes, and unverified editor features are rejected. This is limited project-file
-import, not full or lossless Pixil/Pixilart compatibility. Files remain local
-to the browser and are never uploaded for conversion.
+opacity, per-frame millisecond timing, and decoded pixels when the source
+contains the supported data. `active` is not mapped to visibility. Alternate
+versions, ambiguous identity, external/non-PNG payloads, non-normal blends, and
+unverified features are rejected. This is limited project-file import, not
+full or lossless compatibility. Files remain local and are never uploaded.
 
 ## Planned additional free/open art tool project formats
 

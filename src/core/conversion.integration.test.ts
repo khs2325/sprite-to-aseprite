@@ -1356,6 +1356,7 @@ describe("importer to Aseprite export integration", () => {
     );
     const project = await importPixil(
       createFile("two-layers-two-frames.pixil", contents, "application/json"),
+      { decodePng: async (bytes) => decodeFixturePng(bytes) },
     );
 
     expect(project).toMatchObject({
@@ -1382,7 +1383,7 @@ describe("importer to Aseprite export integration", () => {
           ],
           name: "Hidden ink",
           opacity: 255,
-          visible: false,
+          visible: true,
         },
       ],
       width: 2,
