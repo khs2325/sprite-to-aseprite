@@ -23,13 +23,13 @@ import {
   hasAutomationSourceChanged,
   isRecoverableCodexSandboxVerificationFailure,
   isBranchBehindOriginMain,
+  isWorkingTreeCleanStatus,
   npmCommand,
   normalizeTitle,
   productCompletionStopReason,
-  policyFalseRecoveryOptions,
+  prMergeSafetyDecision,
   prChecksFailurePolicy,
   productTaskDependencySuppression,
-  scopeViolationRecoveryGuidance,
   selectRoadmapTasks,
   selectProductCompletionTasks,
   shouldContinueAfterCodexFailure,
@@ -281,58 +281,108 @@ describe("Windows sandbox recovery and task-state safety", () => {
     expect(existingTaskRecoveryAction(null, false, false)).toBe("start");
   });
 
-  it("blocks auto_merge.allowed=false by default", () => {
+  it("ignores task auto_merge.allowed=false after mandatory gates pass", () => {
     expect(autoMergePolicyDecision({
       taskPolicyAllowed: false,
-      overrideEnabled: false,
       localVerificationPassed: true,
-      safetyValidationPassed: true
-    })).toBe("block-policy");
-  });
-
-  it("allows policy-false auto-merge only with the explicit override", () => {
-    expect(autoMergePolicyDecision({
-      taskPolicyAllowed: false,
-      overrideEnabled: true,
-      localVerificationPassed: true,
+      requiredPrChecksPassed: true,
       safetyValidationPassed: true
     })).toBe("allow");
   });
 
-  it("keeps local verification and safety validation mandatory under the override", () => {
+  it("keeps local verification, PR checks, and PR metadata validation mandatory", () => {
     expect(autoMergePolicyDecision({
       taskPolicyAllowed: false,
-      overrideEnabled: true,
       localVerificationPassed: false,
+      requiredPrChecksPassed: true,
       safetyValidationPassed: true
     })).toBe("block-verification");
     expect(autoMergePolicyDecision({
       taskPolicyAllowed: false,
-      overrideEnabled: true,
       localVerificationPassed: true,
+      requiredPrChecksPassed: false,
+      safetyValidationPassed: true
+    })).toBe("block-ci");
+    expect(autoMergePolicyDecision({
+      taskPolicyAllowed: false,
+      localVerificationPassed: true,
+      requiredPrChecksPassed: true,
       safetyValidationPassed: false
     })).toBe("block-safety");
   });
 
-  it("resumes an existing policy-blocked PR when the override is enabled", () => {
+  it("resumes an existing policy-false PR without recreating it", () => {
     const existingPr = { state: "OPEN", mergedAt: null };
     expect(existingTaskRecoveryAction(existingPr, false, true)).toBe("resume-pr");
     expect(autoMergePolicyDecision({
       taskPolicyAllowed: false,
-      overrideEnabled: true,
       localVerificationPassed: true,
+      requiredPrChecksPassed: true,
       safetyValidationPassed: true
     })).toBe("allow");
   });
 
-  it("prints manual and override recovery commands for policy-false stops", () => {
-    const recovery = policyFalseRecoveryOptions(8);
-    expect(recovery).toContain("gh pr view 8 --web");
-    expect(recovery).toContain("gh pr merge 8 --squash --delete-branch");
-    expect(recovery).toContain("git checkout main");
-    expect(recovery).toContain("git pull origin main");
-    expect(recovery).toContain("AUTO_DEV_ALLOW_POLICY_FALSE_AUTOMERGE=true npm run auto-dev:until-stop");
-    expect(recovery).toContain('$env:AUTO_DEV_ALLOW_POLICY_FALSE_AUTOMERGE="true"');
+  function legacyRestrictedMergeDecision(files, overrides = {}) {
+    const restrictiveTask = {
+      scope: {
+        allowed_paths: ["src/app/**"],
+        forbidden_paths: ["scripts/**"]
+      },
+      auto_merge: {
+        allowed: false,
+        max_changed_files: 1,
+        forbidden_paths: [".github/workflows/**", "package-lock.json"]
+      }
+    };
+    return prMergeSafetyDecision({
+      baseRefName: "main",
+      files,
+      headRefName: "codex/task-123",
+      url: "https://github.com/example/repo/pull/123"
+    }, "codex/task-123", { ...restrictiveTask, ...overrides });
+  }
+
+  it("allows a task to change a file not listed in allowed_paths", () => {
+    expect(legacyRestrictedMergeDecision([
+      { path: "scripts/auto-dev-cycle.mjs", additions: 1 }
+    ])).toMatchObject({ allowed: true, policy: "allow", reasons: [] });
+  });
+
+  it("allows a task to change more files than max_changed_files", () => {
+    expect(legacyRestrictedMergeDecision(
+      Array.from({ length: 12 }, (_, index) => ({ path: `docs/generated-${index}.md`, additions: 1 }))
+    )).toMatchObject({ allowed: true, policy: "allow", reasons: [] });
+  });
+
+  it("allows a task to change paths listed in forbidden_paths", () => {
+    expect(legacyRestrictedMergeDecision([
+      { path: ".github/workflows/ci.yml", additions: 1 },
+      { path: "package-lock.json", additions: 1 },
+      { path: ".env.example", additions: 1 }
+    ])).toMatchObject({ allowed: true, policy: "allow", reasons: [] });
+  });
+
+  it("keeps dirty working tree protection independent from task policy", () => {
+    expect(isWorkingTreeCleanStatus("")).toBe(true);
+    expect(isWorkingTreeCleanStatus(" M src/app/converterUi.ts")).toBe(false);
+    expect(isWorkingTreeCleanStatus("?? package.json")).toBe(false);
+  });
+
+  it("blocks merge metadata when local verification or required PR checks fail", () => {
+    const pr = {
+      baseRefName: "main",
+      files: [{ path: "src/app/converterUi.ts", additions: 1 }],
+      headRefName: "codex/task-123",
+      url: "https://github.com/example/repo/pull/123"
+    };
+    expect(prMergeSafetyDecision(pr, "codex/task-123", {}, { localVerificationPassed: false })).toMatchObject({
+      allowed: false,
+      policy: "block-verification"
+    });
+    expect(prMergeSafetyDecision(pr, "codex/task-123", {}, { requiredPrChecksPassed: false })).toMatchObject({
+      allowed: false,
+      policy: "block-ci"
+    });
   });
 
   it("includes recovery commands and workflow context in failure logs", () => {
@@ -367,24 +417,6 @@ describe("Windows sandbox recovery and task-state safety", () => {
     expect(() => guardDirtyTaskStateOnTaskBranch("main", status)).not.toThrow();
   });
 
-  it("prints actionable scope-violation recovery without restoring files automatically", () => {
-    const guidance = scopeViolationRecoveryGuidance(
-      24,
-      ["scripts/auto-dev-cycle.test.mjs"],
-      ["index.html", "src/index.ts", "src/app/**", "src/**/*.test.*", "docs/**"]
-    );
-
-    expect(guidance).toContain("files are outside task scope");
-    expect(guidance).toContain("- scripts/auto-dev-cycle.test.mjs");
-    expect(guidance).toContain("Declared allowed paths:");
-    expect(guidance).toContain("- src/app/**");
-    expect(guidance).toContain("gh pr diff 24");
-    expect(guidance).toContain("git restore --source origin/main -- scripts/auto-dev-cycle.test.mjs");
-    expect(guidance).toContain("git commit -m \"Remove out-of-scope changes\"");
-    expect(guidance).toContain("git push");
-    expect(guidance).toContain("npm run auto-dev:until-stop");
-  });
-
   it("classifies access-denied verification as sandbox-only but still requires outer checks", () => {
     const output = "npm run test was blocked by the managed Windows sandbox: Access is denied before tests ran";
     expect(isRecoverableCodexSandboxVerificationFailure(output)).toBe(true);
@@ -409,7 +441,6 @@ describe("Windows sandbox recovery and task-state safety", () => {
       prUrl: "https://github.com/example/repo/pull/24",
       implementationFailure: false,
       branchBehindMain: true,
-      offendingPaths: [],
       managedSandboxFailure: false,
       localVerificationFailed: true,
       safetyValidationFailed: false
@@ -442,7 +473,7 @@ describe("Windows sandbox recovery and task-state safety", () => {
     expect(lines).toContain("Working tree clean: yes");
     expect(lines).toContain("Existing PR URL: https://github.com/example/repo/pull/24");
     expect(lines).toContain("Local verification failed: yes");
-    expect(lines).toContain("PR safety validation failed: yes");
+    expect(lines).toContain("PR metadata validation failed: yes");
     expect(lines).toContain("Task branch behind main: yes");
     expect(lines.join("\n")).toContain("Add browser drag-and-drop import area");
   });
@@ -466,19 +497,19 @@ describe("backlog task generation", () => {
     expect(generated[0].id).toBe("002");
   });
 
-  it("builds YAML with required planning and safety fields", () => {
+  it("builds YAML without generated path or changed-file restrictions", () => {
     const task = selectRoadmapTasks({ docs: {}, sourceFiles: [], testFiles: [], tasks: [] }, 1)[0];
     const parsed = YAML.parse(buildTaskYaml(task));
     expect(parsed.id).toBe("001");
     expect(parsed.scope.summary).toBeTruthy();
-    expect(parsed.scope.allowed_paths.length).toBeGreaterThan(0);
-    expect(parsed.scope.forbidden_paths).toContain(".github/workflows/**");
+    expect(parsed.scope.allowed_paths).toBeUndefined();
+    expect(parsed.scope.forbidden_paths).toBeUndefined();
     expect(parsed.requirements.length).toBeGreaterThan(0);
     expect(parsed.verification).toEqual(["npm run typecheck", "npm run test", "npm run build"]);
-    expect(typeof parsed.auto_merge.allowed).toBe("boolean");
+    expect(parsed.auto_merge).toBeUndefined();
   });
 
-  it("generates an implementation prompt from the structured task scope", () => {
+  it("generates an implementation prompt without path restriction guardrails", () => {
     const workspace = createPlanningWorkspace();
     try {
       const task = selectRoadmapTasks({ docs: {}, sourceFiles: [], testFiles: [], tasks: [] }, 1)[0];
@@ -494,8 +525,10 @@ describe("backlog task generation", () => {
 
       expect(result.status).toBe(0);
       const prompt = fs.readFileSync(path.join(workspace, "prompts", "generated", `${task.id}.md`), "utf8");
-      expect(prompt).toContain("Allowed paths:");
-      expect(prompt).toContain("src/core/**");
+      expect(prompt).toContain("Task focus:");
+      expect(prompt).toContain(task.goal);
+      expect(prompt).not.toContain("Allowed paths:");
+      expect(prompt).not.toContain("Forbidden paths:");
       expect(prompt).not.toContain("[object Object]");
       expect(prompt).toContain("managed sandbox verification limitation");
       expect(prompt).toContain("outer automation will run local verification");
@@ -506,7 +539,7 @@ describe("backlog task generation", () => {
     }
   });
 
-  it("adds strict out-of-scope guardrails to product-completion prompts", () => {
+  it("adds product-completion focus guidance without out-of-scope guardrails", () => {
     const workspace = createPlanningWorkspace();
     try {
       const context = collectProjectPlanningContext(workspace);
@@ -525,11 +558,11 @@ describe("backlog task generation", () => {
       const prompt = fs.readFileSync(path.join(workspace, "prompts", "generated", `${task.id}.md`), "utf8");
 
       expect(result.status).toBe(0);
-      expect(prompt).toContain("Strict product-completion task scope");
-      expect(prompt).toContain("Do not edit files outside the Allowed paths");
-      expect(prompt).toContain("report the failure instead of modifying out-of-scope files");
-      expect(prompt).toContain("Do not repair the automation system from a UI, docs, import, or export task");
-      expect(prompt).toContain("scripts/**");
+      expect(prompt).toContain("Product-completion task focus");
+      expect(prompt).toContain("Modify any repository file required to complete the task");
+      expect(prompt).not.toContain("Do not edit files outside the Allowed paths");
+      expect(prompt).not.toContain("out-of-scope files");
+      expect(prompt).not.toContain("scripts/**");
     } finally {
       fs.rmSync(workspace, { recursive: true, force: true });
     }
@@ -894,7 +927,10 @@ describe("product completeness audits and task generation", () => {
     expect(normalizeTitle(task.title)).not.toBe(normalizeTitle(context.tasks[0].data.title));
     expect(normalizeTitle(task.goal)).not.toBe(normalizeTitle(context.tasks[0].data.goal));
     expect(task.audit_gap).toMatchObject({ kind: "remediation", category: "export-download", check_keys: ["asepriteDownloadUi"], previous_task_id: "028" });
-    expect(task.scope.allowed_paths).toEqual(expect.arrayContaining(["src/app/**", "scripts/auto-dev-cycle.mjs", "scripts/auto-dev-cycle.test.mjs"]));
+    const parsed = YAML.parse(buildTaskYaml(task));
+    expect(parsed.scope).toEqual({ summary: task.goal });
+    expect(parsed.scope.allowed_paths).toBeUndefined();
+    expect(parsed.scope.forbidden_paths).toBeUndefined();
     expect(task.verification).toEqual(["npm run typecheck", "npm run test", "npm run build"]);
   });
 
@@ -979,7 +1015,7 @@ describe("product completeness audits and task generation", () => {
     }
   });
 
-  it("uses safe UI scope and explicit local, dependency-free implementation rules", () => {
+  it("uses local, dependency-free implementation rules without generated path restrictions", () => {
     const workspace = createPlanningWorkspace();
     try {
       const context = collectProjectPlanningContext(workspace);
@@ -988,8 +1024,10 @@ describe("product completeness audits and task generation", () => {
       const parsed = YAML.parse(buildTaskYaml(task));
       const requirements = parsed.requirements.join("\n");
 
-      expect(parsed.scope.allowed_paths).toEqual(expect.arrayContaining(["index.html", "package.json", "src/index.ts", "src/app/**", "src/**/*.test.*", "docs/**"]));
-      expect(parsed.scope.forbidden_paths).toEqual(expect.arrayContaining([".github/workflows/**", ".env", ".env.*", "dist/**", "build/**"]));
+      expect(parsed.scope).toEqual({ summary: task.goal });
+      expect(parsed.scope.allowed_paths).toBeUndefined();
+      expect(parsed.scope.forbidden_paths).toBeUndefined();
+      expect(parsed.auto_merge).toBeUndefined();
       expect(requirements).toContain("Use plain TypeScript and DOM APIs.");
       expect(requirements).toContain("Do not add React, Vue, Svelte, or other dependencies.");
       expect(requirements).toContain("Keep files processed browser-locally.");

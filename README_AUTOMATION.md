@@ -9,7 +9,7 @@ This folder contains a basic automation framework for running Codex as a repeata
 - Local Codex CLI execution
 - Verification loop with typecheck/test/build
 - Optional repair loop when verification fails
-- Git branch, pull request, CI wait, safety validation, and squash merge
+- Git branch, pull request, CI wait, PR metadata validation, and squash merge
 - Bounded multi-task loop modes
 - Basic GitHub Actions CI workflow
 
@@ -111,7 +111,7 @@ The framework currently has eight audit categories:
 
 The reachability checks follow local imports starting at `src/index.ts`; a helper merely existing under `src/app` or `src/core` does not make it part of the browser product. Each category reports its passed and missing checks independently.
 
-If checks fail, the generator maps missing check keys to small, deterministic product-completion cards. These can mount or wire UI controls, connect individual importers and export, add importer-specific E2E tests, improve error states, add usage/compatibility/deployment/performance documentation, or add large-file and progress UI. Generated cards use the next repository-wide numeric IDs, include verification and acceptance criteria, and preserve the default allowed/forbidden path policy. UI cards require plain TypeScript and DOM APIs, browser-local processing, reuse of existing helpers, no framework or other dependency additions, no server upload, no duplicated conversion logic, and focused tests.
+If checks fail, the generator maps missing check keys to small, deterministic product-completion cards. These can mount or wire UI controls, connect individual importers and export, add importer-specific E2E tests, improve error states, add usage/compatibility/deployment/performance documentation, or add large-file and progress UI. Generated cards use the next repository-wide numeric IDs and include verification and acceptance criteria. They do not require `allowed_paths`, `forbidden_paths`, `max_changed_files`, or task-specific auto-merge policy fields. UI cards require plain TypeScript and DOM APIs, browser-local processing, reuse of existing helpers, no framework or other dependency additions, no server upload, no duplicated conversion logic, and focused tests.
 
 Duplicate handling is state-aware rather than a single global skip:
 
@@ -152,11 +152,11 @@ Each real task cycle:
 4. Runs typecheck, test, and build sequentially outside the Codex sandbox, with bounded repair attempts.
 5. Leaves the backlog task unchanged while the implementation branch and PR are open.
 6. Commits, pushes, and creates a PR into `main`.
-7. Waits for GitHub checks and validates the PR head, base, task policy, scope, and changed files.
+7. Waits for GitHub checks and validates the PR head branch and base branch.
 8. Squash-merges safe PRs and requests remote branch deletion.
 9. Checks out `main`, pulls the merged result, moves the task from `backlog` to `done` on `main`, pushes that state-only commit, removes the local task branch, and continues.
 
-If Codex implements the task but its managed Windows sandbox cannot start Vite/Vitest because of a known access-denied/config-resolution error, the outer automation treats that Codex exit as recoverable only when task-relevant source, test, or documentation changes exist. It then runs the full local verification sequence normally. A real local verification failure still stops the task.
+If Codex implements the task but its managed Windows sandbox cannot start Vite/Vitest because of a known access-denied/config-resolution error, the outer automation treats that Codex exit as recoverable only when task-relevant non-generated repository changes exist. It then runs the full local verification sequence normally. A real local verification failure still stops the task.
 
 The loop also resumes existing task work instead of recreating it: merged PRs with backlog cards are finalized on `main`; open PRs are checked out, locally verified, checked, validated, and merged; existing branches without PRs are verified and used to create one. Closed/stale PRs stop with recovery guidance.
 
@@ -169,10 +169,7 @@ The loop also resumes existing task work instead of recreating it: merged PRs wi
 | `AUTO_DEV_MAX_TASKS` | backlog length for `--all`; `10` for `--until-stop` | Maximum successful tasks in one process |
 | `AUTO_DEV_MAX_MINUTES` | none for one/all; `120` for `--until-stop` | Wall-clock runtime limit |
 | `AUTO_DEV_STOP_ON_FAILURE` | `true` | Return a failing exit code for task failures |
-| `AUTO_DEV_ALLOW_WORKFLOW_CHANGES` | `false` | Permit `.github/workflows/*` during PR safety validation |
-| `AUTO_DEV_ALLOW_LOCKFILE_CHANGES` | `false` | Permit lockfile-only changes |
 | `AUTO_DEV_ALLOW_NO_PR_CHECKS` | `false` | Continue past GitHub's `no checks reported` response after mandatory local verification |
-| `AUTO_DEV_ALLOW_POLICY_FALSE_AUTOMERGE` | `false` | Override a task's explicit `auto_merge.allowed: false` policy after every other mandatory gate passes |
 | `AUTO_DEV_GENERATE_TASKS_WHEN_EMPTY` | `false` | Generate normal roadmap tasks and continue processing generated product-completion tasks when `--until-stop` finds an empty backlog |
 | `AUTO_DEV_GENERATED_TASK_COUNT` | `5` | Number of tasks in each generated batch |
 | `AUTO_DEV_MAX_GENERATION_ROUNDS` | `1` | Maximum generated batches in one `--until-stop` process |
@@ -217,47 +214,23 @@ $env:CODEX_EXEC_ARGS = "--sandbox workspace-write"
 npm run auto-dev
 ```
 
-## Tasks with automatic merge disabled
+## Legacy task policy fields
 
-`auto_merge.allowed: false` marks a task as requiring manual merge review. Automation stops by default even after local verification, CI, and changed-file safety checks pass.
-
-Manual merge:
-
-```bash
-gh pr view <number> --web
-gh pr merge <number> --squash --delete-branch
-git checkout main
-git pull origin main
-```
-
-To resume an existing task PR and override only this policy gate:
-
-```bash
-AUTO_DEV_ALLOW_POLICY_FALSE_AUTOMERGE=true npm run auto-dev:until-stop
-```
-
-PowerShell:
-
-```powershell
-$env:AUTO_DEV_ALLOW_POLICY_FALSE_AUTOMERGE="true"
-npm run auto-dev:until-stop
-```
-
-Use the override only when the local verification and PR safety validation are trusted. It does not bypass typecheck, tests, build, GitHub checks, branch/base validation, allowed/forbidden paths, workflow protection, secret detection, generated-artifact checks, lockfile policy, or diff-size limits.
+Existing task YAML may still contain `scope.allowed_paths`, `scope.forbidden_paths`, `auto_merge.allowed`, `auto_merge.max_changed_files`, or `auto_merge.forbidden_paths`. Automation accepts those fields for backward compatibility only. They do not restrict implementation, PR validation, or auto-merge.
 
 ## Safety defaults
 
-- Auto-merges only after local checks, GitHub checks, and changed-file safety validation pass.
+- Auto-merges only after local checks, GitHub checks, and PR head/base metadata validation pass.
 - Never moves task state on `codex/task-*` branches. A task moves to `done` on refreshed `main` only after its implementation PR is confirmed merged.
 - Leaves task state unchanged after pushed-branch, PR, CI, safety, or merge failures and prints recovery guidance.
 - Refuses to run when task-state files are dirty on a `codex/task-*` branch.
 - Limits repair attempts to 3.
-- Stops on Codex limit/auth errors, verification failure, CI failure, unsafe diffs, merge failure, runtime limits, and unclean Git state.
+- Stops on Codex limit/auth errors, verification failure, CI failure, PR metadata failure, merge failure, runtime limits, and unclean Git state.
 - Leaves failed tasks in their existing state so recovery never creates an uncommitted `done`/`failed` rename on a task branch.
 - Exits if the working tree is dirty.
 - Keeps generated prompts under `prompts/generated`.
-- Rejects workflow changes by default, unsafe lockfile changes, generated artifacts, secrets, huge additions, and files outside explicit task scope.
-- Treats `no checks reported` as a failure unless `AUTO_DEV_ALLOW_NO_PR_CHECKS=true`; safety validation remains mandatory either way.
+- Does not reject a PR because of changed-file count, file location, declared task scope, forbidden-path fields, package files, workflow files, generated files, or `auto_merge.allowed: false`.
+- Treats `no checks reported` as a failure unless `AUTO_DEV_ALLOW_NO_PR_CHECKS=true`; local verification and PR head/base metadata validation remain mandatory either way.
 - Generated prompts do not require `rg` and tell Codex to use PowerShell or Node filesystem fallbacks when it is unavailable.
 
 ## Troubleshooting automation recovery
@@ -265,22 +238,6 @@ Use the override only when the local verification and PR safety validation are t
 ### Generated task ID drift
 
 Generated IDs are repository-wide and always advance past task cards in `backlog`, `active`, `done`, and `failed`. A test must calculate the next ID from its fixture context or create an isolated task history; it must not assume that a number such as `022` stays available after more tasks are completed.
-
-### Out-of-scope changes
-
-PR safety validation prints the offending files, the task's declared allowed paths, and commands that restore only those files from `origin/main`. Inspect the PR first, restore only the rejected paths, then commit and push the restore before rerunning automation. The automation never restores out-of-scope files automatically.
-
-```bash
-gh pr diff <number>
-git fetch origin main
-git restore --source origin/main -- <offending-files>
-git add <offending-files>
-git commit -m "Remove out-of-scope changes"
-git push
-npm run auto-dev:until-stop
-```
-
-Do not repair automation from a UI, documentation, import, or export task branch. Create a separate automation task or branch whose allowed paths explicitly include `scripts/**`.
 
 ### Existing PR branch recovery
 
@@ -296,7 +253,7 @@ npm run build
 git push
 ```
 
-The automation reports whether the failure looks like an implementation problem, a branch behind main, an out-of-scope change, a managed sandbox limitation, or a failure from mandatory outer local verification. It does not force-merge `origin/main` into task branches.
+The automation reports whether the failure looks like an implementation problem, a branch behind main, a PR metadata problem, a managed sandbox limitation, or a failure from mandatory outer local verification. It does not force-merge `origin/main` into task branches.
 
 ### Managed Windows sandbox verification
 
@@ -305,10 +262,6 @@ Codex may be unable to start Vitest or Vite inside its managed Windows sandbox b
 ### Product-completion task dependencies
 
 While the broad `Mount browser converter UI` task remains in backlog/active work or has an open task branch, generation suppresses narrower file-input, drag/drop, mode-selector, importer wiring, preview, download, status, and responsive-style tasks that the broad task already covers. The summary lists skipped task titles. Once the broad task is in `done`, any audit gap that remains may generate the specific follow-up task.
-
-### `auto_merge.allowed=false`
-
-`AUTO_DEV_ALLOW_POLICY_FALSE_AUTOMERGE=true` overrides only the task policy flag. Mandatory local checks, PR checks, branch/base validation, allowed and forbidden paths, workflow protection, secret scanning, generated-file checks, lockfile rules, and diff-size limits must still pass.
 
 ## Recommended first command
 

@@ -39,17 +39,9 @@ function asList(value) {
   return String(value).trim();
 }
 
-function formatScope(value) {
+function formatTaskFocus(value) {
   if (!value || Array.isArray(value) || typeof value !== "object") return asList(value);
-  return [
-    String(value.summary ?? "").trim(),
-    "",
-    "Allowed paths:",
-    asList(value.allowed_paths),
-    "",
-    "Forbidden paths:",
-    asList(value.forbidden_paths)
-  ].join("\n").trim();
+  return String(value.summary ?? "").trim() || "- Follow the task goal and requirements.";
 }
 
 function required(task, key) {
@@ -73,7 +65,6 @@ for (const key of [
   "title",
   "goal",
   "context",
-  "scope",
   "non_goals",
   "requirements",
   "acceptance_criteria",
@@ -87,15 +78,15 @@ const template = fs.readFileSync(templatePath, "utf8");
 const isProductCompletionTask = task.task_origin === "product-completion"
   || /product-completeness audit/iu.test(String(task.context ?? ""));
 const isAuditGapTask = Boolean(task.audit_gap);
-const strictScopeWarning = isProductCompletionTask ? `
+const productCompletionGuidance = isProductCompletionTask ? `
 
-## Strict product-completion task scope
+## Product-completion task focus
 
-- Do not edit files outside the Allowed paths listed above.
-- If verification fails because of existing automation tests or unrelated files, report the failure instead of modifying out-of-scope files.
+- Modify any repository file required to complete the task, while keeping the diff focused on the task goal.
+- If verification fails because of clearly unrelated existing problems, report the failure instead of making an unrelated fix.
 ${isAuditGapTask
-    ? "- This is an explicit audit-gap task. Change the audit detector or mapping only when the product evidence shows it is stale or wrong, and only within the listed automation paths."
-    : "- Do not repair the automation system from a UI, docs, import, or export task.\n- Automation repairs must be separate tasks whose allowed paths explicitly include `scripts/**`."}
+    ? "- This is an explicit audit-gap task. Change the audit detector or mapping only when the product evidence shows it is stale or wrong."
+    : "- Do not repair the automation system unless the task goal or verification failure directly requires it."}
 ` : "";
 
 const prompt = template
@@ -103,12 +94,12 @@ const prompt = template
   .replaceAll("{{title}}", String(task.title))
   .replaceAll("{{goal}}", String(task.goal).trim())
   .replaceAll("{{context}}", String(task.context).trim())
-  .replaceAll("{{scope}}", formatScope(task.scope))
+  .replaceAll("{{scope}}", formatTaskFocus(task.scope))
   .replaceAll("{{non_goals}}", asList(task.non_goals))
   .replaceAll("{{requirements}}", asList(task.requirements))
   .replaceAll("{{acceptance_criteria}}", asList(task.acceptance_criteria))
   .replaceAll("{{verification}}", asList(task.verification))
-  .concat(strictScopeWarning)
+  .concat(productCompletionGuidance)
   .concat(`
 
 ## Managed Windows sandbox verification
