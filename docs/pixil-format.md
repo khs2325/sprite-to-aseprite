@@ -1,177 +1,79 @@
-# Pixil/Pixilart `.pixil` Format Notes
+# Pixil/Pixilart `.pixil` Supported Subset
 
-Status: research-only. Pixil/Pixilart `.pixil` import is planned only as a
-future, fixture-backed browser-local subset. No importer, exporter, browser UI
-wiring, or compatibility claim exists yet.
+Status: supported, fixture-backed subset. This is limited project-file import,
+not full or lossless Pixil/Pixilart compatibility.
 
-Primary references:
+The browser UI accepts exactly one local `.pixil` file. The importer reads it
+in the browser and does not upload the project, fetch external image data, or
+send artwork to Pixilart or another processing service.
 
-- Pixilart public drawing app: https://www.pixilart.com/draw
-- Existing browser-local privacy promise: [product-spec.md](product-spec.md)
-- Existing importer boundary: [architecture.md](architecture.md)
+## Accepted Container
 
-The public Pixilart drawing page confirms that the editor exposes `.pixil`
-project-file actions such as "Open .pixil", "Save as .pixil", and
-"Import .Pixil". It also exposes canvas dimensions, frames, layers, layer
-opacity, blend modes, clipping masks, alpha lock, frame speed controls,
-persistent layers, and per-frame millisecond timing controls in the editor UI.
-That page does not document the saved `.pixil` file schema, field names,
-container type, compression, pixel payload encoding, opacity range, or exact
-duration serialization. No prior repo-local Pixil/Pixilart format note,
-fixture, or safe sample was found before this document.
+The file must be strict JSON with exactly one root field, `pixil`. The project
+object must use:
 
-Because the saved project structure is not publicly specified, the converter
-must not guess `.pixil` semantics from the UI alone. A future importer may
-consume only fields proven by public documentation or by tiny synthetic
-`.pixil` fixtures created specifically for this project.
+- `format: "pixilart.com/pixil-project"`;
+- `schemaVersion: 1`;
+- integer `width` and `height` from 1 through 1024;
+- `frameCount` and `layerCount` values matching non-empty `frames` and `layers`
+  arrays; and
+- no unknown fields at the root, project, frame, layer, or cel level.
 
-## Contract Source Rule
+This contract is proven by synthetic repository fixtures. It is not a claim
+that every file named `.pixil`, or every Pixilart editor version, uses this
+schema. Alternate containers and schema versions are rejected.
 
-The future parser contract is fixture-gated:
+## Preserved Data
 
-- Accept only the exact `.pixil` container and schema proven by committed
-  synthetic fixtures or public documentation.
-- Reject unknown root fields, unsupported versions, alternate containers,
-  malformed data, and missing required fields instead of silently inventing
-  defaults.
-- Never use a Pixilart gallery URL, account save, online upload, drawing replay,
-  flattened preview, exported GIF, exported PNG, exported WebP, MP4/WebM video,
-  or sprite-sheet download to recover project layers.
-- Keep selected `.pixil` files and decoded artwork in the browser. Do not upload
-  user artwork or project files to Pixilart, this project, or any other service
-  for conversion.
+For an accepted project, the importer maps the following data into
+`SpriteProject`:
 
-## Planned Minimal Import Subset
+- canvas width and height;
+- explicit frame order and required positive `durationMs` values, normalized
+  to the Aseprite-supported range of 1 through 65535 milliseconds;
+- explicit layer order, non-empty layer names, visibility, and opacity from
+  the source `0..1` range to `0..255`;
+- normal blend mode; and
+- exact row-major RGBA bytes for one full-canvas cel at `(0, 0)` for every
+  layer/frame pair.
 
-The first import subset should stay smaller than Pixilart's editor feature set.
-It should accept one local `.pixil` file only after fixtures prove all required
-fields below. The smallest accepted project should be one frame and one direct
-raster layer; multi-frame or multi-layer support should be added only after
-fixtures prove the relevant saved structures.
+Layers are preserved only when the `.pixil` source contains this required,
+supported layer data. A flattened preview or export is never used to recover
+missing layers.
 
-- One raster project with explicit canvas width and height.
-- Canvas dimensions validated as safe integers from `1` through `1024`.
-- One or more frames in a fixture-proven order.
-- One or more direct raster layers in a fixture-proven order.
-- Persistent-layer behavior or an equivalent saved structure where every frame
-  has the same accepted layer list.
-- Normal blend mode only.
-- Full-canvas cel pixels for every accepted frame/layer pair.
-- RGBA pixel data decoded from the fixture-proven local payload only.
+## Validation And Safety Limits
 
-The first subset should reject projects with variable per-frame layer lists,
-non-normal blend modes, clipping masks, alpha lock, layer filters, effects,
-groups, tile features, references, tracing backgrounds, stamps, brushes,
-custom fonts, palettes as required pixel data, selections, history, replay data,
-or collaboration/social metadata.
+The importer rejects malformed or ambiguous projects rather than inventing
+defaults. Current limits are:
 
-## Field Requirements
+- file size: 96 MiB;
+- frames: 1 through 512;
+- layers: 1 through 64;
+- total cels: at most 4096;
+- decoded raw cel data: at most 64 MiB; and
+- strings: at most 1024 characters.
 
-Future implementation must update this section with exact fixture-proven field
-names before parser code is added. Until then, these are the required semantics,
-not guessed field names:
+Frame and layer indexes must be unique, contiguous, zero-based, and match array
+order. Every layer must contain exactly one cel for every frame. Raw pixel data
+must be strict base64 that decodes to exactly `width * height * 4` bytes.
 
-- Canvas size: read only from verified saved width and height fields. Reject
-  absent, non-integer, zero, negative, fractional, unsafe, or oversized values.
-- Frames: read only from a verified saved frame collection. Frame order must be
-  explicit or proven deterministic by fixture round trips. Reject gaps,
-  duplicates, empty timelines, or ambiguous order.
-- Frame duration: accept only a verified per-frame millisecond value. Reject
-  missing or invalid timing until a fixture proves a safe default. Map accepted
-  values to `SpriteFrame.durationMs` after clamping to `1..65535`.
-- Layers: read only from a verified saved layer collection. Preserve accepted
-  layer names and order. Generate deterministic ids such as `pixil-layer-0`.
-- Visibility: map only from a verified saved visibility field. If the saved
-  format omits default visibility, document the fixture proof before defaulting
-  to `true`.
-- Opacity: map only from a verified saved opacity field and range. If the saved
-  range is `0..1`, use `Math.round(opacity * 255)`. If the saved range is
-  `0..100` or another range, update this note and tests before implementation.
-- Pixel data: decode only from verified local layer/frame raster payloads. If
-  payloads are PNG-backed, require valid PNG bytes whose decoded dimensions
-  exactly match the canvas or documented cel rectangle. If payloads are raw
-  bytes, require exactly `width * height * 4` bytes in row-major RGBA order.
+## Unsupported Features
 
-Do not use flattened exports or previews as source-layer data. A flat Pixilart
-PNG, GIF, WebP, MP4/WebM, or sprite-sheet export can rebuild frames through
-other import paths only when those paths support it; it cannot recover original
-layers.
+The supported subset rejects or does not represent:
 
-## SpriteProject Mapping
+- alternate `.pixil` containers, schema versions, and unknown fields;
+- missing, duplicate, sparse, or ambiguous frames, layers, or cels;
+- partial-canvas cels, nonzero cel offsets, linked or shared cels, and external
+  image URLs;
+- blend modes other than normal;
+- clipping masks, alpha lock, filters, effects, transforms, groups, tile
+  features, reference images, tracing backgrounds, selections, and history;
+- palettes or indexed pixels required to interpret artwork;
+- account saves, gallery pages, community/social data, collaboration data, and
+  remote media; and
+- editor state or other Pixil/Pixilart features not represented by the exact
+  fixture-backed fields above.
 
-For the accepted subset, the importer should produce:
-
-```ts
-{
-  width,
-  height,
-  colorMode: "rgba",
-  frames: sourceFrames.map((frame, index) => ({
-    index,
-    durationMs,
-  })),
-  layers: sourceLayers.map((layer, layerIndex) => ({
-    id: `pixil-layer-${layerIndex}`,
-    name,
-    visible,
-    opacity,
-    cels,
-  })),
-}
-```
-
-Each accepted cel should map to one `SpriteCel` for its frame and layer. The
-initial subset should use full-canvas cels at `(0, 0)` unless fixtures prove
-that Pixil stores smaller cel rectangles with explicit offsets that can be
-preserved safely. Decoded pixel data must be RGBA `ImageData`.
-
-This can preserve layers only when the `.pixil` source contains supported,
-verified layer data. It is not full Pixilart compatibility and must not be
-described as lossless conversion.
-
-## Unsupported Or Unknown Features
-
-Reject or defer these features until separate fixture-backed contracts exist:
-
-- Any `.pixil` container, version, or schema not covered by synthetic fixtures.
-- Pixilart account saves, gallery pages, media URLs, online uploads, community
-  metadata, comments, permissions, titles, descriptions, tags, or visibility
-  settings.
-- Flattened exports, previews, replay snapshots, GIF/WebP/MP4/WebM downloads,
-  and sprite-sheet downloads as layer sources.
-- Persistent layers turned off or any saved structure with ambiguous layer
-  identity across frames.
-- Blend modes other than normal, clipping masks, alpha lock, filters, effects,
-  transforms, outlines, tile mode, reference images, tracing backgrounds,
-  custom brushes, custom fonts, stamps, selections, undo history, and editor UI
-  state.
-- Unknown frame timing semantics, missing timing fields, non-finite durations,
-  negative durations, or timing units not proven to be milliseconds.
-- Unknown opacity ranges, missing visibility semantics, linked/shared cels,
-  partial-canvas cel offsets, palettes required to interpret pixels, indexed
-  pixels, external image URLs, encrypted/compressed variants, duplicate logical
-  entries, or path traversal in archive-like containers.
-
-The parser diagnostic should name the first unsupported or malformed feature
-without exposing source artwork bytes, raw embedded image data, or stack traces.
-
-## Fixture Strategy
-
-Future fixtures must be synthetic, newly created, tiny, and reproducible:
-
-- Create fixtures from Pixilart's own "New" and "Save as .pixil" flow without
-  signing in, uploading, using gallery art, or importing private/user artwork.
-- Use tiny canvases such as `2x2` or `3x2` with simple hand-authored pixels.
-- Start with one frame and one layer at full opacity, normal blend, and default
-  visibility.
-- Add separate positive fixtures for two frames with distinct durations and two
-  layers with distinct names, visibility, and opacity only after the saved
-  fields are inspected.
-- Add negative fixtures for each rejected feature only when that feature can be
-  generated synthetically and safely.
-- Record fixture provenance in tests or fixture docs: Pixilart page URL,
-  creation date, browser used, observed schema summary, and SHA-256 hash.
-
-Importer work must not begin until the positive fixture proves the container,
-required field names, frame order, layer order, timing representation, opacity
-range, visibility representation, and pixel payload encoding.
+Unsupported features are rejected clearly when detected. Because Pixilart's
+broader saved-project schema and editor feature set are not covered by this
+contract, conversion is not guaranteed lossless.

@@ -2,8 +2,8 @@
 
 Sprite to Aseprite Converter rebuilds an editable Aseprite timeline from PNG
 frames, spritesheets, a supported Piskel project, a supported OpenRaster
-project, a supported Pixelorama project, a supported Krita project, or a
-supported PSD project or GIF/APNG animation.
+project, a supported Pixelorama project, a supported Pixil/Pixilart project, a
+supported Krita project, or a supported PSD project or GIF/APNG animation.
 PSD support is limited to RGB 8-bit raster layers in one-frame PSD files.
 Your artwork stays in the browser. Selected files are read by browser APIs for
 conversion in the tab; the app does not upload source files to a project server
@@ -49,11 +49,11 @@ the server with `Ctrl+C`.
 1. Under **Choose an import mode**, select the mode matching the source files.
 2. Under **Add source files**, drag the required files onto the drop area or
    use the file picker. The app accepts `.png`, `.json`, `.piskel`, `.gif`,
-   `.apng`, `.ora`, `.pxo`, `.kra`, and `.psd` files. Each conversion mode
-   validates its required file combination. Review the selected-file cards
+   `.apng`, `.ora`, `.pxo`, `.pixil`, `.kra`, and `.psd` files. Each conversion
+   mode validates its required file combination. Review the selected-file cards
    before conversion. PNG cards include browser-local thumbnails, while JSON,
-   Piskel, GIF, APNG, OpenRaster, Pixelorama, Krita, and PSD cards show
-   document details without displaying their raw contents.
+   Piskel, GIF, APNG, OpenRaster, Pixelorama, Pixil/Pixilart, Krita, and PSD
+   cards show document details without displaying their raw contents.
    Remove individual files or use
    **Clear selected files** as needed.
 3. For supported conversion modes, check that the app reports the source files
@@ -361,6 +361,24 @@ types, unsupported blend modes, linked cels, palettes, guides, reference
 images, or other editor metadata. Unsupported or malformed data is rejected
 with a safe diagnostic that does not display raw source contents or stack
 traces.
+
+## Pixil/Pixilart project
+
+Use this mode for exactly one `.pixil` JSON project that matches the
+[documented fixture-backed subset](pixil-format.md).
+
+1. Select **Pixil/Pixilart project**.
+2. Add exactly one `.pixil` file.
+3. Select **Convert to .aseprite**.
+
+The supported subset preserves the explicit canvas size, frame order,
+per-frame durations, layer names and order, visibility, opacity, and RGBA
+pixels. It requires schema version 1, normal layers, and one full-canvas cel
+for every layer/frame pair. The importer rejects alternate containers or
+versions, unknown fields, partial or linked cels, external image URLs,
+non-normal blend modes, and unverified Pixil/Pixilart features. Conversion is
+not guaranteed lossless, and layers are preserved only when the `.pixil`
+source contains the required supported layer data.
 
 ## Krita project
 
