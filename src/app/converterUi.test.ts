@@ -599,6 +599,37 @@ describe("mountConverterUi Pixil selection", () => {
     expect(getText(root)).toContain("outside the supported subset");
   });
 
+  it("prioritizes the three-step converter flow and defers detailed guidance", () => {
+    vi.stubGlobal("HTMLImageElement", class HTMLImageElementStub {});
+    const document = new UiDocumentStub();
+    const root = document.createElement("main");
+    mountConverterUi(root as unknown as HTMLElement);
+
+    const converter = findOne(root, (element) => element.id === "converter");
+    const modeHelper = findOne(root, (element) => element.id === "mode-helper");
+    const workflowGrid = findOne(root, (element) =>
+      element.className.split(/\s+/).includes("workflow-grid"),
+    );
+    const results = findOne(root, (element) =>
+      element.className.split(/\s+/).includes("result-workspace"),
+    );
+
+    expect(root.children.indexOf(converter)).toBeLessThan(
+      root.children.indexOf(modeHelper),
+    );
+    expect(workflowGrid.children.map((element) => element.className)).toEqual([
+      expect.stringContaining("workflow-panel-mode"),
+      expect.stringContaining("workflow-panel-files"),
+    ]);
+    expect(getText(converter)).toContain("1. Choose an import mode");
+    expect(getText(converter)).toContain("2. Add source files");
+    expect(getText(converter)).toContain("3. Convert and download");
+    expect(results.hidden).toBe(true);
+    expect(getText(root)).toContain("Runs in your browser");
+    expect(getText(root)).toContain("No artwork uploads");
+    expect(getText(root)).toContain("Editable .aseprite output");
+  });
+
   it("keeps mode guidance accurate without claiming lossless conversion", () => {
     expect(getModeHelp("spritesheet-json")).toMatchObject({
       expectedFiles:
@@ -751,6 +782,11 @@ describe("mountConverterUi Pixil selection", () => {
     expect(getText(root)).toContain("Frame 1 of 1, 100 milliseconds.");
     expect(getText(root)).toContain("Layer 1 name");
     expect(downloadButton.disabled).toBe(false);
+    expect(
+      findOne(root, (element) =>
+        element.className.split(/\s+/).includes("result-workspace"),
+      ).hidden,
+    ).toBe(false);
   });
 
   it("shows Pixil conversion errors without source contents or stack traces", async () => {
