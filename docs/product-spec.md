@@ -124,6 +124,23 @@ non-RGB color modes, high bit depths, and timeline animation are unsupported
 and must be rejected or documented without implying lossless conversion.
 Artwork must remain local to the browser and must never be uploaded.
 
+## Supported post-MVP Pixil/Pixilart import
+
+Pixil/Pixilart (`.pixil`) is supported as a browser-local import path through
+the canonical `SpriteProject` model and Aseprite exporter. The browser UI
+accepts exactly one file in the [fixture-backed Pixil subset](pixil-format.md):
+a strict JSON container identified as `pixilart.com/pixil-project`, schema
+version 1, with explicit frames, direct normal layers, and full-canvas raw RGBA
+cels.
+
+The importer preserves canvas size, frame and layer order, layer names,
+visibility, opacity, per-frame durations, and RGBA pixels only when the source
+contains the required supported data. Alternate containers or versions,
+unknown fields, partial or linked cels, external image URLs, non-normal blend
+modes, and unverified editor features are rejected. This is limited project-file
+import, not full or lossless Pixil/Pixilart compatibility. Files remain local
+to the browser and are never uploaded for conversion.
+
 ## Planned additional free/open art tool project formats
 
 The next project-format roadmap continues to focus on small, deterministic,
@@ -137,12 +154,6 @@ browser-local subsets rather than broad compatibility claims:
    first so binary reader scope, chunk coverage, validation, and round-trip
    limitations are understood before implementation. See the
    [input feasibility note](aseprite-input-feasibility.md).
-3. Pixil/Pixilart `.pixil` import is research-only until synthetic fixtures
-   prove the saved project-file schema. The
-   [Pixil/Pixilart format note](pixil-format.md) defines a conservative
-   browser-local contract and rejects unsupported or unknown editor behavior
-   instead of guessing semantics.
-
 For every planned format, the converter should rebuild timelines, convert
 supported frames, and preserve supported raster layer data only when that data
 exists in the documented source subset. It must not upload artwork, add
